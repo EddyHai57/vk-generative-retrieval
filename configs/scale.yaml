@@ -1,0 +1,40 @@
+status: draft
+confidentiality: public
+stage: flagship_scale_audit
+objective: validate_streaming_indexing_and_evaluation_feasibility
+
+data:
+  dataset: VK-LSVD
+  variant: ur0.01
+  scale:
+    users: 100000
+    items: 12467302
+    interactions: 407854360
+  source_manifest: pending
+  label: pending_train_only_profile
+  history_contract: pending
+  catalog_contract: pending
+  official_independent_test_directory: pending_verification
+  split_contract: pending_custom_holdout_freeze
+  final_holdout: pending
+
+resources:
+  default_gpu: Thunder_Compute_RTX_A6000_48GB
+  gpu_memory_gb: 48
+  ram_gb_min: 64
+  disk_gb_min: 300
+  disk_gb_target: 500
+  phase_budget_aud_max: 100
+  gpu_hours_target_max: 30
+  gpu_hours_hard_max: 48
+
+run:
+  scope: scale_feasibility_audit
+  model: pending
+  output_metrics: pending_contract
+  training_epochs: null
+  hyperparameters: pending
+
+claims:
+  model_quality: not_evaluated
+  allowed: systems_feasibility_until_holdout_is_frozen

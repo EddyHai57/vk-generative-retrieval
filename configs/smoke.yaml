@@ -1,0 +1,28 @@
+status: draft
+confidentiality: public
+stage: p1_synthetic_smoke
+objective: validate_the_minimum_auditable_runtime_without_real_data
+
+data:
+  dataset: synthetic_fixture
+  fixture_definition: pending_codex_tdd
+  source_manifest: synthetic_pending
+  label: synthetic_binary_contract
+  catalog_contract: synthetic_only
+  split_contract: synthetic_only
+
+resources:
+  execution: local_cpu
+  network_required: false
+  gpu_required: false
+
+run:
+  scope: p1_framework_dry_run_only
+  model: none
+  output_metrics: contract_and_manifest_checks_only
+  training_epochs: null
+  hyperparameters: pending
+
+claims:
+  model_quality: not_evaluated
+  allowed: scaffold_execution_only

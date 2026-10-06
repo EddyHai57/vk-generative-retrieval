@@ -1,0 +1,36 @@
+status: draft
+confidentiality: public
+stage: two_day_engineering_mvp
+objective: auditable_vertical_slice_not_full_benchmark
+
+data:
+  dataset: VK-LSVD
+  variant: ur0.01_ir0.01
+  scale:
+    users: 90178
+    items: 125018
+    interactions: 4044900
+  source_manifest: pending
+  label: pending_train_only_profile
+  history_contract: pending
+  catalog_contract: pending
+  split_contract: pending
+  query_scope: fixed_audit_set_pending_freeze
+
+resources:
+  default_gpu: Thunder_Compute_RTX_A6000_48GB
+  acceptance_probe_max_hours: 1
+  phase_budget_aud_max: 100
+  gpu_hours_target_max: 30
+  gpu_hours_hard_max: 48
+
+run:
+  scope: mvp_vertical_slice
+  model: pending
+  output_metrics: pending_contract
+  training_epochs: null
+  hyperparameters: pending
+
+claims:
+  model_quality: not_evaluated
+  allowed: engineering_mvp_only
