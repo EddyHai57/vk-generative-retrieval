@@ -89,3 +89,17 @@ Collision-faithful evaluation: https://arxiv.org/abs/2605.25330
 | D-041 | Decision | Confirmed | 旧`AGENTS.draft.md`本地保留并由`.gitignore`排除，不阻塞P0。 | 不执行未经确认的删除，同时避免误提交。 | Eddy决定删除或归档。 |
 
 | D-042 | Decision | Confirmed | Eddy已明确批准创建一个P0 bootstrap commit；该commit不包含remote、push或P1实现。 | 为后续P1 branch/worktree提供可复核基点。 | Bootstrap commit创建并验证。 |
+
+## P1执行决策（2026-10-07）
+
+| ID | Type | Status | Decision / Assumption | 原因 | 复核触发条件 |
+|---|---|---|---|---|---|
+| D-043 | Decision | Confirmed | 用户已批准P1独立worktree与首次联网准备；Python固定>=3.11,<3.12、.python-version=3.11、PyYAML==6.0.2、标准库unittest；不commit/push。 | 显式执行授权承接P0后的scope gate。 | 用户改变scope或工具链。 |
+| D-044 | Decision | Confirmed | P1 schema v1只使用人工fixture与local_cpu/no network/no GPU/model none；固定fixture路径、seed范围[0,2**32)。 | 防止smoke配置携带真实数据或跨阶段行为。 | 后续已批准task需要新的schema version。 |
+| D-045 | Decision | Confirmed | Manifest限定授权的19字段；用git_commit+git_dirty+source_fingerprint区分基点与未提交代码；hash不是真实性认证。 | 避免把bootstrap commit冒充实际源码；具体字段优先于旧handoff的通用pending/command模板。 | 协调Agent验收或后续manifest设计。 |
+| D-046 | Decision | Confirmed | 测试目录可在唯一outputs/p1-test-*内嵌独立子目录；manifest/result绑定同目录。 | 满足repo-relative引用同时隔离与清理测试产物；未改变persistent P1输出边界。 | 产物路径治理变更。 |
+
+依赖provenance：仅从官方PyPI安装PyYAML 6.0.2，未复制第三方实现。官方metadata为MIT： https://pypi.org/project/PyYAML/6.0.2/ 。已在当前.venv复核distribution version与license；lock由uv 0.12.23生成并保存artifact hashes。这里只审计P1新增依赖，I-007未来数据/代码发布审计仍Open；不据此添加repository LICENSE。
+
+| D-047 | Decision | Confirmed | 每个part按做事顺序、成果、问题与处理、下一步进行简要汇报；Sol可起草，协调Agent核对。 | Eddy要求理解实现过程并积累面试复盘素材。 | 用户调整汇报要求。 |
+| D-048 | Decision | Confirmed | Eddy已批准P1本地commit并合并main；未授权本次创建remote/push或自动租用服务器。 | 保存已通过协调验收的P1成果。 | 本地合并及验证完成。 |

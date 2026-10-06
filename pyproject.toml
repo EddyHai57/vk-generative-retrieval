@@ -1,0 +1,6 @@
+[project]
+name = "vk-generative-retrieval"
+version = "0.1.0"
+description = "P1 synthetic auditable CPU scaffold"
+requires-python = ">=3.11,<3.12"
+dependencies = ["PyYAML==6.0.2"]

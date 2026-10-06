@@ -12,4 +12,4 @@
 
 禁止把真实样本、secret、完整 SID map、checkpoint、index 或模型效果常量写入 fixture。
 
-当前阶段不创建测试代码文件。
+P1使用标准库unittest，分别覆盖config、runtime、manifest、CLI与边界；fixture为明确人工整数。测试自己创建独立temp目录并只清理自身产物；需要持久路径时临时目录位于outputs/p1-test-*。socket阻断和只允许local Git subprocess的检查验证实际调用路径，源码复核补充离线边界证据。测试命令：`PYTHONPATH=src .venv/bin/python -B -m unittest discover -s tests -v`；每项RED/GREEN见docs/p1_validation.md。

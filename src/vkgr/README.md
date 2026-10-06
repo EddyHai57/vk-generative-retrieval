@@ -10,4 +10,4 @@
 
 禁止放置 notebook、下载数据、credentials、服务器专用临时脚本、checkpoint、index、完整 SID map 或任何 HelloBike 内部信息。
 
-当前阶段不创建 `.py` 文件。
+P1当前实现：config严格schema与重复key拒绝；runtime执行人工seeded整数计算；manifest写入与校验schema v1；`__main__`提供smoke/verify CLI。仅依赖PyYAML和标准库；package不包含后续阶段接口。用法与fingerprint规则见根README，验证证据见docs/p1_validation.md。

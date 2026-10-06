@@ -62,3 +62,60 @@ LIGER: https://arxiv.org/abs/2411.18814
 SID staleness: https://arxiv.org/abs/2604.13273
 
 Collision-faithful evaluation: https://arxiv.org/abs/2605.25330
+
+## P1环境与实现复盘（2026-10-07）
+
+### I-017 — Python/uv环境前置条件（Closed）
+
+- 预期：P1有Python 3.11与uv可用，项目测试使用当前worktree环境。
+- 实际：主协调接力记录系统Python 3.9.6，最初缺uv/Python3.11；主协调已按用户授权安装。执行Agent没有冒充自行安装。
+- 影响：直接用系统Python无法满足requires-python，不能把缺依赖当TDD RED。
+- 复现证据：本轮fresh运行已批准Python路径`--version`为3.11.17，`python3 -m uv --version`为0.12.23；当前`.venv/bin/python`复核3.11.17/PyYAML6.0.2。详见[p1_validation.md](p1_validation.md)环境准备。
+- 排查与排除：不是项目逻辑失败；.local/bin不在PATH，使用明确路径；系统Python只启动uv。
+- 已证实原因/未知：初始环境版本与工具缺失来自接力记录；本轮确认安装后版本。没有重演或伪造初始安装输出。
+- 处理tradeoff：锁定3.11范围，不改shell配置，不再次安装Python/uv。首次依赖安装有网络，测试/CLI直接离线执行。
+- 验证/学习：当前worktree独立.venv与实际uv.lock是关闭证据；面试时区分环境失败、无效RED与功能失败。
+
+### I-018 — worktree metadata/cache/DNS的sandbox边界（Closed）
+
+- 预期：已授权branch切换、必要依赖安装和真实lock生成可执行。
+- 实际：git switch默认exit128（共享metadata的index.lock不可写）；uv默认cache不可写exit2；独立tmp cache解决写权限后，PyPI DNS仍失败exit2。
+- 影响：阻塞环境准备，不代表config/runtime问题；未算TDD RED。
+- 复现证据：validation环境记录和本对话实际工具输出；git switch经escalation exit0；uv lock/sync在独立tmp cache与获准联网escalation后exit0，installed pyyaml==6.0.2，uv.lock实际产生。
+- 排查与排除：基点/branch冲突已排除，两者均df32a1a；未改Git配置、main文件或shell配置。cache写权限与DNS分别出现，不能混为缺包。
+- 原因/未知：默认sandbox写入范围与网络限制；未调查OS网络全局状态，因为本次escalation已成功。
+- 处理tradeoff：只为获准动作escalate；cache留独立tmp目录，运行与测试不调用uv，不借用其他worktree依赖。
+- 验证/学习：fresh版本、lock与当前.venv元信息复核；worktree代码隔离不代表Git metadata物理上也在worktree内部。
+
+### I-019 — 拒绝应发生在写输出之前（Closed，限定preflight）
+
+- 预期：不合规output路径、已有目录、Git provenance失败在写入前拒绝。
+- 实际：R05旧实现会覆盖已有result；B01虽最终报错却已在不合规目录写文件；B02 Git失败会先留下result。
+- 影响：exit非0也可能产生副作用或误导性半成品。
+- 复现证据：[p1_validation.md](p1_validation.md) R05/B01/B02 RED→GREEN及对应tests；测试只损及自身临时fixture，没有覆盖用户产物。
+- 排查与排除：不是manifest hash或Git基点问题；原因是mkdir/result写入排在路径/provenance校验之前。
+- 原因/未知：验证时序已证实。运行中输入并发变化、突然I/O失败仍可能留下本次新目录的部分产物；P1不实现transaction/自动回滚。
+- 处理tradeoff：路径、fixture、Git与source hash preflight前移，mkdir exclusive、文件x mode；不自动删除任何失败证据，重跑选择新ID。
+- 验证/学习：测试断言原字节不变及output不存在；面试时解释“报错正确”与“没有危险副作用”是两个验收条件。
+
+### I-020 — fixture symlink与测试误通过（Closed）
+
+- 预期：批准的fixture filename不能绕过repo-local人工输入边界。
+- 实际：runtime最初未对固定fixture路径执行symlink校验。B03第一次GREEN实际因macOS /var临时路径别名提前拒绝，未触达目标行为。
+- 影响：未经修正的测试会隐藏fixture可引用外部文件的问题。
+- 复现证据：[p1_validation.md](p1_validation.md) B03意外GREEN说明、canonical temp root后的真实RED、修复GREEN；tests/test_boundaries.py。
+- 排查与排除：使用内容合法的外部人工fixture，排除schema错误；canonical ROOT后仍触达Git sentinel，证明遗漏fixture confinement。
+- 原因/未知：config路径与output有safe_path，fixture只拼接ROOT；ROOT别名使第一版测试提前退出。并发symlink替换不在P1单进程静态文件的保证范围。
+- 处理tradeoff：runtime和build_manifest固定fixture路径也调用safe_path；不改变原fixture或扩大真实数据访问。
+- 验证/学习：修正后先有assertion RED再GREEN，output不存在；不能把“测试通过”直接等同于“覆盖了预期分支”。
+
+### I-021 — 人工oracle算术错误（Closed）
+
+- 预期：synthetic加权和使用独立手算期望。
+- 实际：R03最初误写229；正确是3×2+7×1+11×5+19×4=144。
+- 影响：若未纠正，会把正确实现误判为错误。
+- 复现证据：[p1_validation.md](p1_validation.md) R03手算修正、重新RED与GREEN；当时生产seeded计算尚未实现。
+- 排查与排除：权重与输入人工复算，不用生产helper构造oracle；并非随机数版本或实现bug。
+- 原因/未知：测试编写算术错误已确认，无模型或真实数据影响。
+- 处理tradeoff：先纠正oracle再fresh RED，未调整生产代码迎合错误数字。
+- 验证/学习：literal144与实际权重匹配，换seed会变；测试oracle同样需要审计，不能以测试权威代替推算。

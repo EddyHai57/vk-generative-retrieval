@@ -1,12 +1,12 @@
 # VK Generative Retrieval
 
-这是一个尚未实现、尚无实验结果的公开项目scaffold。
+这是一个尚无模型实验结果的公开项目 scaffold；P1提供人工 synthetic fixture 的可审计 CPU dry-run。
 
 项目计划在VK-LSVD上构建可审计的generative retrieval benchmark，并研究week-level SID staleness、aligned refresh与dense fallback。
 
 ## 当前状态
 
-当前处于P0治理收口，尚未进入生产实现。
+P1实现与验收状态以 STATE.md 为准。
 
 实时状态见[`STATE.md`](./STATE.md)。
 
@@ -76,3 +76,25 @@ Planned范围：
 禁止：raw/processed data、完整embedding、checkpoint、optimizer state、index、trie、完整SID map、逐query预测、secret和任何公司内部信息。
 
 当前不提供LICENSE；首次发布可复用代码前必须完成第三方provenance/license审计。
+
+## P1 本地 dry-run
+
+使用 Python 3.11（`requires-python >=3.11,<3.12`）与精确依赖 `PyYAML==6.0.2`。`uv.lock`由uv真实生成，包含PyPI distribution hashes；测试使用标准库unittest。首次安装需要网络，运行与验证不需要网络。已有当前worktree `.venv`时直接运行下列命令；新环境用 `uv sync --locked --python /absolute/path/to/python3.11` 准备，不使用系统Python 3.9执行项目。
+
+在仓库根目录执行，两个output目录必须尚不存在；换一个唯一run ID即可重跑：
+
+```bash
+PYTHONPATH=src .venv/bin/python -B -m vkgr smoke --config configs/smoke.yaml --output-dir outputs/p1-example-a
+PYTHONPATH=src .venv/bin/python -B -m vkgr verify --manifest outputs/p1-example-a/run_manifest.json
+PYTHONPATH=src .venv/bin/python -B -m unittest discover -s tests -v
+```
+
+成功和失败诊断写stderr；成功exit 0，输入/边界错误exit 2。已存在目录会被拒绝，不覆盖产物。smoke生成`result.json`和`run_manifest.json`；result默认被Git忽略，manifest是允许检查的小型脱敏产物，当前没有commit/push。
+
+Fixture明确标记为人工整数，不对应VK schema、label/history/split/catalog。独立`random.Random(seed)`生成少量权重，再计算整数加权和。同fixture/config/seed得到相同result字节与SHA-256；manifest的时间、elapsed及output路径允许不同。
+
+Manifest schema v1记录输入/config/result hashes、effective config、Python/dependency版本、Git commit/dirty、source fingerprint与UTC时间。source fingerprint覆盖`.python-version`、`pyproject.toml`、`uv.lock`，以及按文件名排序的`src/vkgr/*.py`，以`repo-relative path + NUL + file SHA-256 + newline`串联后再做SHA-256；fixture和config有各自hash。未提交源码由fingerprint标识，Git commit只表示基点。verify要求当前源码和输入仍匹配，并检查本地commit存在及synthetic result语义。
+
+Hash证明一致性，不认证作者、历史时间或历史dirty状态；需要保存匹配源码与输入才能复核。运行期间不应并行修改输入或源码。P1不记录峰值RAM/CPU百分比，不评估模型质量；唯一claim是`synthetic scaffold execution; model quality not evaluated`。I/O中途失败可留下新目录的部分产物，失败目录不复用，选择新ID重跑；程序不自动删除证据。
+
+实际RED/GREEN、环境与运行证据见[`docs/p1_validation.md`](./docs/p1_validation.md)，问题复盘见[`docs/issue_log.md`](./docs/issue_log.md)。
