@@ -1248,3 +1248,13 @@ Git：codex/p1-runtime，HEAD=df32a1a16a03d6f40e1a1516d95d513413a49916，remote0
 ## 本地提交前复核（2026-10-07）
 
 用户已批准commit和本地合并。Fresh `PYTHONPATH=src .venv/bin/python -B -m unittest discover -s tests -v`：exit0，Ran31 in2.757s，OK。本轮仅追加治理/教学汇报要求，不修改生产代码。运行manifest/results保留原worktree，提交候选明确排除outputs运行目录；文档已保存对应hash与复核方法。
+
+## Main整合后fresh验证（2026-10-07）
+
+P1实现commit：9f8f6555f41931019c968477920a69d36699fb55。`git merge --ff-only codex/p1-runtime` exit0，main从bootstrap fast-forward到该commit，无冲突。
+
+main独立环境准备：`UV_CACHE_DIR=/private/tmp/vkgr-p1-uv-6ec7 python3 -m uv sync --offline --locked --python <approved-python3.11>`，exit0；Python3.11.17，Installed pyyaml==6.0.2，使用本地cache，无网络安装。
+
+main运行`PYTHONPATH=src .venv/bin/python -B -m unittest discover -s tests -v`，exit0，Ran31 tests in2.834s，OK；覆盖CLI真实子进程smoke/verify、重复结果与错误边界。fresh git status空输出，remote0。
+
+最后仅更新STATE/handoff/本验证文档的整合结果并提交，无生产代码/配置/lock变化，不重复无必要的生产测试。四份持久manifest/results继续留原worktree，不进入此次提交；原始实现证据与hash仍可复核。没有新实现问题，本次集成无冲突。

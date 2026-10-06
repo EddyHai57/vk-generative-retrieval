@@ -119,3 +119,13 @@ Known limits：hash检查一致性而非真实性；verify要求保留匹配输�
 ## P1本地整合授权（2026-10-07）
 
 Eddy已明确批准P1 commit并合并main，当前开始本地整合；未批准本次remote/push或自动租用服务器。新增阶段汇报要求已写入docs/codex_handoff.md。提交前fresh unittest再次31项通过（2.757s，exit0）。四份运行manifest/result保留原worktree本地，hash已在验证文档保存；本次只提交原创源码、配置、lock、synthetic fixture、测试与文档，不将临时运行目录纳入提交。整合完成后再更新当前快照。
+
+## 最新本地整合结果（2026-10-07）
+
+本节取代上方等待commit/merge的下一动作。Eddy已批准本地commit与合并：P1实现commit为9f8f6555f41931019c968477920a69d36699fb55，24个原创代码/配置/测试/文档文件，已fast-forward合并main。随后追加本次状态与验证收口文档提交；最新HEAD以fresh Git为准。
+
+main以uv --offline --locked从本地cache建立自身.venv，fresh完整unittest 31项通过（2.834s，exit0），包含CLI smoke/verify、确定性与边界验证。未借用其他worktree产物。生产源码没有额外修改，source fingerprint保持不变。
+
+四份persistent manifest/result保留原P1 worktree且未纳入提交，hash见docs/p1_validation.md。分支/worktree均保留，未删除任何运行证据。原main的AGENTS.draft.md仍ignored。Remote0，未push，未连接服务器/使用GPU/下载真实数据。
+
+下一步：用户自行创建空GitHub仓库；remote/push需后续明确授权。P2须单独确认scope、预算、SSH访问与acceptance probe。截图中48GB RAM低于runbook的64GB门槛，已建议8vCPU/64GB，尚未把推荐当作实际实例事实。每part按docs/codex_handoff.md新增的过程/成果/问题处理/下一步顺序汇报。
