@@ -1,0 +1,23 @@
+{
+ "architecture": "id_mean",
+ "batch_size": 512,
+ "checkpoint_policy": "best_last",
+ "extra_uniform": 0,
+ "gradient_clip": 1.0,
+ "history_len": 50,
+ "history_version": "HIST_V2_OBS",
+ "init": "legacy",
+ "learning_rate": 0.001,
+ "logq": false,
+ "logq_alpha": 1.0,
+ "max_epochs": 30,
+ "min_epochs": 0,
+ "patience": 3,
+ "precision": "fp32",
+ "schema": "p-b1-run-v1",
+ "seed": 42,
+ "task_id": "P-REPLAY",
+ "temperature": 0.15,
+ "test_gate": "closed_hash_only",
+ "weight_decay": 0.0001
+}
