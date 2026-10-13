@@ -2,6 +2,8 @@
 
 # Codex Handoff
 
+> 当前执行协议唯一来源：[主协调三对话工作协议](<MAIN_REPO>/docs/codex_handoff.md)及[2026-10-09计划](<MAIN_REPO>/docs/superpowers/plans/2026-10-09-agent-workflow.md)。Eddy已批准、main已派恢复。下文是旧bootstrap协议；逐task重建worktree/逐微步骤审批/多重review要求被新协议覆盖，科学合同、预算、TDD和真实exact-start gate不变。使用当前G3既有worktree；完成一份固定READY packet后通知一次，Astra最终fresh验收。
+
 ## 启动读取顺序
 
 Codex 必须按以下顺序读取并遵守：
@@ -52,7 +54,7 @@ Bootstrap commit存在前，不得创建P1 branch/worktree，也不得开始实�
 - 调用外部服务、上传数据、创建公开发布物。
 - 任何可能暴露 credentials、数据、模型产物或个人信息的操作。
 
-不得上传 HelloBike 或任何其他公司的内部数据、schema、代码、文档、截图、日志与业务信息。
+不得上传 任何公司的内部数据、schema、代码、文档、截图、日志与业务信息。
 
 不得把 secret、token、私钥、原始数据、checkpoint、index、完整 SID map 或服务器连接信息提交到 GitHub。
 

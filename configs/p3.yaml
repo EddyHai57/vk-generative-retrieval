@@ -1,0 +1,14 @@
+version: p3-like-v1
+label: like
+min_history: 1
+max_history: 50
+candidate_catalog: train_observed
+seen_item_masking: false
+target: first_positive_in_target_week
+validation_history: train_only
+test_history: train_only
+tie_break: item_id_ascending
+duplicate_policy: preserve
+train_weeks: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+validation_week: 25
+test_week: 26

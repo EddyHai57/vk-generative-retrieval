@@ -701,7 +701,7 @@ Exit code: 1
 ```text
 test_smoke_and_verify_cli (test_cli.CliTests.test_smoke_and_verify_cli) ... FAIL
 FAIL: test_smoke_and_verify_cli (test_cli.CliTests.test_smoke_and_verify_cli)
-AssertionError: 1 != 0 : /Users/eddy/.codex/worktrees/6ec7/vk-generative-retrieval/.venv/bin/python: No module named vkgr.__main__; 'vkgr' is a package and cannot be directly executed
+AssertionError: 1 != 0 : <WORKTREES>/6ec7/vk-generative-retrieval/.venv/bin/python: No module named vkgr.__main__; 'vkgr' is a package and cannot be directly executed
 Ran 1 test in 0.036s
 FAILED (failures=1)
 ```

@@ -1,0 +1,90 @@
+密级: 公开
+
+# P4D validation
+
+当前状态只读STATE。本task只实现四个固定双塔与formal train/validation/resume，test gate关闭。冻结traditional-like-v1/config/旧TIGER source保留。允许新retrieval_models.py/retrieval_experiment.py及对应tests、retrieval.py必要CLI扩展、新versioned runtime configs和小manifest、当前验证文档及按role的治理文档。正式训练先source review；资源pilot必须四模型共同batch通过后冻结；其后bounded real segment/resume与最多既定core configs/seeds预算。
+
+Stop gates：nonfinite/hash/order/contract/资源低于门限、每epoch或累计no-negative skip超过合同门限时STOP；不降精度、不加资源、不改冻结预算。所有checkpoint/optimizer/vectors/predictions只在server，public只aggregate/hash。
+
+## Source review package
+
+实际新增生产文件仅 `src/vkgr/retrieval_models.py`、`src/vkgr/retrieval_experiment.py`；没有修改retrieval.py/P4B训练或data/旧TIGER源码。新tests为test_retrieval_models与test_retrieval_experiment。formal入口为 `python -B -m vkgr.retrieval_experiment plan|pilot|train|verify|select`；train从pinned既有prepared artifact和validation-only reader读真实rows，不能传synthetic标志。旧P4B synthetic CLI独立保留。
+
+模型spec在architecture_spec中绑定：ID embedding与learned ordinal position用Torch默认N(0,1)，PAD zero；content固定buffer，projection和Transformer最终user projection均bias=False，用Torch Linear默认均匀初始化。前三mean没有额外projection。Transformer为标准单layer postnorm/RELU内部，pastprefix双向与PAD mask，ordinal只计算valid events。版本、实际依赖、初始规则、source/lock/contract/config/producer pins绑定run；不称时间特征。
+
+FP32、deterministic algorithms、TF32关闭、CuBLAS workspace在interpreter前设定，math attention显式启用，flash/mem-efficient SDP关闭。Pilot仅资源worst-prefixforward/backward/AdamW与真实query/catalog export，不计算selectionmetrics；四模型共同通过后再固定batch。GPU peak allocated/reserved与实际free/total及host/cgroupRAM/disk被记录，不从型号猜容量。
+
+Session中每个epoch验证full queries；best是validation lexicographic严格改善，不是trainloss。每个epoch和中间恢复点独占checkpoint/manifest；整个epoch checkpoint hash chain保留。records仅batchindices/loss/skip/grad，evaluation只存小metrics和artifact hashes，不在每个checkpoint重复嵌完整predictions/vectors。每epoch实体vectors/predictions只单独存server，随后checkpoint绑定相应hash。Resume保持selection/patience/step/epoch/cursor/global及permutationRNG，不reset预算；当前epoch短tail不跨epoch补样。
+
+Verifier要求外部manifest SHA，重放完整sampler序列和每batch全past-positive mask/skip分母，核最终cursor；逐epoch从对应bound checkpoint和prepared histories实际重导出float32users/items、逐值比较，随后fixed-pair exact重算predictions/metrics/support/OOV/zero diagnostics。同步改写vectors与自洽rank/metrics也无法通过checkpoint重导出门。Raw/label/order真实性依赖已accepted P4B prepared producer，不把新consumer hash冒充旧producer审计。
+
+## Fresh TDD与回归
+
+RED/GREEN日志从 `/private/tmp/p4d-red-01-assertion.log` 与 `/private/tmp/p4d-green-01.log` 至编号23；编号20是epochcheckpoint lineage RED，编号22是strictconfig bool/float预算拒绝RED。每行为先实际失败再最小实现；最初缺module/unsupportedarchitecture出现test error后改为明确missingfeature assertions，保留初次log，不伪称error本身为合格RED。
+
+模型手算覆盖validmean/PAD/permutation、frozencontent/unsupportedID梯度、ordinal0.8权重、learnedposition顺序响应；另fresh overfit四架构实际参数改变与loss下降、空/超长/非法/nonfinite输入边界。实验tests覆盖fixedconfig枚举/平分、patience和严格epochbudget、float32/zeroexport、OOV/support分母、prepared producer/validation-only、短tail/epochboundary/Transformerdropout RNG/optimizer exactresume、有界formal session、bestmetric篡改、vector同步rehash、epochcheckpointchain、draworder/mask/skip复算、resourceallpass与explicitprecision。
+
+Astra另在controlledsynthetic metrics上独立四模型多次mid/epochendinterrupt恢复，model/optimizer/cursor/Python/NumPy/Torch/CUDA RNG/records/evaluations/stats/selection逐项一致；仅synthetic证据，不冒称真实GPU。协调脚本/log在 `/private/tmp/p4d-astra-resume-oracle.py` / `.log`。后续source增加epochcheckpointchain后需fresh复核，旧log绑定其当时source，不能重stamp为本版本。
+
+## 操作问题与剩余gate
+
+默认sandbox入场suite因worktree临时output写入权限失败；以正确批准权限fresh rerun通过，未修生产代码。启动STATE第一次脚本匹配main模板而父finalSTATE用TaskID格式，导致未改；协调指出后已定点实际重写并fresh读取。Best在初版checkpoint budget保存后才更新，manifest/checkpoint逻辑best可能不同；fresh篡改RED后修保存时序并核binding，未启动真实run因此没有旧实验需追写。
+
+所有正式training/evaluation尚未运行，source review gate仍待独立裁决。此时testclosed、未freeze共享batch、不报告模型胜负。Training_seconds口径为训练segment wall-clock除evaluation callback，包含数据/resource/checkpoint维护开销；不是CUDA kernel-only time或完整账单。evaluation另记录export+exact，费用Unknown。正式pilot/run的实际headroom/elapsed/costscope在后续真实证据填充，数字只experiment_log。
+
+Source-ready完整regression第一次捕获最后cursor组合代码的function声明误替换SyntaxError；未部署。定点修复后的fresh完整结果见source-review package，不能沿用之前GREEN替代。
+
+## Source v2 scoped repairs before real runs
+
+独立v1review FAIL：formalCLI两个JSONstr参数未转Path；selection剥离sharedbatch/pilot允许混合实验；pilot只导出未进入ranking内存上下文。协调又复现nonfinite被当resourcecapacity降batch。各freshRED→GREEN（编号24–29）；v2 Path接线修复，selection与additional seeds共同绑定唯一batch/pilot；pilot持有full exports、normalization临时数组、最大正常query/item scoringblock及resource-only exactrank/磁盘写入，live resource checks，不计算qualitymetrics。Only typed finiteResourceCapacityError或actualCUDAOutOfMemory可按既定batch阶梯继续；nonfinite/一般RuntimeError/determinism/编程问题STOP并保留ledger。不是只看GPU型号猜容量。
+
+另自检freshRED30发现checkpoint可覆写静态buffer；TwoTower恢复现在逐tensor拒绝与prepared不同的content/support。v2最终fullregression PASS，既有skip保留；源stage未部署、无真实模型metrics。原v1 package/hash与失败logs保留，不把v1回归PASS冒充source review PASS。
+
+## 服务器 source / GPU restore / resource gate
+
+补原始用户授权与105public文件逐hash证据后，同审批通道唯一重试上传实际exit0。服务器逐105file/source核通过，model7tests及experiment23tests实际exit0。四架构CUDA controlled synthetic连续与两次中断恢复的model/optimizer/cursor/Python/NumPy/Torch/CUDA RNG全部exact，actualexit0；FP32、deterministic、TF32off、mathSDP配置未变。
+
+资源pilot共同batch512的四架构唯一attempt全部通过，full exports与maxnormal exactcontext、measurement JSON、12export hashes及binding经作者与Astra独立核一致，selection_metrics_read=false；没有尝试256/128。仅证明资源与恢复，不证明模型质量。actualhandles/log/hash留ignored private index，资源数字唯一experiment_log。初次launcher ENV与pilot路径参数错误均在GPU测量前已诊断，原失败记录保留，详见issue_log。
+
+首真实配置已在相同目录/config/预算下完成mid-epoch与epoch-boundary独立进程恢复；records前缀无重复、完整epoch尾batch保留、model/optimizer/cursor/RNG/checkpoint hashes与预算由Astra fresh独立核PASS，正式checkpoint重导出/全validationexact/sampler verifier actualexit0。仅表示真实恢复与验证链成立，尚不是全预算比较结果。固定24run脚本及launcher完成独立操作review，继续same slot1预算后串行队列。
+
+Astra运行中独立audit SSH29021 actualexit0：首run snapshotstep1300的7个已完成epoch，使用独立代码重算全部2520validation predictions的all/train_observed/OOV/support/unsupported Recall与NDCG@10/20/50，逐值一致；完整预测合法/每query唯一50、targetOOV真值、fixedquery SHA与各epoch artifacts hashes均通过。这里只证明该snapshot的算术和文件绑定，不替代最终24run或全部exactranking独立验收，也没有据此调整任何配置。
+
+首完整配置训练终态：Astra SSH26067 actualexit0独立确认train.exit0，正式verify child已运行；SSH52838 actualexit0只读核complete/max_epochs、全epoch evaluation/checkpoint链、逐轮Recall50→NDCG50严格选择及earlier ties、无应早停遗漏、最佳checkpoint匹配、连续records/完整drawn与zero skip、全部resource minima通过。仅确认train终态与选择规则，不提前声明formal verify或24run完成。
+
+
+正式首配置训练完成后原v2 verifier因stats epoch整数key与JSON字符串key排序表示失配而退出，队列停止，第二配置未启动。实际trace与独立逐子条件确认其余selection/best/records/evaluations相同。新增独立compatibility adapter仅改变两处stats比较的规范表示，严格拒绝非法/混合key与数值漂移；原producer文件/代码对象/真实产物保持。Fresh两缺口RED及sidecar/origin反例RED之后，targeted9、full163（skip1）通过；四架构长CPU恢复完整model/optimizer/cursor/globalRNG/预算与16长run selection通过，独立source review PASS。CPU证明不代表CUDA长恢复或旧5100正式重验通过；这两项operation待review/actual执行，realqueue保持停止。
+
+
+补充actual remote证据：新增兼容bundle完整source/operation独立review及逐member/hash核通过；六个layout-independent CPU targeted exit0，四架构same-process完成11epoch后两次CUDA恢复至30epoch exit0。model/optimizer/cursor/stats/global RNG与非空CUDA RNG全部exact，records/selection/consumed预算一致；没有把时间字段与checkpoint内容hash当跨执行schedule应相等项。真实50/170/220不同进程恢复证据仍单独保留。当前仅旧5100 all-epoch/fullranking正式只读verifier仍在运行，尚无terminal receipt；不提前宣称首run已accepted。
+
+Formal verifier可观测性限制：其正式验收会重放全部epoch/checkpoint、完整向量与exact ranks/metrics，耗时较长；冻结实现没有逐阶段/逐epoch进度日志。外部只读ps、CPU/I/O、GPU和可见打开文件只能确认活动，不能可靠定位当前epoch或给出ETA。持续计算且尚无terminal不等于失败/卡死；不为监控改冻结source或注入正在运行进程，最终耗时仅在真实终态后补记。
+
+首run全epoch兼容formal verifier actual0，双身份receipt/gates hashes经Astra fresh独立核，首run正式accepted（不是全P4D完成）。恢复24slot的操作v1在slot1receiptreuse read_json(str)接口错误处退出，未训练slot2。新v2仅两处Path包裹，实际原reader/operation body的gate-reuse、existingreceipt-reuse与selectionreuse三路径fresh RED1→GREEN0，禁止subprocess/train/verify。旧v1及失败log保留，producer/adapter/pilot/预算与已accepted产物不改、不重复5100verify；v2 scopedreview后继续原队列。
+
+首配置full verifier真实终态的stage文件时间差已补入experiment_log；范围为进程启动标记到exit标记的秒级wall代理，冻结实现没有阶段耗时拆分。只读poll3附加stat使用了错误basename，SSH命令exit1；训练观察本身有效，未据此重启。poll4定点正确basename读取成功，原stage产物未改。
+
+协调Astra新增第二配置只读metadata audit actualexit0：完整record连续、每epoch无放回覆盖全部eligible prepared rows、配置/预算固定、loss/gradient finite、完整validation计数与metrics文件hash、strict best选择/earlystop重放均通过；不替代仍运行的full model→vectors→exact ranks verifier。观察脚本先因默认python缺失及record epoch基数误读失败，分别显式既有venv、按producer cursor.epoch+1解释record（stats epochs仍零基）修正独立oracle，日志保留；生产代码与产物不改。
+
+第二配置协调正式接受：Astra独立核actual verifier exit0与outer receipt，并逐invocation/result/terminalmanifest hash链、producer/adapter/proof双身份、testclosed及下一注册配置一致。此前完整record/预算/selection oracle与本次full verifier证据相互补足。独立读取时的schema/flag误读修正后fresh核通过，保留原观察失败日志，生产与真实artifact不改。
+
+第三配置实际触发预注册patience终态，协调独立strict lex选择/earlystop重放PASS；独立观察脚本先误用early_stop enum，按生产实际patience表示修正后fresh通过，保留失败证据。作者实际poll20确认train.exit0和同parent的新full verifier存活，尚无verify终态，不提前accepted。
+
+第三配置协调fresh接受：actual full verifier exit0与独立完整receipt/manifest/双身份hash链、success stdout通过，结合独立earlystop重放。下一配置固定注册参数与真实child存活亦独立核；仍只是已完成配置的证据，不提前进行整体模型选择。
+
+ID mean固定注册配置均已获协调接受：第四配置actual verifier exit0/完整receipt/manifest/identity hash链与success log通过，结合其独立earlystop重放。ID+content mean下一固定配置参数及真实child存活亦独立核；没有额外调参或最佳seed选择，整体comparison仍等全部预算。
+
+第五配置协调fresh接受：完整receipt/manifest/producer+adapter+proof hash链、verifier actualexit0与success日志均通过，结合独立earlystop重放。第六配置冻结参数与真实child存活亦核；未因早停改变后续注册预算。
+
+ID+content mean全部注册配置完成并获协调fresh接受：每配置完整verifier actualexit0、receipt/manifest/invocation/result/双身份hash链与独立earlystop重放通过；其中第八组独立精确配置核后队列进入ordinal weighted mean。仅完成这些配置的证据，未冻结整体selection、未据此声称内容收益或调整后续预算。
+
+Ordinal weighted mean全部固定注册配置完成并获协调fresh接受：各完整verifier actualexit0/receipt证据链及独立strict selection/earlystop重放通过。第四架构content Transformer首注册参数与真实child存活经独立核，仍无整体selection/胜负或追加调参。
+
+只读收口extractor固定包完成独立scope review：completion→各terminal manifest→双身份receipt/invocation/result→best checkpoint/epochartifact hash链、required support/zero/resource字段缺失拒绝、注册顺序/selectedcfg/全部seed及sample_std_ddof1 synthetic检查通过。只在真实完整预算completion后提取已有结果，不重新评估或训练。资源minima来自terminal resource completion；曾分段恢复的首run不将该段测量冒称包含所有historicalsegments的全局minimum，bounded各segment证据另列。真实结果提取仍未执行。
+
+完整seed42 sweep与core selection获协调独立接受：所有terminal逐epoch strict validation-best/earlystop、每架构config及整体固定tie顺序、共享输入/pilot/batch/source绑定重算通过，full verifier receipt/invocation/result/checkpoint/reexport链闭合。固定additionalseed真实启动并绑定同selection hash，代表seed不变。尚非完整P4D或多seed质量结论；弱势模型如实报告，仅按已有证据诊断。
+
+
+## 可见Sol接管后的限定只读验证
+
+指定branch/HEAD与109Git-visible文件逐hash、两份交接hash均fresh匹配后实际接收，接收receipt在ignored cache。本轮run17 train.exit0/max_epochs，terminal runtime/config、selection pin、testclosed、train invocation/result/source/adapter/proof、累积及逐epoch drawn/skip、strict Recall50→NDCG50早epoch tie/earlystop及evaluation artifact/best checkpoint hash独立核对通过。原parent与full verifier child403462存活，无verify终态、未执行真实extractor，不能称run17 formal verified或P4D Complete。精确UTC/hashes统一见cache/p4d-visible-run17-train-metadata.json；未重跑无变化源的suite，未修改远程source或训练。

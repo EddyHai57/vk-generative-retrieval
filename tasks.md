@@ -34,9 +34,9 @@ Stop gate：若无法从manifest复原一次运行的输入和配置，停止进
 
 依赖：P1；VK-LSVD访问方式、条款与provenance审计完成；用户明确批准创建计费实例。
 
-Planned 产物：Thunder A6000不超过1小时的acceptance probe报告；仅下载到服务器受忽略目录的脚本、checksum清单、文件inventory、失败可恢复日志；仓库只保留脱敏manifest模板。
+Planned 产物：当前已确认平台A6000不超过1小时的acceptance probe报告（平台见`docs/decision_log.md`）；仅下载到服务器受忽略目录的脚本、checksum清单、文件inventory、失败可恢复日志；仓库只保留脱敏manifest模板。
 
-验收：SSH reconnect、CUDA/PyTorch、FAISS、RAM/disk、Hugging Face吞吐、disk I/O与snapshot restore按runbook验证；取得`ur0.01_ir0.01`所需文件；checksum与inventory可重复验证；Git status不出现raw data或完整embedding。
+验收：SSH reconnect、CUDA/PyTorch、FAISS、RAM/disk、固定revision dataset传输吞吐、disk I/O与经批准的平台持久化/恢复验证按runbook验证；取得`ur0.01_ir0.01`所需文件；checksum与inventory可重复验证；Git status不出现raw data或完整embedding。
 
 Stop gate：服务器验收失败、许可不清、checksum不一致、磁盘余量不足或任何大文件进入Git tracking时停止。
 
@@ -92,7 +92,7 @@ Stop gate：wall-clock 不足时保留固定 audit set，不承诺全 test；缺
 
 ## P8 — Flagship streaming 与基础设施
 
-依赖：P7 可复核；Thunder Compute acceptance probe 通过；预算获准。
+依赖：P7 可复核；当前已确认平台 acceptance probe 通过；预算获准。
 
 Planned产物：`ur0.01`单week pilot、streaming ETL、out-of-core catalog/SID、compact constraint structure、ANN pilot、scale re-validation、snapshot/restore记录、旗舰split/final holdout manifest、成本manifest。
 
@@ -146,6 +146,62 @@ Stop gate：若提升来自扩大总候选量、泄漏 holdout 或重复 route�
 
 Planned 产物：可复现 README、冻结 configs、synthetic test、manifest 示例、结果限制、THIRD_PARTY_NOTICES、secret/data scan 报告；是否添加 `LICENSE` 由审计结论决定。
 
-验收：从干净环境可复现小数据链路；公开仓库不含 raw data、完整 embedding、checkpoint、index、完整 SID map、密钥或哈啰内部资料；所有数字指向 `docs/experiment_log.md`。
+验收：从干净环境可复现小数据链路；公开仓库不含 raw data、完整 embedding、checkpoint、index、完整 SID map、密钥或公司内部资料；所有数字指向 `docs/experiment_log.md`。
 
 Stop gate：license、provenance、隐私、数据泄漏或复现检查任一失败时禁止发布。
+
+
+## 已批准传统召回扩展路线（P0～P13历史定义保留）
+
+Eddy在P7与P3补充EDA验收后批准完整传统召回计划。以下task串行推进；每次只执行STATE指定的一个task，每task须独立review和Astra验收，下阶段由协调批准brief，不预建未来接口。不进入P8、不新增数据、commit/push或资源生命周期操作。
+
+### P3-C — 现有数据调查与清洗决策
+
+依赖：已验收P2/P3/P7与train-only补充EDA。产物：完整字段/可用性/point-in-time registry，train item/author长尾与zero-like支持、user贡献/异常flag，清洗前后基数表、原创bounded audit及synthetic tests、脱敏aggregate/hash/reuse与验证ledger。raw immutable，不做5-core、ratio clipping或未知异常自动删除；仅提出决策，不改冻结合同。
+
+验收：已做vs补做清晰；固定train输入/schema/hash/join/null及既有基数对账；aggregate独立复核；feature时点风险可解释；0删除也逐项报告原因；每batch至少20%可见RAM/disk余量；旧源码/tests/合同/产物hash保护与公开边界通过。Stop gate：requirednull/非法ID/schema/hash/join/order不一致、资源或公开边界失败，保留证据停止。
+
+### P3-D — 新训练与评估合同
+
+依赖：P3-C正式验收。规则唯一入口为 `docs/data_contract.md#traditional-like-v1`，机器镜像 `configs/traditional.yaml` 与来源绑定 `artifacts/p3d-retrieval-contract-manifest.json`；当前状态只读STATE。保留旧p3-like-v1；like label、官方split、最近50 train-like history、all-train-exposure catalog、seenmaskfalse、full eligible queries、K10/20/50。旧test已使用，不称pristine final holdout；watch history仅独立消融且targets/queries/catalog相同。验收：补充version/config/feature时点/共同输入与full评估协议冻结，旧512 audit regression可复核。Stop：合同/顺序/来源或公平性冲突。
+
+### P4B — 数据管线与in-batch训练框架
+
+依赖：P3-D。产物：可复核ID/PAD、prefix训练、in-batch去重target列与strict-before-positive mask、损失、resume/manifest框架。验收：synthetic手算/mask/tail/RNG与fresh-process resume、参数真实变化。Stop：泄漏、无negative跳过率超批准门、nonfinite/hash/resource。
+
+### P4C — Pop / ItemCF / content基线
+
+依赖：P4B。产物：train-like Pop、binary-user-like cosine sparse ItemCF、官方content均值exact retrieval。验收：toy独立oracle、共同catalog/query与bounded-memory exact评估。Stop：语义/基数/公平性/资源不符。
+
+### P4D — 四种双塔
+
+依赖：P4C。产物：ID mean、ID+content mean、ordinal recency mean、Transformer四双塔；共享训练预算与按validation选配置。验收：padding/mean permutation/position/overfit/参数变化、统一shared batch/resource门与受限预注册搜索。Stop：未来feature、nonfinite、资源或合同漂移。
+
+### P4E — 独立消融
+
+依赖：P4D。产物：固定best architecture/config的uniform negatives、user balance、watch history三项独立消融，train-defined slices。验收：同targets/queries/catalog，多seed各项独立，不混合赢家或追加调参。Stop：混合任务、更换label/分母或holdout调参。
+
+### P4F — wRRF / ANN / 离线推理
+
+依赖：P4E。产物：四route weighted RRF受限validation选择、公平quota留一路消融、exact authoritative与HNSW质量/latency/memory、export/index/infer与shard resume。验收：共同pins/queries、ANN overlap与model delta分开、无query loss/duplicate、fallback单列。Stop：来源/公平性/资源失败；ANN不达标报告未通过并保留exact交付。
+
+### P4G — 多seed复核与收口
+
+依赖：P4F。产物：所有预注册seed/失败ledger、恢复/可复现/公开边界报告和中文解释；test仅配置/fusion冻结后一次，不以其调参。验收：独立review与Astra fresh复核、指标唯一experiment_log、来源完整、限制透明。Stop：未证实结论或来源/隐私/公开边界失败；停在commit/push前。
+
+
+## 已批准双支线准备（2026-10-07）
+
+Eddy批准当前召回项目由Astra协调、传统Sol与生成式Sol独立执行；另一个生成式推荐项目不在本仓库范围。此前全项目串行要求在此范围内调整为每条支线一次一个task、分别验收。传统P4D及其后续阶段定义仍以当前P4D worktree tasks.md为准，其冻结训练不变；公共数据合同、配置与接口由Astra统一。生成式准备可与传统训练并行，GPU仍由传统执行Sol唯一调度，未批准并发训练或资源变更。AGENTS稳定规则不在本轮改写。
+
+### G0 — 生成式召回基础恢复与合同兼容
+
+依赖：已验收P3-D合同、P4B管线、P4C evaluator及既有P5～P7原创SID/TIGER-style实现；不依赖P4E/F完成。
+
+目标：在独立worktree恢复公开源码overlay，审查旧P6硬编码deadline、512 audit及test读取假设；保留旧代码/证据，建立仅CPU synthetic的新协议兼容入口，证明history→SID训练target→受约束decode→item-level评估可贯通。不能把旧smoke称为当前公平训练结果。
+
+允许产物：新src/vkgr/generative_foundation.py、tests/test_generative_foundation.py、tests/fixtures/g0_synthetic.json、docs/g0_validation.md、artifacts/g0-foundation-manifest.json（小型脱敏），本支线STATE/handoff/issue/decision记录；tasks只带入本节指针。复用现有模型、SID codec与evaluator，不重新造公共实现。只在发现缺失行为时按fresh RED→最小GREEN→regression补实现。
+
+验收：synthetic固定seed可复现；严格过去history与catalog/SID身份检查；合法SID映射item，collision-corrected item-level Recall/NDCG与独立toy oracle一致；非法输入明确拒绝；新入口不自动读取test、不复用过期P6 deadline；命令/exit/关键输出和input/source/artifact hashes可追溯。先审查实际接口再冻结具体函数签名；若必须改公共合同或现有核心模块，停止相关实现并提交最小diff建议。
+
+Stop gates：合同或来源冲突、未来信息、预算或公开边界漂移、需要新依赖/真实数据/服务器/GPU时停止相应操作。G0不得SSH、下载、安装、真实训练、重跑旧test、改传统文件、AGENTS、公共合同/config/evaluator、commit/push或创建新资源。最终独立review及Astra fresh验收通过才进入下一生成式任务；后续训练预算尚未批准。

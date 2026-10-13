@@ -25,7 +25,7 @@ Green evidence：
 - Label/history/catalog/split 状态：
 - 本 PR 能支持的 claim：
 - 本 PR 不能支持的 claim：
-- [ ] 未包含 HelloBike 或其他公司的内部信息
+- [ ] 未包含 任何公司 或其他公司的内部信息
 
 ## Resource Impact
 

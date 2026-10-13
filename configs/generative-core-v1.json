@@ -1,0 +1,127 @@
+{
+  "core_search": {
+    "additional_selected_config_seeds": [
+      2024,
+      2025
+    ],
+    "d_model_order": [
+      64,
+      128
+    ],
+    "decoder_layers": 1,
+    "dropout": 0.0,
+    "effective_batch": 512,
+    "encoder_layers": 1,
+    "enumeration": "learning_rate_then_d_model",
+    "feedforward_multiplier": 4,
+    "full_validation_every_epochs": 1,
+    "gradient_clip_norm": 1.0,
+    "heads": 4,
+    "learning_rate_order": [
+      0.001,
+      0.0003
+    ],
+    "loss": "mean_full_vocab_four_position_teacher_forced_ce",
+    "max_epochs": 30,
+    "optimizer": "AdamW",
+    "past_positive_negative_mask": false,
+    "patience": 3,
+    "precision": "fp32",
+    "temperature_search": false,
+    "tuning_seed": 42,
+    "weight_decay": 0.0001
+  },
+  "diagnostics": {
+    "content_distance": {
+      "all_pairs_matrix": false,
+      "max_pairs": 4096,
+      "metric": "float64_squared_l2_on_frozen_float32_features",
+      "order": "lexicographic_semantic_leaf_then_item_id",
+      "pairing": "adjacent_item_ids_within_semantic_leaf",
+      "population": "train_positive_supported_items_only"
+    },
+    "control_runs": 3,
+    "control_seeds": [
+      42,
+      2024,
+      2025
+    ],
+    "core_runs": 6,
+    "extra_tuning": false,
+    "random_sid": "separate_future_versioned_mapping_and_control_manifest_required",
+    "selected_seed42_beam_diagnostics": [
+      50,
+      200
+    ],
+    "total_preregistered_runs": 9
+  },
+  "evaluation": {
+    "beam": 100,
+    "candidate_limit": 100,
+    "full_user_item_matrix": false,
+    "item_tie": "item_id_ascending",
+    "ks": [
+      10,
+      20,
+      50
+    ],
+    "metric_implementation": "vkgr.baselines.metrics",
+    "metrics": [
+      "item_recall",
+      "item_ndcg"
+    ],
+    "oov_denominator": "retain",
+    "population": "pinned_original_queries",
+    "prefix_tie": "lexicographic_sid",
+    "score": "sum_full_vocabulary_log_softmax_four_digits",
+    "search": "approximate_constrained_beam",
+    "slices": [
+      "all_eligible",
+      "in_catalog",
+      "oov"
+    ],
+    "split": "validation_only"
+  },
+  "pilot": {
+    "accumulation": "exact_example_weighted",
+    "authorization": "pending_bounded_window_and_unique_server_scheduler",
+    "beam": 100,
+    "effective_batch": 512,
+    "epoch_tail": "no_fill_across_epoch",
+    "formal_runtime_budget": "pending_pilot_measurement_and_Eddy_approval",
+    "load_d_model": 128,
+    "max_history_items": 50,
+    "max_optimizer_steps_total": 200,
+    "microbatch_order": [
+      512,
+      256,
+      128
+    ],
+    "minimum_free_fraction": 0.2,
+    "train_prefix_decode_queries_total": 128
+  },
+  "protocol_version": "generative-like-sid-v1",
+  "schema_version": 1,
+  "selection": {
+    "best_seed_selection": false,
+    "config_tie": "first_in_enumeration",
+    "epoch_tie": "earlier",
+    "primary": "validation_all_eligible_recall_at_50",
+    "report_seeds": [
+      42,
+      2024,
+      2025
+    ],
+    "representative_seed": 42,
+    "secondary": "validation_all_eligible_ndcg_at_50"
+  },
+  "test_gate": {
+    "actual_test_files": "never_read_by_G1",
+    "historical_test26": "previously_exposed_not_pristine",
+    "release_requires": [
+      "all_selections_frozen",
+      "shared_test_plan_approved"
+    ],
+    "state": "closed"
+  }
+}

@@ -1,0 +1,228 @@
+schema_version: 1
+protocol_version: traditional-like-v1
+contract_ref: docs/data_contract.md#traditional-like-v1
+manifest_ref: artifacts/p3d-retrieval-contract-manifest.json
+scope: preregistration_only
+source:
+  dataset: deepvk/VK-LSVD
+  revision: 084a18386e149a454dd6dbe0123478e75c6b09ce
+  subset: ur0.01_ir0.01
+  legacy_policy_version: p3-like-v1
+  legacy_manifest_ref: artifacts/p3-data-contract-manifest.json
+  quality_manifest_ref: artifacts/p3c-data-quality-manifest.json
+policy:
+  label: like
+  train_weeks: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+  validation_week: 25
+  test_week: 26
+  order: [week, physical_row_ordinal]
+  order_assumption: official_order_not_independent_timestamp_verification
+  training_target: every_train_like_with_strictly_earlier_like
+  training_history: strictly_before_target_like_events
+  min_history: 1
+  max_history: 50
+  history_order: chronological
+  duplicate_policy: preserve
+  evaluation_target: first_like_in_target_week_before_oov_filter
+  evaluation_history: train_only_like_events
+  query_population: all_eligible_including_oov
+  candidate_catalog: all_train_exposure_items
+  catalog_cutoff_week: 24
+  seen_item_masking: false
+  tie_break: item_id_ascending
+  low_activity_and_tail: preserve
+  five_core: false
+features:
+  core: [item_id, official_content_64d, past_ordinal_position]
+  user_id_as_feature: false
+  official_content:
+    dimension: 64
+    source_dtype: float16
+    join: item_id
+    frozen: true
+    assumption: static_content_snapshot_generation_time_unknown
+    normalization: float32_l2_zero_remains_zero
+    invalid_or_missing: stop
+  excluded: [author_id, duration, age, gender, geo, train_interactions_rank, timespent, target_feedback, context_codes, feedback_embeddings]
+  position_semantics: ordinal_not_real_time
+  item_id_dimension: 64
+  unsupported_id_branch: fixed_zero_for_items_never_train_positive
+  unsupported_item_metrics: separate_train_defined_slice
+evaluation:
+  ks: [10, 20, 50]
+  metrics: [item_recall, item_ndcg]
+  slices: [all_eligible, in_catalog, oov]
+  empty_slice_value: null
+  denominator: all_queries_in_each_slice
+  oov_contribution: 0
+  primary_selection: validation_all_eligible_recall_at_50
+  secondary_selection: validation_all_eligible_ndcg_at_50
+  exact_arithmetic: float64_fixed_pair_reduction_on_float32_vectors
+  exact_authoritative: true
+  full_score_matrix: forbidden
+  legacy_audit:
+    manifest_ref: artifacts/p4-baselines-manifest.json
+    seed: 42
+    max_queries_per_split: 512
+    selection: sha256_seed_split_user_id_rank_before_target_oov_hit
+    regression_ks: [10, 20]
+    member_and_history_target_hashes: preserve
+    supplementary_new_ks: [50]
+  test:
+    pristine_final_holdout: false
+    configuration_use: forbidden
+    new_protocol_passes: 1
+    after_freeze: [core_configs, ablation_configs, fusion_config, ann_setting]
+training:
+  precision: fp32
+  optimizer: adamw
+  weight_decay: 0.0001
+  gradient_clip_norm: 1.0
+  loss: l2_dot_div_temperature_cross_entropy
+  sampling: equal_prefix_weight_shuffle_without_replacement_per_epoch
+  tail: no_fill_across_epoch
+  in_batch:
+    columns: distinct_target_items
+    retain_all_queries: true
+    mask: all_strictly_past_like_items_not_only_last_50
+    current_target_column_always_valid: true
+    future_or_holdout_negative_exclusion: forbidden
+    no_negative_row: skip_and_report
+    skip_fraction_denominator: all_drawn_queries_per_epoch_and_cumulative
+    stop_if_skip_fraction_gt: 0.01
+  batch_pilot:
+    candidates_in_order: [512, 256, 128]
+    require_all_models: true
+    minimum_free_fraction: 0.20
+    resources: [ram, vram, disk]
+    freeze_shared_batch_before_core: true
+    if_no_candidate_passes: stop
+  core_search:
+    model_order: [id_mean, id_content_mean, ordinal_content_mean, content_transformer]
+    learning_rate_order: [0.001, 0.0003]
+    temperature_order: [0.07, 0.15]
+    enumeration: model_then_learning_rate_then_temperature
+    tuning_seed: 42
+    max_epochs: 30
+    full_validation_every_epochs: 1
+    early_stopping_patience: 3
+    improvement_order: [recall_at_50, ndcg_at_50]
+    checkpoint_ties: earlier_epoch
+    configuration_ties: first_in_fixed_enumeration
+    additional_selected_config_seeds: [2024, 2025]
+    report_seeds: [42, 2024, 2025]
+    best_architecture_selection: seed42_selected_config_checkpoint_recall50_then_ndcg50_then_model_order
+    representative_checkpoint_seed: 42
+    additional_seed_role: independent_stability_reports
+    report_best_seed_only: false
+    unrestricted_search: false
+  models:
+    id_mean:
+      aggregation: valid_masked_mean
+    id_content_mean:
+      content_fusion: frozen_64d_projected_plus_id
+      aggregation: valid_masked_mean
+    ordinal_content_mean:
+      content_fusion: frozen_64d_projected_plus_id
+      aggregation: ordinal_weighted_mean
+      recency_decay: 0.8
+      recency_distance: past_position_distance_from_most_recent
+    content_transformer:
+      content_fusion: frozen_64d_projected_plus_id
+      layers: 1
+      dimension: 64
+      heads: 4
+      feedforward_dimension: 256
+      dropout: 0.1
+      position: learned_ordinal
+      attention: bidirectional_only_within_past_prefix_pad_masked
+      aggregation: valid_masked_mean_then_linear_user_projection
+  item_branch: trained_except_frozen_content_and_unsupported_id_branch
+  manifests:
+    output_directories: exclusive
+    checkpoint_roles: [best, last]
+    resume_bindings: [model, optimizer, rng, epoch, data_cursor, source, config, input_hashes]
+    producer_and_consumer_sources: distinct_pins
+  stop: [nonfinite, hash_mismatch, resource_gate, ordering_or_contract_conflict]
+baselines:
+  popularity: train_like_event_count
+  itemcf:
+    support: binary_user_like
+    similarity: cosine_cooccurrence
+    neighbors_per_item: 200
+    score: history_sum
+    construction: sparse_blocked_no_full_matrix
+    fill: popularity_deduplicated_report_fill_rate
+  content:
+    dimension: 64
+    score: normalized_mean_of_normalized_history_content
+    retrieval: exact
+ablations:
+  architecture: best_core_architecture_fixed
+  config: selected_core_config_fixed
+  seeds: [42, 2024, 2025]
+  independent: true
+  combine_winners: false
+  extra_tuning: false
+  uniform_negatives:
+    add_distinct_catalog_items_per_batch: 128
+    exclude_existing_columns: true
+    row_mask: same_all_strictly_past_like_mask_target_always_valid
+    hard_negatives: false
+    logq_correction: false
+  user_balance:
+    draw: uniform_eligible_training_user_then_uniform_prefix
+    replacement: true
+    epoch_draws: original_training_example_count
+  watch_history:
+    replace_only: history
+    event_type: all_observed_items
+    max_history: 50
+    strict_before_target: true
+    evaluation_history: train_only
+    preserve: [training_targets, evaluation_query_members, evaluation_targets, catalog]
+    add_users: false
+    timespent_weights: false
+    feedback_embeddings: false
+fusion:
+  routes: [itemcf, best_core_two_tower, content, popularity]
+  use_ablation_winner: false
+  quota_per_route: 100
+  final_k: 50
+  method: weighted_rrf
+  rank_constant: 60
+  weight_values: [0, 1, 2]
+  remove_all_zero: true
+  proportional_duplicates: keep_lexicographically_first_integer_tuple
+  selection_split: validation_only
+  selection_order: [all_eligible_recall_at_50, all_eligible_ndcg_at_50, fewer_nonzero_routes, fixed_lexicographic_tuple]
+  report: [single_routes, equal_weights, selected_weights, leave_one_route_original_quota, leave_one_route_equal_total_quota, overlap, union]
+  equal_total_slots: 400
+  redistribution: equal_among_remaining_routes_remainder_by_route_order
+ann:
+  library: existing_faiss
+  type: hnsw
+  m: 32
+  ef_construction: 200
+  ef_search_order: [64, 128, 256]
+  vectors: same_pinned_export_as_exact
+  selection_queries: legacy_p4_validation_audit_reuse_no_resampling
+  query_hash_source: artifacts/p4-baselines-manifest.json#audit_set_hashes.validation
+  query_sha256: 084290bdc4184487dc1190505d9fbb4ff3d5e938b4189f73912b3109bd3714a2
+  model_metric_delta_scope: paired_legacy_validation_audit_only
+  full_model_quality: exact_all_eligible_validation_authoritative
+  overlap_k: 50
+  minimum_overlap: 0.98
+  select: smallest_passing_ef_search
+  if_none_pass: report_gate_unmet_keep_exact
+  separate_reports: [ann_overlap, model_metric_delta, latency_p50_p95, memory, index_build_cost]
+offline_delivery:
+  shard_resume: no_query_loss_or_duplicates
+  pins: [checkpoint, catalog, idmap, index]
+  unknown_ids: count_and_report
+  empty_history: popularity_fallback_separate_cohort
+  large_outputs: server_only
+claims:
+  historical_tiger: unmatched_training_budget_smoke
+  first_seen: observed_item_proxy
+  forbidden: [ordinary_ctr, true_dynamic_catalog, online_ab, causal_lift, onerec_replication, ai_search_full_stack]

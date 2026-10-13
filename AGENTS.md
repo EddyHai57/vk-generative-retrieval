@@ -6,6 +6,8 @@
 
 ## 启动顺序
 
+> 2026-10-09 Eddy批准最新三对话协议：本worktree执行流程以[主协调codex_handoff](<MAIN_REPO>/docs/codex_handoff.md)及其[实施计划](<MAIN_REPO>/docs/superpowers/plans/2026-10-09-agent-workflow.md)为准。完整授权task内Sol自主推进，复用既有worktree，默认不自派reviewer，由Astra一次最终独立验收；无需逐内部步骤再批。下方科学合同、TDD、预算、安全规则保留。
+
 每个新对话先读：
 
 1. `AGENTS.md`
@@ -51,7 +53,7 @@
 - Public Git只允许原创代码、配置、文档、synthetic fixture、脱敏manifest和小型指标摘要。
 - Raw/processed data、完整embedding、checkpoint、optimizer state、index、trie、完整SID map和逐query预测不得进Git。
 - Secret、token、私钥、signed URL、服务器连接信息不得写入仓库或聊天。
-- HelloBike及其他公司的内部数据、schema、代码、文档、截图、日志、指标和业务信息不得进入本项目。
+- 任何公司的内部数据、schema、代码、文档、截图、日志、指标和业务信息不得进入本项目。
 - 第三方代码先做provenance/license审计；没有明确兼容许可时只按论文独立实现，不复制代码。
 
 ## 事实源

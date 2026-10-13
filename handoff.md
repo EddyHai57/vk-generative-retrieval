@@ -1,131 +1,81 @@
-# Handoff
+# KIRO_CONTINUES / CODEX_PRELOAD_ONLY — G3-R2 replacement monitor 恢复入口（2026-10-11）
 
-密级: 公开
+Eddy最新明确Kiro继续作为G/P两线唯一协调与执行owner；Codex只可只读预加载，不得启动writer、monitor或job，除非Eddy以后明确切换。原monitor PID27709已不存在，退出原因UNKNOWN。只读核验报告在主仓`.agents/tasks/g-monitor-readonly-recovery-check.md`；replacement packet为`cache/g3-monitor-recovery-v1/`，packet SHA `6910de1cd4f9ed46fd039edf0284f393ad311b7e885eaec72c9cd15ff092804b`，validation内immutable launch-member SHA `22773ecaecc4c9cff87e1f4ef54329584a8d52f3f08240b699741fe222f81910`。
 
-> 新对话接力入口。当前阶段、阻塞和下一task只读`STATE.md`；路线定义只读`tasks.md`。
+Kiro terminal7持有唯一replacement monitor runtime owner PID2836，input SHA `8e801a49e9b0824e3e7e32adce3eaa5f59e84620b9a5b698f993f045e0ba950`，started_at epoch `1791734602.037766`，只读且禁止submit/restart。首receipt transport exit0/no timeout；observation epoch `1791734605.107748`，core01/core02/core03为TERMINAL/RUNNING/RUNNING。core01 terminal complete、worker exit0、elapsed `21241.7523078979s`、terminal SHA `bca51b1a2acd54231d3cf886ec59affae3204bce18cf08432dbb892ab76e3b6d`、owned groups closed；core02/core03保持原start SHA `3780c19d0a67082af28869e3e567f2b00a7b79d6649e851058cb5fabe401c154`/`5c84b86141ef7227d91c27f28353a1aa8f3b0d44a019e024a5a0582154a0f269`且owner live。首观察之后没有state-change receipt，不推测或改写状态。
 
-## 恢复顺序
+下一步只由PID2836按退避接收core02/core03 terminal，并且只有state-change receipt才更新；不启动重复monitor，不追加SSH，不submit/restart/resume。旧失败与三个v2 attempt的spent、caps均不重置；三个v2未全部terminal前不收口，四seed42配置未齐前不select/winner seeds/G4/test。
 
-1. 读取`AGENTS.md`
-2. 读取`STATE.md`
-3. 读取本文件的“上一轮证据”和“恢复检查”
-4. 按`STATE.md`指定的task读取`tasks.md`及相关`docs/`
-5. 先复述scope、验收与stop gate，等Eddy确认后执行
+# G3/G4当前恢复入口（2026-10-11）
 
-## 上一轮证据
+首slot终态与指标读取完成；指标只看`docs/experiment_log.md`，读取证据`cache/g3-metrics-read-v1/`。原104h/36GiB提案已拒绝/superseded，超过48 GPU-hours hard ceiling；全部剩余G slot暂停。下一步在P4F完成后，基于已读指标提出缩减分阶段预算，不启动。
 
-- Eddy手动将thin规则落位为`AGENTS.md`
-- Harness已拆分：AGENTS保存稳定规范，STATE保存当前快照，handoff保存接力证据，tasks保存路线
-- README改为公开导航；CLAUDE只保留兼容指针
-- P2/P3/P4/P8/P9阶段owner冲突已修正
-- P1 Smoke固定为synthetic/local CPU/no network
-- `.gitignore`采用default-deny，拦截数据、大产物、凭据和本地治理草案
-- Scaffold与Harness的fresh-context review最终通过
-- Eddy明确批准创建bootstrap commit；本handoff随P0 scaffold进入该commit
+# Claude Code已接管：G3首slot终态入口（2026-10-11）
 
-## 最近验证证据
+02:48已审同job observer返回`TERMINAL/complete`且fresh owned groups closed；formal/replay各14 epochs，train/best/verify actual exit0，consumer seal closed。0resume/1attempt，原deadline/caps/spent不变，无重提或timer恢复。train/best/verification/invocation/terminal五个真实artifact SHA已独立重算吻合，摘要见`cache/g3-formal-A-actual-v1/status-024-takeover-summary.json`。下一只冻结首slot指标/选择证据，并基于约10.21h实测wall汇总剩余5core与G4有限预算；未获批准前不启动。
 
-- Thin AGENTS内容与预审版本一致
-- P0～P13阶段编号和owner对齐
-- 3份YAML解析与关键contract检查通过
-- 7类敏感future paths的`git check-ignore`检查通过
-- Secret、内部字段与废弃口径定向搜索无匹配
-- 无生产`.py/.sh/.ipynb`和空文件
-- Commit前本地Git为`main`、commit=0、remote=0
+2026-10-10 19:07:05：Eddy要求当前进度，单次已验收progress只读status-022返回RUNNING/train已进入/workeridentity alive。epoch/update/currentactive/replay unknown，未见best/verify。此为单次状态询问，不恢复heartbeat或其他暂停工作；原预算与attempt保持。
 
-这些是上一轮的时间点证据，不是永久当前状态；新对话必须重新读取`STATE.md`并执行必要的只读检查。
+# G 对话暂停恢复入口（2026-10-10）
 
-## 恢复检查
+Eddy经main最新明确暂停所有对话，停止模型推进/SSH/诊断/测试/review/新实验。原G heartbeat g3-core-00-seed42已实际设PAUSED；等待明确恢复。原远端job/产物/预算/唯一owner保持，不kill/restart/delete，对话暂停不代表训练停止。暂停前最后实际status-021：RUNNING、latest_stage_entered=train、worker_identity_live=true；epoch/update/currentactive/replay进度unknown，best/verify missing。进度读取已在暂停指令到达前完成；此前新progress heartbeat升级脚本因本地配置文件读取失败未更新automation，无远端动作。恢复后先核原job，不重提，原48h/20GiB/0resume/1attempt预算不reset。
 
-在执行`STATE.md`的下一task前，按任务需要核对：
+G3最小samejob progress observer本地READY_FOR_SOL_MAIN：cache/g3-progress-observer-v1/review.json SHAd292d004a161e73007f9c7a26e1e20088b6863260979aa7b5f151a9c623e495a。main已授权本地候选；source确定8固定文件，不glob/全tree/checkpoint，safe FD/hash/bytes/count/time；原observer-v1所有门保持，新增externally pinned stdlib script/input只读输出stage entered/真实progress epoch/workeridentity/mtime。fresh6 synthetic边界GREEN，countsupdates/currentactive未知；pump buffered stderr可能尚未落盘，空/截断不当0或卡住。尚未remote，原5min observer继续，原job/预算不变。
 
-```text
-AGENTS/STATE/handoff/tasks是否存在
-当前branch/commit/remote
-git status与staged files
-YAML和本地链接
-secret/data ignore边界
-```
+Eddy于2026-10-10直接授权约5分钟只读检查及跑完删除。已创建ACTIVE本G heartbeat：g3-core-00-seed42，名称“G3 core-00-seed42 五分钟状态检查”，每5分钟；仅accepted observer-v1原job，一次/唤醒，普通RUNNING安静，完成/失败/实质异常通知Eddy与main。可信终态、owner不活且fresh_owned_groups_closed后使用automation_update删除id g3-core-00-seed42，保留作业产物/对话；UNKNOWN不当停止。此新指令覆盖本G历史不建automation规则，旧vk/p4d仍PAUSED。
 
-不得仅凭本handoff中的历史输出声称当前仍然通过。
+最新按Eddy请求只读核查：2026-10-10 16:26:57（Asia/Shanghai），status-004返回RUNNING，原owner identity仍活着；具体stage/epoch/metrics未知，未取得终态。原作业/预算不变，无重提/resume。收据cache/g3-formal-A-actual-v1/status-004-receipt.json。
 
-## Housekeeping记录
+# 最新原job RUNNING；原attempt已spent（2026-10-10）
 
-- 旧`AGENTS.draft.md`未删除
-- 文件已被`.gitignore`排除
-- 是否删除或归档由Eddy决定
+已审readonly observer-v1首次status-003实际RUNNING，原owner alive；当前stage/epoch/metrics unknown。唯一submit/no retry/0resume，原fixed包/服务器bytes/预算不变。下一正常有界退避同jobobserver监控，terminal/失败/资源异常升级main，禁止新submit。原status读取缺陷已由main定点接受只读内存修正，不再用坏status。全部入口见STATE和cache/g3-formal-A-actual-v1/review.json。
 
-## GitHub说明
+# G3监控缺陷已定位，最小只读差异送main（2026-10-10）
 
-GitHub remote不属于当前状态事实，本文件只保留方法：
+status-002仍UNKNOWN。本地固定lifecycle70414bytes第一次262144核pin通过，status326第二次默认65536触发regular_bounded并吞为UNKNOWN。原job存活/阶段/终态仍unknown，禁止重复坏poll/重提/改服务器。最小内存readonly status差异cache/g3-formal-A-status-read-v1/review.json SHA409603d7eec3b7c604291afb4361663845258547952fa429bb99484cce285986已送main定点验收，尚未运行。原30s/60s/64KiB/三pins保持。
 
-- P1本地开发不依赖remote
-- 创建public remote和push属于外部公开操作，必须单独确认
-- 可以由Eddy手动创建，或明确授权Kiro使用`gh`
+# G3 core-00-seed42 实际已提交，初次状态 UNKNOWN（2026-10-10）
 
-## 下一次接手重点
+Eddy在本G chat直接批准fixed formal-A-v2（875f096ee1855381c9f9b3091cb24f61895add660720f602a8adbee92df8caa2）单次运行。预算48h含全部部署/训练/full validation/replay/收尾，新增20GiB观察STOP可能overshoot，联合20%余量，10200updates/153720decode/0resume/失败不retry，保留持久产物；无其他配置/G4/test/新资源。
 
-以`STATE.md`指定的P1为准。
+按已审确定性方法仅绑定approved与真实600s窗口，approval SHA `4e8ca5c77b788e710c26f4bdb0a96b6d69a138cc320befc32aebf07daff75b0e`，payload SHA `3b1a5d0d11fcd18ed5f9dbe9e9bc68ef62ba42a79ce792eb6202df9cf6281ca9`。唯一submit实际返回SUBMITTED，start SHA `1c430779d3a5933ac2b862286ca39aa9d85773e2903e218f9a0141b4a3dfa022`。因此原attempt已spent，不重submit/重启或改现场代码。
 
-P1只实现基础代码与可审计运行框架：config schema、run manifest、logging、deterministic seed、synthetic fixture和targeted tests。
+随后已审三pin readonly status-001返回UNKNOWN，transport实际exit0/non-timeout，不是owner退出或训练完成证据。原因和当前训练阶段未知；G仍为唯一监控owner，先本地追溯和原固定status有界核查，必要向main升级最小同job诊断。完整证据入口cache/g3-formal-A-actual-v1/，旧fixed包保持。下一只处理此原job状态，不进入其他task。预算数字和观察记录见docs/experiment_log.md；风险见docs/issue_log.md。
 
-不得提前下载真实数据、连接GPU或实现P2～P13。
+以下历史记录不作为当前pending许可：
 
-## 新对话启动提示词
+# 最新 G3 formal-A-v2已ACCEPT，实际许可pending（2026-10-10）
 
-```text
-请先读取AGENTS.md、STATE.md和handoff.md。
-以STATE指定的下一task为准，再读取tasks.md和docs/codex_handoff.md。
-先复述scope、验收与stop gate，等我确认后执行。
-不要自动创建remote/push或计费资源，不要跨阶段。
-```
+main原reviewer报告cache/g3-cost-candidate-coordinator-v1/formal-A-v2-review.json：ACCEPT_CANDIDATE_PENDING_HUMAN_SPEND_APPROVAL，唯一Important Closed无新增阻塞。accepted packet仍875f096ee1855381c9f9b3091cb24f61895add660720f602a8adbee92df8caa2，旧包不变。不重做suite/review/preflight/probe；0新server/真实训练，48h/20GiB仍未获本G chat directhuman批准。
 
-## P1启动接力（2026-10-07）
+确定性materialization无需改代码：accepted transport.build固定六members→只改approval status与真实not_before/expires≤600s→canonical controller.raw/hash→controller.decode核exact pins/spec/caps/livewindow→transport.command(actual approval SHA,固定controller SHA)。原reviewer已fresh运行test_transport的approved drift/caps rejection，方法已可执行/核验。现场root/controller/input/science/caps不变，private runtime由原pinned origin仍只在server绑定。获得直接具体human批准后新actual exclusive证据目录保存完整canonical authorization/envelope/payload/argv/fullpins与actual收据，不把当前pending/测试fixture当实际许可。无B/G4/select/test/newresources/delete/retry/resume；P并行，真实余量不足STOP。
 
-用户已批准P1 scope、独立worktree与首次必要依赖联网准备。当前隔离worktree fresh核对：基点df32a1a16a03d6f40e1a1516d95d513413a49916、clean、remote 0；detached HEAD已切换到同基点的codex/p1-runtime。Git共享metadata默认sandbox写入失败，经授权escalation后成功；没有修改main文件、Git配置或创建重复worktree。Python 3.11.17、uv 0.12.23为主协调对话安装的接力证据，本轮已fresh复核；系统Python只启动uv，不运行项目。
+以下为历史恢复记录：
 
-## 最新P1交接 — 待主协调Agent验收（2026-10-07）
+# 最新 G3 status v2 READY_FOR_SAME_REVIEWER（2026-10-10）
 
-本节承接上方P0历史记录；P1 scope、独立worktree与首次必要依赖准备已经用户批准，不重复询问。当前状态唯一源是STATE。
+main v1 CHANGES_REQUIRED仅1 Important：status执行code先于外部SHA。按原G3范围已完成本地最小修复；新cache/g3-formal-A-candidate-v2/review.json SHA `875f096ee1855381c9f9b3091cb24f61895add660720f602a8adbee92df8caa2`，README/diff/validation为入口。固定stdlib bootstrap先nofollow/regular/size/外部controller SHA，再exec verified bytes，不以文件路径重载执行；只status三pins，同30s deadline/64KiB输出。source44/consumer/helper/lifecycle/server六核心bytes/input/approval/payload及旧v1全部保持；0新server操作/训练，预算pending。下一原reviewer只核此差异，不重跑原30+7query、不新reviewer。后续实际许可仍由Eddy在G对话最后批准。
 
-- HEAD与批准基点一致；branch codex/p1-runtime，remote0，staged为空。未commit/push/改Git配置；原main fresh检查clean。
-- 串行完成config→runtime→manifest→CLI，未委派worker，未实现P2及之后接口。
-- 严格config schema、重复YAML/JSON keys拒绝、人工fixture校验、独立seeded整数计算、exclusive输出目录与文件、stderr logging及exit codes、manifest schema v1与hash/语义校验。
-- 当前worktree独立.venv为Python3.11.17/PyYAML6.0.2；首次uv0.12.23联网真实生成uv.lock。只审计本轮PyYAML MIT dependency，未来I-007仍Open。
-- fresh full unittest 31项通过；两次persistent smoke和各自verify通过，result字节/hash相同；manifest除时间/elapsed/output路径外字段相同。
-- Persistent产物：`outputs/p1-20261007-6ec7-a/`、`outputs/p1-20261007-6ec7-b/`。完整hash/命令及实际manifest检查见`docs/p1_validation.md`，不把模型效果数字写进本文件。
-- 8个tracked授权文件修改、17个untracked授权文件；两份小manifest保持untracked可review，两份result按既有规则ignored，.venv ignored，无残留test temp目录/未解释repo文件。无真实数据/模型产物/secret/内部内容。
-- RED/GREEN ledger保留所有真实失败，也标注了无效errors、oracle修正、symlink测试误通过与文档尾空格失败；不补造历史。
-- 关键复盘见issue I-017～I-021；实现作者已读回自检并补fixture symlink修复，自检不冒充fresh-context review。
+readonly验包：python3 -B cache/g3-formal-A-candidate-v2/verify_local.py。以下为v1历史基线，不能重启动cost或以旧READY绕过v2差异验收。
 
-下一动作：主协调Astra在本worktree fresh核对所有diff（包括untracked），运行`PYTHONPATH=src .venv/bin/python -B -m unittest discover -s tests -v`，用全新唯一P1目录smoke/verify并检查manifest，复核hash/fingerprint/Git/secret/大产物边界。当前只称Implementation ready / awaiting coordinator review，不称P1 Complete。
+# G3 A首slot完整候选恢复入口（2026-10-10）
 
-Known limits：hash检查一致性而非真实性；verify要求保留匹配输入/源码，源码fingerprint变化将明确拒绝；不实现并发输入修改/symlink竞态或I/O transaction，失败目录不自动删除也不复用。未测峰值RAM/CPU，无模型质量评估。最终review、commit、merge或P2均未执行。
+main派工后的本地实现已完成READY_FOR_ASTRA；不再停在cost/design或IMPLEMENTING。唯一新包cache/g3-formal-A-candidate-v1/review.json SHA `0c40c1e9c79fef77c773d57cee18901b7a6c14d24c3f60a29e89bfe193dfcbe0`，入口README/validation/input/command-template。当前approval.template和payload.template pending，0新server/真实训练；下一main一次fresh差异review，然后Eddy直接批准实际scope。source44/原v4 lifecycle/helper保护不改；实际预算仅见operational-spend方案及experiment_log，账单unknown。
 
-## 最新协调验收 — P1通过，停在commit前（2026-10-07）
+关键实现：专用detached owner+stdin identity latch/external approval SHA；old terminal/good identity/shared headroom prewrite门；context/runtime/生成formal permit全计原clock；train→nested best→原helper full replay→原consumer final seal；独立bounded scanner/实时global guard/实际wait与Linux adoption闭组；全部checkpoint/shard/journal/ledger留存。0resume为更保守候选选择，main须明确验收；worker limits结构1、实际pool0。Linux actual运行未发生，portable controlled tests不能冒充现场。loader TemporaryDirectory原语义保留。
 
-本节取代上方“待主协调Agent验收”的下一动作；上方保留为实现交接历史证据。
+readonly本地验包：python3 -B cache/g3-formal-A-candidate-v1/verify_local.py；source44/pins/templates/parse通过，具体测试见validation。勿再执行原v4检查/submit、旧CPU审计、B/G4/select/test；失联也不重submit。旧事实保留如下历史，不作为当前派工。
 
-- 主协调Agent未参与P1实现，本轮独立读取全部生产源码、测试、tracked diff、untracked文件及验证ledger，完成fresh-context review；在批准P1范围内无阻塞发现。
-- Fresh完整unittest：31项通过、exit0。新建outputs/p1-coordinator-20261007-a与-b，两次CLI smoke、verify及cmp均exit0。
-- 独立hashlib检查config/fixture/result/source fingerprint，核对manifest必需字段、运行环境、Git基点、repo-relative路径和稳定字段一致；具体hash与命令统一见docs/p1_validation.md的协调验收节。
-- 原main仍clean；branch codex/p1-runtime、HEAD仍为bootstrap、remote0、未stage/commit/merge/push。仅协调验收产物与治理文档有新增变化，生产源码未修改。
-- 当前8个tracked修改、19个授权untracked；四份result与.venv ignored，无未解释文件。P1 Complete不表示代码已合并到main。
-- 历史RED/GREEN按ledger审查，未声称重新执行历史中间版本；当前GREEN由协调Agent重新运行。
-- 限制继续有效：只证明synthetic scaffold；hash不认证真实性；不保证并发输入变动或I/O transaction，不包含模型质量、GPU或真实数据结论。
+## 当前实现恢复入口
 
-下一动作：等待Eddy明确批准commit或下一步。不要自动进入P2；本worktree与全部未提交证据必须保留。
+main已派原G3首slot方案A本地完整实现；cache/g3-formal-A-candidate-v1/为唯一新WIP，lifecycle.py逐byte复用accepted v4底层，test_safety.py已有8项fresh RED，controller/scanner尚未实施。正式48h/20GiB未批准，0SSH/部署/真实训练。问答不取消本实现任务；不重做旧cost或CPU audit。
 
-## P1本地整合授权（2026-10-07）
+# G3 operational spend 恢复（2026-10-10）
 
-Eddy已明确批准P1 commit并合并main，当前开始本地整合；未批准本次remote/push或自动租用服务器。新增阶段汇报要求已写入docs/codex_handoff.md。提交前fresh unittest再次31项通过（2.757s，exit0）。四份运行manifest/result保留原worktree本地，hash已在验证文档保存；本次只提交原创源码、配置、lock、synthetic fixture、测试与文档，不将临时运行目录纳入提交。整合完成后再更新当前快照。
+先STATE、cache/g3-operational-spend-v1/review.json、decision.md、execution-design.md、estimate.json、validation.json。main范围裁决已取消缺checkpointpin的CPU audit；旧prototype仅保留未完成标注，不再实施/SSH补pin，也不建议新碎probe。
 
-## 最新本地整合结果（2026-10-07）
+本轮不依赖旧checkpoint，不加载模型：冻结source/config推导tensor参数/FP32+AdamW、cursor/RNG/metadata模板容量，所有实际大小/运行耗时风险仍明确。首slot和六core分别给有限spend上限，超限STOP可失败，非ETA/严格upper，账单rate未知，不代表已批准。
 
-本节取代上方等待commit/merge的下一动作。Eddy已批准本地commit与合并：P1实现commit为9f8f6555f41931019c968477920a69d36699fb55，24个原创代码/配置/测试/文档文件，已fast-forward合并main。随后追加本次状态与验证收口文档提交；最新HEAD以fresh Git为准。
+关键最小接线：复用v4 CODE/prepared原pin只读，新增exclusive formal root/owner；旧4096node diskobserver不能直接用于正式大量journals。固定stage train→best-eval(在原train tree)→mandatory fullverify/replay最终封口，封口后不再写pool；需要新相关TDD验证而不是改科学规则。samepool/deadline最多一次安全中断恢复，failedspent不refund、全checkpoint/shard/journal保留；pidbirth/SID/actualwait/闭组/不可延长clock/有界scanner还必须完整实现审查。
 
-main以uv --offline --locked从本地cache建立自身.venv，fresh完整unittest 31项通过（2.834s，exit0），包含CLI smoke/verify、确定性与边界验证。未借用其他worktree产物。生产源码没有额外修改，source fingerprint保持不变。
-
-四份persistent manifest/result保留原P1 worktree且未纳入提交，hash见docs/p1_validation.md。分支/worktree均保留，未删除任何运行证据。原main的AGENTS.draft.md仍ignored。Remote0，未push，未连接服务器/使用GPU/下载真实数据。
-
-下一步：用户自行创建空GitHub仓库；remote/push需后续明确授权。P2须单独确认scope、预算、SSH访问与acceptance probe。截图中48GB RAM低于runbook的64GB门槛，已建议8vCPU/64GB，尚未把推荐当作实际实例事实。每part按docs/codex_handoff.md新增的过程/成果/问题处理/下一步顺序汇报。
+下一main一次决定完整最小实现part，之后G自主实施/定点验收，Eddy最后批准固定SHA运行。当前无新server/训练/CPU audit许可，G3未Complete/G4/test关闭；旧actual-v4 source/pilot/failed证据包全保留。

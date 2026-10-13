@@ -1,0 +1,2787 @@
+{
+  "candidates": {
+    "like": {
+      "events": 105700,
+      "feedback": {
+        "bookmark": 1742,
+        "click_on_author": 593,
+        "dislike": 45,
+        "like": 105700,
+        "open_comments": 5278,
+        "share": 3501
+      },
+      "history_summary": {
+        "events": 105700,
+        "p50": 0,
+        "p90": 2,
+        "p95": 5,
+        "p99": 24,
+        "snapshot_events_beyond_last50": 7113,
+        "top_10pct_users_event_share": 0.8873982970671712,
+        "top_1pct_users_event_share": 0.38424787133396404,
+        "users": 89371,
+        "users_gt_50": 239,
+        "zero_users": 70456
+      },
+      "items": 21496,
+      "users": 18915,
+      "users_ge_2": 10863
+    },
+    "like_or_share_or_bookmark": {
+      "events": 128003,
+      "feedback": {
+        "bookmark": 3971,
+        "click_on_author": 853,
+        "dislike": 69,
+        "like": 105700,
+        "open_comments": 6747,
+        "share": 23744
+      },
+      "history_summary": {
+        "events": 128003,
+        "p50": 0,
+        "p90": 3,
+        "p95": 7,
+        "p99": 25,
+        "snapshot_events_beyond_last50": 7478,
+        "top_10pct_users_event_share": 0.8152074560752482,
+        "top_1pct_users_event_share": 0.3252189401810895,
+        "users": 89371,
+        "users_gt_50": 252,
+        "zero_users": 64258
+      },
+      "items": 24182,
+      "users": 25113,
+      "users_ge_2": 14824
+    },
+    "ratio_ge_0.5": {
+      "events": 1813493,
+      "feedback": {
+        "bookmark": 3555,
+        "click_on_author": 5684,
+        "dislike": 544,
+        "like": 86818,
+        "open_comments": 41340,
+        "share": 22475
+      },
+      "history_summary": {
+        "events": 1813493,
+        "p50": 9,
+        "p90": 56,
+        "p95": 81,
+        "p99": 142,
+        "snapshot_events_beyond_last50": 384310,
+        "top_10pct_users_event_share": 0.45570068370818084,
+        "top_1pct_users_event_share": 0.0879198320589051,
+        "users": 89371,
+        "users_gt_50": 10449,
+        "zero_users": 8348
+      },
+      "items": 82571,
+      "users": 81023,
+      "users_ge_2": 71552
+    },
+    "ratio_ge_0.8": {
+      "events": 1446654,
+      "feedback": {
+        "bookmark": 3236,
+        "click_on_author": 5034,
+        "dislike": 448,
+        "like": 74248,
+        "open_comments": 38376,
+        "share": 21233
+      },
+      "history_summary": {
+        "events": 1446654,
+        "p50": 7,
+        "p90": 45,
+        "p95": 65,
+        "p99": 114,
+        "snapshot_events_beyond_last50": 219184,
+        "top_10pct_users_event_share": 0.4577404133953247,
+        "top_1pct_users_event_share": 0.08780468584747977,
+        "users": 89371,
+        "users_gt_50": 7320,
+        "zero_users": 11029
+      },
+      "items": 73469,
+      "users": 78342,
+      "users_ge_2": 68076
+    },
+    "ratio_ge_1.0": {
+      "events": 1170664,
+      "feedback": {
+        "bookmark": 2898,
+        "click_on_author": 4448,
+        "dislike": 354,
+        "like": 62563,
+        "open_comments": 34631,
+        "share": 19811
+      },
+      "history_summary": {
+        "events": 1170664,
+        "p50": 5,
+        "p90": 37,
+        "p95": 52,
+        "p99": 92,
+        "snapshot_events_beyond_last50": 117422,
+        "top_10pct_users_event_share": 0.45681852350460933,
+        "top_1pct_users_event_share": 0.08728892320939227,
+        "users": 89371,
+        "users_gt_50": 4843,
+        "zero_users": 13350
+      },
+      "items": 67079,
+      "users": 76021,
+      "users_ge_2": 65127
+    },
+    "seconds_ge_10": {
+      "events": 1829022,
+      "feedback": {
+        "bookmark": 3436,
+        "click_on_author": 5923,
+        "dislike": 616,
+        "like": 74678,
+        "open_comments": 42488,
+        "share": 21722
+      },
+      "history_summary": {
+        "events": 1829022,
+        "p50": 9,
+        "p90": 56,
+        "p95": 82,
+        "p99": 145,
+        "snapshot_events_beyond_last50": 395541,
+        "top_10pct_users_event_share": 0.4575319487682488,
+        "top_1pct_users_event_share": 0.08881194430684813,
+        "users": 89371,
+        "users_gt_50": 10575,
+        "zero_users": 8451
+      },
+      "items": 79866,
+      "users": 80920,
+      "users_ge_2": 71556
+    },
+    "seconds_ge_20": {
+      "events": 1237947,
+      "feedback": {
+        "bookmark": 2699,
+        "click_on_author": 4803,
+        "dislike": 465,
+        "like": 50858,
+        "open_comments": 38132,
+        "share": 17206
+      },
+      "history_summary": {
+        "events": 1237947,
+        "p50": 5,
+        "p90": 38,
+        "p95": 56,
+        "p99": 103,
+        "snapshot_events_beyond_last50": 158789,
+        "top_10pct_users_event_share": 0.4730784112728574,
+        "top_1pct_users_event_share": 0.09519712879468992,
+        "users": 89371,
+        "users_gt_50": 5585,
+        "zero_users": 13654
+      },
+      "items": 58788,
+      "users": 75717,
+      "users_ge_2": 65078
+    },
+    "seconds_ge_5": {
+      "events": 2475822,
+      "feedback": {
+        "bookmark": 3814,
+        "click_on_author": 6658,
+        "dislike": 788,
+        "like": 94685,
+        "open_comments": 43497,
+        "share": 23336
+      },
+      "history_summary": {
+        "events": 2475822,
+        "p50": 12,
+        "p90": 75,
+        "p95": 109,
+        "p99": 192,
+        "snapshot_events_beyond_last50": 746616,
+        "top_10pct_users_event_share": 0.45118187010213173,
+        "top_1pct_users_event_share": 0.08678410645030216,
+        "users": 89371,
+        "users_gt_50": 15474,
+        "zero_users": 4802
+      },
+      "items": 96333,
+      "users": 84569,
+      "users_ge_2": 75975
+    }
+  },
+  "diagnostics": {
+    "duration_255_events": 0,
+    "duration_zero_events": 0,
+    "events": 3720328,
+    "ratio_eq_1": 516180,
+    "ratio_gt_1": 654484,
+    "timespent_255": 3078
+  },
+  "duration_item_summary": {
+    "max": 180,
+    "min": 5,
+    "p50": 25,
+    "p90": 70,
+    "p95": 90,
+    "p99": 161,
+    "sample_count": 120415,
+    "sample_unit": "catalog_item",
+    "value_unit": "seconds"
+  },
+  "effective_ram_bytes": 211900432384,
+  "elapsed_seconds": 5.486510057933629,
+  "existing_train_audit_sha256": "3cc2d3ffb9812d7e83709f53d85463876f9be13daf4173829b748dbe1ee1c3fe",
+  "exploration_grid": {
+    "dislike_conflicts": "retained and reported",
+    "ratio_ge": [
+      0.5,
+      0.8,
+      1.0
+    ],
+    "ratio_gt1": "retained; no clipping",
+    "ratio_zero_duration": "excluded",
+    "seconds_ge": [
+      5,
+      10,
+      20
+    ]
+  },
+  "exposure_summary": {
+    "events": 3720328,
+    "p50": 18,
+    "p90": 111,
+    "p95": 162,
+    "p99": 290,
+    "snapshot_events_beyond_last50": 1584791,
+    "top_10pct_users_event_share": 0.44862254080822983,
+    "top_1pct_users_event_share": 0.08845456637156723,
+    "users": 89371,
+    "users_gt_50": 23235,
+    "zero_users": 0
+  },
+  "feedback": {
+    "bookmark": 3971,
+    "click_on_author": 7545,
+    "dislike": 1091,
+    "like": 105700,
+    "open_comments": 43886,
+    "share": 23744
+  },
+  "input_files": [
+    {
+      "bytes": 155747843,
+      "path": "metadata/items_metadata.parquet",
+      "sha256": "607ffd09d3fb6627f7eec07ed53583d45c47263a2e6538e4deee66cd8a22e51e"
+    },
+    {
+      "bytes": 72526148,
+      "path": "metadata/users_metadata.parquet",
+      "sha256": "51fa9528f71bb0da947311d7baa4727d325285a3e748b54816477b82492aff20"
+    },
+    {
+      "bytes": 642528,
+      "path": "subsamples/ur0.01_ir0.01/train/week_00.parquet",
+      "sha256": "c4a8dae41596b357872ee9dc0297c8abb2b43d3bb936823fc8b7127453ff7741"
+    },
+    {
+      "bytes": 922739,
+      "path": "subsamples/ur0.01_ir0.01/train/week_01.parquet",
+      "sha256": "f19dd3ea9e992c1f10aea85702afd0b328e10888b8a37105d341e27aeda97467"
+    },
+    {
+      "bytes": 942380,
+      "path": "subsamples/ur0.01_ir0.01/train/week_02.parquet",
+      "sha256": "2875cbccc3753b657beeeaccf3e9f08ab13276984cdfa01c046822156cc0cdb5"
+    },
+    {
+      "bytes": 873211,
+      "path": "subsamples/ur0.01_ir0.01/train/week_03.parquet",
+      "sha256": "bcc1e2fc1074f79c581560cbb16e0b55de8772046c98df2b47e39811dbfd58a4"
+    },
+    {
+      "bytes": 937393,
+      "path": "subsamples/ur0.01_ir0.01/train/week_04.parquet",
+      "sha256": "766d617cbc467b8e538a86dfeae6640c1c6ce664202c9114838865582cc23a4c"
+    },
+    {
+      "bytes": 632565,
+      "path": "subsamples/ur0.01_ir0.01/train/week_05.parquet",
+      "sha256": "c00228268b91c94458a19a5c003d84dbdf0c5779690cbf73157ee87d8ab2fb8a"
+    },
+    {
+      "bytes": 799185,
+      "path": "subsamples/ur0.01_ir0.01/train/week_06.parquet",
+      "sha256": "67ac9fefb171f700cc26aebea50ac71b00aef9da8aa938297b7985565578c237"
+    },
+    {
+      "bytes": 983655,
+      "path": "subsamples/ur0.01_ir0.01/train/week_07.parquet",
+      "sha256": "8507384d295c7b284476775662d62d8efa7ab6a4de537174e8ac137d931e9a9f"
+    },
+    {
+      "bytes": 1026089,
+      "path": "subsamples/ur0.01_ir0.01/train/week_08.parquet",
+      "sha256": "2d7f64545ec8cb7b8ebbbe3fcb7f720b47297446031b6a6d74f7a11b700bc26a"
+    },
+    {
+      "bytes": 994597,
+      "path": "subsamples/ur0.01_ir0.01/train/week_09.parquet",
+      "sha256": "6bed90de8472d792ff82bed80c5d7227c06c1e76c781b603c2d18fafed62533c"
+    },
+    {
+      "bytes": 955811,
+      "path": "subsamples/ur0.01_ir0.01/train/week_10.parquet",
+      "sha256": "8ac871a9561686cb0073389b2f006e1a31246040678ea00e229fb368bf72263c"
+    },
+    {
+      "bytes": 947285,
+      "path": "subsamples/ur0.01_ir0.01/train/week_11.parquet",
+      "sha256": "b65b0c1ea3d943bd7d9bb1865f886226159116ede0438d0681df43cdded592ef"
+    },
+    {
+      "bytes": 976913,
+      "path": "subsamples/ur0.01_ir0.01/train/week_12.parquet",
+      "sha256": "274f44b9caf07f8c3b5ebb4f910e77d387021bffc6009fd7b4a064907b0e410a"
+    },
+    {
+      "bytes": 1082104,
+      "path": "subsamples/ur0.01_ir0.01/train/week_13.parquet",
+      "sha256": "751d066a4b85e70676ff4254065cd5deaee903a98198c4eebab12fcd35632949"
+    },
+    {
+      "bytes": 1025175,
+      "path": "subsamples/ur0.01_ir0.01/train/week_14.parquet",
+      "sha256": "47ed124a1ea4ac77391d22ee13ff5d4a00ab6de62b9be4f8ba02af3a2b4597cd"
+    },
+    {
+      "bytes": 1034010,
+      "path": "subsamples/ur0.01_ir0.01/train/week_15.parquet",
+      "sha256": "8a5e82d603e53e39b7c6a98af1091a24b806c961fd1f74d5a733749f8a12b75d"
+    },
+    {
+      "bytes": 1009990,
+      "path": "subsamples/ur0.01_ir0.01/train/week_16.parquet",
+      "sha256": "48bed166e1d9fe2d2467fd1c528cf933a18e5008fe3d3d6a3935b685aec12608"
+    },
+    {
+      "bytes": 974139,
+      "path": "subsamples/ur0.01_ir0.01/train/week_17.parquet",
+      "sha256": "9e63b92aeb3e16b4f8daeefe91bd89a106802e68b086bc74ef0e76a86d8ed415"
+    },
+    {
+      "bytes": 971015,
+      "path": "subsamples/ur0.01_ir0.01/train/week_18.parquet",
+      "sha256": "efd0e5ff6ffc02e4ec603496f4d241937434dbdfb670bf6df42bc7670329620b"
+    },
+    {
+      "bytes": 977046,
+      "path": "subsamples/ur0.01_ir0.01/train/week_19.parquet",
+      "sha256": "a44e9f4cfc69c1662e563b6f9000dbec3a6674af1c641a43bd9b2af523ce60f7"
+    },
+    {
+      "bytes": 936557,
+      "path": "subsamples/ur0.01_ir0.01/train/week_20.parquet",
+      "sha256": "b35b54f7aa35a6ee1a4fa8b5a184a8237836810c52efddaf063d90ae0ef4a6d0"
+    },
+    {
+      "bytes": 1011466,
+      "path": "subsamples/ur0.01_ir0.01/train/week_21.parquet",
+      "sha256": "d50be2f1a7772a34c1046c656524885526507878a43b1ceb4c46c47d9709cdff"
+    },
+    {
+      "bytes": 998624,
+      "path": "subsamples/ur0.01_ir0.01/train/week_22.parquet",
+      "sha256": "479721322e6d497794d7adf43ba71b01815080680b6c1e63edd9289de1a316a5"
+    },
+    {
+      "bytes": 1104283,
+      "path": "subsamples/ur0.01_ir0.01/train/week_23.parquet",
+      "sha256": "8cb680ca0427cdbe30af90b575fb19dae63ecc961e25317583db025e7e86c63c"
+    },
+    {
+      "bytes": 1032816,
+      "path": "subsamples/ur0.01_ir0.01/train/week_24.parquet",
+      "sha256": "b103a275faf89cd90b000501db11b12b97817a334bf83bd473a4b21d477592b6"
+    }
+  ],
+  "like_summary": {
+    "events": 105700,
+    "p50": 0,
+    "p90": 2,
+    "p95": 5,
+    "p99": 24,
+    "snapshot_events_beyond_last50": 7113,
+    "top_10pct_users_event_share": 0.8873982970671712,
+    "top_1pct_users_event_share": 0.38424787133396404,
+    "users": 89371,
+    "users_gt_50": 239,
+    "zero_users": 70456
+  },
+  "like_training_prefix_contribution": {
+    "events": 86785,
+    "p50": 0,
+    "p90": 1,
+    "p95": 4,
+    "p99": 23,
+    "snapshot_events_beyond_last50": 6874,
+    "top_10pct_users_event_share": 0.9778187474794031,
+    "top_1pct_users_event_share": 0.45769430201071615,
+    "users": 89371,
+    "users_gt_50": 231,
+    "zero_users": 78508
+  },
+  "metadata": {
+    "items_metadata.parquet": {
+      "matched": 120415,
+      "schema": {
+        "author_id": "uint32",
+        "duration": "uint8",
+        "item_id": "uint32",
+        "train_interactions_rank": "uint32"
+      },
+      "selected_entities": 120415,
+      "selected_nulls": {
+        "duration": 0,
+        "item_id": 0
+      },
+      "total_rows": 19627601
+    },
+    "users_metadata.parquet": {
+      "matched": 89371,
+      "schema": {
+        "age": "uint8",
+        "gender": "uint8",
+        "geo": "uint8",
+        "train_interactions_rank": "uint32",
+        "user_id": "uint32"
+      },
+      "selected_entities": 89371,
+      "selected_nulls": {
+        "age": 0,
+        "gender": 0,
+        "geo": 0,
+        "train_interactions_rank": 0,
+        "user_id": 0
+      },
+      "total_rows": 10000000
+    }
+  },
+  "minimum_ram_headroom_fraction": 0.9593277308260426,
+  "null_counts": {
+    "agent": 0,
+    "bookmark": 0,
+    "click_on_author": 0,
+    "dislike": 0,
+    "item_id": 0,
+    "like": 0,
+    "open_comments": 0,
+    "place": 0,
+    "platform": 0,
+    "share": 0,
+    "timespent": 0,
+    "user_id": 0
+  },
+  "pairwise_cofeedback": {
+    "bookmark&click_on_author": 71,
+    "bookmark&open_comments": 455,
+    "click_on_author&open_comments": 625,
+    "dislike&bookmark": 18,
+    "dislike&click_on_author": 10,
+    "dislike&open_comments": 33,
+    "dislike&share": 14,
+    "like&bookmark": 1742,
+    "like&click_on_author": 593,
+    "like&dislike": 45,
+    "like&open_comments": 5278,
+    "like&share": 3501,
+    "share&bookmark": 346,
+    "share&click_on_author": 301,
+    "share&open_comments": 1603
+  },
+  "peak_rss_kib": 109416,
+  "reconciliation": {
+    "all_feedback": true,
+    "exposure_histogram": true,
+    "items": true,
+    "like_users_ge_2": true,
+    "likes": true,
+    "rows": true,
+    "users": true,
+    "watch_histogram": true
+  },
+  "schema": {
+    "agent": "uint8",
+    "bookmark": "bool",
+    "click_on_author": "bool",
+    "dislike": "bool",
+    "item_id": "uint32",
+    "like": "bool",
+    "open_comments": "bool",
+    "place": "uint8",
+    "platform": "uint8",
+    "share": "bool",
+    "timespent": "uint8",
+    "user_id": "uint32"
+  },
+  "scope": "supplemental train-only EDA; frozen p3-like-v1 unchanged",
+  "script_sha256": "7d7335a55c70f76b039c1abb0345b347ed5733b98be73b389b5ca9692f1fb669",
+  "segments": {
+    "agent": {
+      "0": {
+        "candidates": {
+          "like": 67128,
+          "like_or_share_or_bookmark": 80712,
+          "ratio_ge_0.5": 1191273,
+          "ratio_ge_0.8": 948358,
+          "ratio_ge_1.0": 768580,
+          "seconds_ge_10": 1217784,
+          "seconds_ge_20": 825142,
+          "seconds_ge_5": 1651691
+        },
+        "duration_sum": 108906099,
+        "events": 2524318,
+        "feedback": {
+          "bookmark": 2478,
+          "click_on_author": 6689,
+          "dislike": 822,
+          "like": 67128,
+          "open_comments": 24123,
+          "share": 14465
+        },
+        "ratio_gt_1": 330568,
+        "timespent_255": 2061,
+        "watch_sum": 52300707
+      },
+      "1": {
+        "candidates": {
+          "like": 34651,
+          "like_or_share_or_bookmark": 43311,
+          "ratio_ge_0.5": 566648,
+          "ratio_ge_0.8": 453788,
+          "ratio_ge_1.0": 368257,
+          "seconds_ge_10": 550249,
+          "seconds_ge_20": 368143,
+          "seconds_ge_5": 747194
+        },
+        "duration_sum": 43196405,
+        "events": 1090494,
+        "feedback": {
+          "bookmark": 1468,
+          "click_on_author": 854,
+          "dislike": 232,
+          "like": 34651,
+          "open_comments": 19753,
+          "share": 9229
+        },
+        "ratio_gt_1": 301481,
+        "timespent_255": 900,
+        "watch_sum": 23025331
+      },
+      "10": {
+        "candidates": {
+          "like": 8,
+          "like_or_share_or_bookmark": 10,
+          "ratio_ge_0.5": 145,
+          "ratio_ge_0.8": 115,
+          "ratio_ge_1.0": 87,
+          "seconds_ge_10": 134,
+          "seconds_ge_20": 81,
+          "seconds_ge_5": 185
+        },
+        "duration_sum": 8055,
+        "events": 273,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 8,
+          "open_comments": 0,
+          "share": 3
+        },
+        "ratio_gt_1": 76,
+        "timespent_255": 3,
+        "watch_sum": 5724
+      },
+      "11": {
+        "candidates": {
+          "like": 2,
+          "like_or_share_or_bookmark": 2,
+          "ratio_ge_0.5": 538,
+          "ratio_ge_0.8": 493,
+          "ratio_ge_1.0": 423,
+          "seconds_ge_10": 595,
+          "seconds_ge_20": 509,
+          "seconds_ge_5": 654
+        },
+        "duration_sum": 47567,
+        "events": 800,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 2,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 40,
+        "timespent_255": 0,
+        "watch_sum": 32545
+      },
+      "12": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 239,
+          "ratio_ge_0.8": 212,
+          "ratio_ge_1.0": 183,
+          "seconds_ge_10": 259,
+          "seconds_ge_20": 205,
+          "seconds_ge_5": 291
+        },
+        "duration_sum": 16384,
+        "events": 333,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 27,
+        "timespent_255": 1,
+        "watch_sum": 12548
+      },
+      "13": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 10,
+          "ratio_ge_0.8": 9,
+          "ratio_ge_1.0": 6,
+          "seconds_ge_10": 12,
+          "seconds_ge_20": 7,
+          "seconds_ge_5": 13
+        },
+        "duration_sum": 575,
+        "events": 15,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 4,
+        "timespent_255": 0,
+        "watch_sum": 316
+      },
+      "14": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 2,
+          "ratio_ge_0.8": 1,
+          "ratio_ge_1.0": 1,
+          "seconds_ge_10": 3,
+          "seconds_ge_20": 2,
+          "seconds_ge_5": 3
+        },
+        "duration_sum": 158,
+        "events": 3,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 1,
+        "timespent_255": 0,
+        "watch_sum": 114
+      },
+      "15": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 8,
+          "ratio_ge_0.8": 8,
+          "ratio_ge_1.0": 7,
+          "seconds_ge_10": 12,
+          "seconds_ge_20": 11,
+          "seconds_ge_5": 15
+        },
+        "duration_sum": 1038,
+        "events": 17,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 7,
+        "timespent_255": 0,
+        "watch_sum": 591
+      },
+      "16": {
+        "candidates": {
+          "like": 2,
+          "like_or_share_or_bookmark": 2,
+          "ratio_ge_0.5": 12,
+          "ratio_ge_0.8": 11,
+          "ratio_ge_1.0": 7,
+          "seconds_ge_10": 16,
+          "seconds_ge_20": 10,
+          "seconds_ge_5": 20
+        },
+        "duration_sum": 988,
+        "events": 30,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 2,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 7,
+        "timespent_255": 0,
+        "watch_sum": 594
+      },
+      "17": {
+        "candidates": {
+          "like": 1,
+          "like_or_share_or_bookmark": 1,
+          "ratio_ge_0.5": 9,
+          "ratio_ge_0.8": 7,
+          "ratio_ge_1.0": 5,
+          "seconds_ge_10": 9,
+          "seconds_ge_20": 5,
+          "seconds_ge_5": 14
+        },
+        "duration_sum": 856,
+        "events": 22,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 1,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 3,
+        "timespent_255": 0,
+        "watch_sum": 264
+      },
+      "18": {
+        "candidates": {
+          "like": 1,
+          "like_or_share_or_bookmark": 1,
+          "ratio_ge_0.5": 1,
+          "ratio_ge_0.8": 1,
+          "ratio_ge_1.0": 1,
+          "seconds_ge_10": 1,
+          "seconds_ge_20": 1,
+          "seconds_ge_5": 1
+        },
+        "duration_sum": 37,
+        "events": 1,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 1,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 1,
+        "timespent_255": 0,
+        "watch_sum": 86
+      },
+      "19": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 1,
+          "ratio_ge_0.8": 1,
+          "ratio_ge_1.0": 1,
+          "seconds_ge_10": 2,
+          "seconds_ge_20": 1,
+          "seconds_ge_5": 2
+        },
+        "duration_sum": 105,
+        "events": 2,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 1,
+        "timespent_255": 0,
+        "watch_sum": 51
+      },
+      "2": {
+        "candidates": {
+          "like": 3738,
+          "like_or_share_or_bookmark": 3763,
+          "ratio_ge_0.5": 51134,
+          "ratio_ge_0.8": 40926,
+          "ratio_ge_1.0": 31039,
+          "seconds_ge_10": 56715,
+          "seconds_ge_20": 41759,
+          "seconds_ge_5": 71252
+        },
+        "duration_sum": 4728002,
+        "events": 97607,
+        "feedback": {
+          "bookmark": 15,
+          "click_on_author": 2,
+          "dislike": 37,
+          "like": 3738,
+          "open_comments": 5,
+          "share": 13
+        },
+        "ratio_gt_1": 20558,
+        "timespent_255": 81,
+        "watch_sum": 2506256
+      },
+      "20": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 0,
+          "ratio_ge_0.8": 0,
+          "ratio_ge_1.0": 0,
+          "seconds_ge_10": 1,
+          "seconds_ge_20": 0,
+          "seconds_ge_5": 1
+        },
+        "duration_sum": 35,
+        "events": 1,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 0,
+        "timespent_255": 0,
+        "watch_sum": 14
+      },
+      "22": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 2,
+          "ratio_ge_0.8": 2,
+          "ratio_ge_1.0": 0,
+          "seconds_ge_10": 2,
+          "seconds_ge_20": 1,
+          "seconds_ge_5": 4
+        },
+        "duration_sum": 121,
+        "events": 5,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 0,
+        "timespent_255": 0,
+        "watch_sum": 57
+      },
+      "24": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 0,
+          "ratio_ge_0.8": 0,
+          "ratio_ge_1.0": 0,
+          "seconds_ge_10": 0,
+          "seconds_ge_20": 0,
+          "seconds_ge_5": 0
+        },
+        "duration_sum": 13,
+        "events": 1,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 0,
+        "timespent_255": 0,
+        "watch_sum": 1
+      },
+      "3": {
+        "candidates": {
+          "like": 38,
+          "like_or_share_or_bookmark": 48,
+          "ratio_ge_0.5": 836,
+          "ratio_ge_0.8": 668,
+          "ratio_ge_1.0": 508,
+          "seconds_ge_10": 808,
+          "seconds_ge_20": 491,
+          "seconds_ge_5": 1113
+        },
+        "duration_sum": 56056,
+        "events": 1699,
+        "feedback": {
+          "bookmark": 1,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 38,
+          "open_comments": 2,
+          "share": 10
+        },
+        "ratio_gt_1": 410,
+        "timespent_255": 18,
+        "watch_sum": 36637
+      },
+      "4": {
+        "candidates": {
+          "like": 46,
+          "like_or_share_or_bookmark": 60,
+          "ratio_ge_0.5": 743,
+          "ratio_ge_0.8": 574,
+          "ratio_ge_1.0": 446,
+          "seconds_ge_10": 690,
+          "seconds_ge_20": 398,
+          "seconds_ge_5": 987
+        },
+        "duration_sum": 48873,
+        "events": 1561,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 46,
+          "open_comments": 2,
+          "share": 19
+        },
+        "ratio_gt_1": 357,
+        "timespent_255": 14,
+        "watch_sum": 30434
+      },
+      "5": {
+        "candidates": {
+          "like": 6,
+          "like_or_share_or_bookmark": 6,
+          "ratio_ge_0.5": 82,
+          "ratio_ge_0.8": 62,
+          "ratio_ge_1.0": 35,
+          "seconds_ge_10": 83,
+          "seconds_ge_20": 56,
+          "seconds_ge_5": 109
+        },
+        "duration_sum": 6693,
+        "events": 145,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 6,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 28,
+        "timespent_255": 0,
+        "watch_sum": 3655
+      },
+      "6": {
+        "candidates": {
+          "like": 76,
+          "like_or_share_or_bookmark": 80,
+          "ratio_ge_0.5": 1674,
+          "ratio_ge_0.8": 1314,
+          "ratio_ge_1.0": 1011,
+          "seconds_ge_10": 1511,
+          "seconds_ge_20": 1041,
+          "seconds_ge_5": 2102
+        },
+        "duration_sum": 103012,
+        "events": 2753,
+        "feedback": {
+          "bookmark": 9,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 76,
+          "open_comments": 1,
+          "share": 1
+        },
+        "ratio_gt_1": 862,
+        "timespent_255": 0,
+        "watch_sum": 62587
+      },
+      "7": {
+        "candidates": {
+          "like": 1,
+          "like_or_share_or_bookmark": 1,
+          "ratio_ge_0.5": 26,
+          "ratio_ge_0.8": 22,
+          "ratio_ge_1.0": 11,
+          "seconds_ge_10": 27,
+          "seconds_ge_20": 18,
+          "seconds_ge_5": 35
+        },
+        "duration_sum": 2429,
+        "events": 52,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 1,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 10,
+        "timespent_255": 0,
+        "watch_sum": 1113
+      },
+      "8": {
+        "candidates": {
+          "like": 2,
+          "like_or_share_or_bookmark": 2,
+          "ratio_ge_0.5": 45,
+          "ratio_ge_0.8": 35,
+          "ratio_ge_1.0": 23,
+          "seconds_ge_10": 46,
+          "seconds_ge_20": 31,
+          "seconds_ge_5": 58
+        },
+        "duration_sum": 3142,
+        "events": 74,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 2,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 18,
+        "timespent_255": 0,
+        "watch_sum": 1944
+      },
+      "9": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 4,
+          "ratio_ge_0.5": 65,
+          "ratio_ge_0.8": 47,
+          "ratio_ge_1.0": 33,
+          "seconds_ge_10": 63,
+          "seconds_ge_20": 35,
+          "seconds_ge_5": 78
+        },
+        "duration_sum": 4094,
+        "events": 122,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 4
+        },
+        "ratio_gt_1": 25,
+        "timespent_255": 0,
+        "watch_sum": 2215
+      }
+    },
+    "duration_bin": {
+      "1-10": {
+        "candidates": {
+          "like": 27157,
+          "like_or_share_or_bookmark": 33037,
+          "ratio_ge_0.5": 383282,
+          "ratio_ge_0.8": 302404,
+          "ratio_ge_1.0": 263441,
+          "seconds_ge_10": 123243,
+          "seconds_ge_20": 26390,
+          "seconds_ge_5": 344774
+        },
+        "duration_sum": 4280162,
+        "events": 562896,
+        "feedback": {
+          "bookmark": 886,
+          "click_on_author": 946,
+          "dislike": 114,
+          "like": 27157,
+          "open_comments": 5049,
+          "share": 6458
+        },
+        "ratio_gt_1": 149105,
+        "timespent_255": 210,
+        "watch_sum": 4128509
+      },
+      "11-20": {
+        "candidates": {
+          "like": 26260,
+          "like_or_share_or_bookmark": 31436,
+          "ratio_ge_0.5": 361583,
+          "ratio_ge_0.8": 279373,
+          "ratio_ge_1.0": 236717,
+          "seconds_ge_10": 310118,
+          "seconds_ge_20": 72495,
+          "seconds_ge_5": 432592
+        },
+        "duration_sum": 10198051,
+        "events": 681052,
+        "feedback": {
+          "bookmark": 795,
+          "click_on_author": 1352,
+          "dislike": 163,
+          "like": 26260,
+          "open_comments": 6615,
+          "share": 5640
+        },
+        "ratio_gt_1": 126323,
+        "timespent_255": 269,
+        "watch_sum": 7003162
+      },
+      "121-255": {
+        "candidates": {
+          "like": 2039,
+          "like_or_share_or_bookmark": 2697,
+          "ratio_ge_0.5": 42142,
+          "ratio_ge_0.8": 33453,
+          "ratio_ge_1.0": 24611,
+          "seconds_ge_10": 78633,
+          "seconds_ge_20": 65034,
+          "seconds_ge_5": 97476
+        },
+        "duration_sum": 23146028,
+        "events": 149459,
+        "feedback": {
+          "bookmark": 157,
+          "click_on_author": 517,
+          "dislike": 83,
+          "like": 2039,
+          "open_comments": 2411,
+          "share": 658
+        },
+        "ratio_gt_1": 17349,
+        "timespent_255": 894,
+        "watch_sum": 7514979
+      },
+      "21-40": {
+        "candidates": {
+          "like": 20562,
+          "like_or_share_or_bookmark": 24129,
+          "ratio_ge_0.5": 359974,
+          "ratio_ge_0.8": 291468,
+          "ratio_ge_1.0": 231721,
+          "seconds_ge_10": 411025,
+          "seconds_ge_20": 315647,
+          "seconds_ge_5": 516517
+        },
+        "duration_sum": 23310598,
+        "events": 782841,
+        "feedback": {
+          "bookmark": 689,
+          "click_on_author": 1393,
+          "dislike": 203,
+          "like": 20562,
+          "open_comments": 8375,
+          "share": 3743
+        },
+        "ratio_gt_1": 121557,
+        "timespent_255": 343,
+        "watch_sum": 12985670
+      },
+      "41-60": {
+        "candidates": {
+          "like": 18494,
+          "like_or_share_or_bookmark": 22254,
+          "ratio_ge_0.5": 436743,
+          "ratio_ge_0.8": 357535,
+          "ratio_ge_1.0": 279810,
+          "seconds_ge_10": 564964,
+          "seconds_ge_20": 473504,
+          "seconds_ge_5": 671758
+        },
+        "duration_sum": 49537296,
+        "events": 946896,
+        "feedback": {
+          "bookmark": 888,
+          "click_on_author": 1847,
+          "dislike": 284,
+          "like": 18494,
+          "open_comments": 12526,
+          "share": 3825
+        },
+        "ratio_gt_1": 159510,
+        "timespent_255": 609,
+        "watch_sum": 26000045
+      },
+      "61-120": {
+        "candidates": {
+          "like": 11188,
+          "like_or_share_or_bookmark": 14450,
+          "ratio_ge_0.5": 229769,
+          "ratio_ge_0.8": 182421,
+          "ratio_ge_1.0": 134364,
+          "seconds_ge_10": 341039,
+          "seconds_ge_20": 284877,
+          "seconds_ge_5": 412705
+        },
+        "duration_sum": 46658602,
+        "events": 597184,
+        "feedback": {
+          "bookmark": 556,
+          "click_on_author": 1490,
+          "dislike": 244,
+          "like": 11188,
+          "open_comments": 8910,
+          "share": 3420
+        },
+        "ratio_gt_1": 80640,
+        "timespent_255": 753,
+        "watch_sum": 20391419
+      }
+    },
+    "place": {
+      "0": {
+        "candidates": {
+          "like": 37418,
+          "like_or_share_or_bookmark": 46737,
+          "ratio_ge_0.5": 875000,
+          "ratio_ge_0.8": 695075,
+          "ratio_ge_1.0": 576081,
+          "seconds_ge_10": 877246,
+          "seconds_ge_20": 574727,
+          "seconds_ge_5": 1208676
+        },
+        "duration_sum": 74534132,
+        "events": 1876933,
+        "feedback": {
+          "bookmark": 953,
+          "click_on_author": 1373,
+          "dislike": 572,
+          "like": 37418,
+          "open_comments": 6687,
+          "share": 9936
+        },
+        "ratio_gt_1": 201586,
+        "timespent_255": 731,
+        "watch_sum": 35133813
+      },
+      "1": {
+        "candidates": {
+          "like": 64325,
+          "like_or_share_or_bookmark": 75594,
+          "ratio_ge_0.5": 841850,
+          "ratio_ge_0.8": 676681,
+          "ratio_ge_1.0": 530789,
+          "seconds_ge_10": 858200,
+          "seconds_ge_20": 607572,
+          "seconds_ge_5": 1123817
+        },
+        "duration_sum": 72136809,
+        "events": 1571825,
+        "feedback": {
+          "bookmark": 2733,
+          "click_on_author": 3872,
+          "dislike": 476,
+          "like": 64325,
+          "open_comments": 34373,
+          "share": 12017
+        },
+        "ratio_gt_1": 402760,
+        "timespent_255": 1559,
+        "watch_sum": 38747691
+      },
+      "10": {
+        "candidates": {
+          "like": 101,
+          "like_or_share_or_bookmark": 133,
+          "ratio_ge_0.5": 963,
+          "ratio_ge_0.8": 851,
+          "ratio_ge_1.0": 752,
+          "seconds_ge_10": 982,
+          "seconds_ge_20": 735,
+          "seconds_ge_5": 1101
+        },
+        "duration_sum": 54654,
+        "events": 1226,
+        "feedback": {
+          "bookmark": 4,
+          "click_on_author": 17,
+          "dislike": 1,
+          "like": 101,
+          "open_comments": 114,
+          "share": 36
+        },
+        "ratio_gt_1": 692,
+        "timespent_255": 9,
+        "watch_sum": 53131
+      },
+      "11": {
+        "candidates": {
+          "like": 9,
+          "like_or_share_or_bookmark": 12,
+          "ratio_ge_0.5": 98,
+          "ratio_ge_0.8": 76,
+          "ratio_ge_1.0": 55,
+          "seconds_ge_10": 87,
+          "seconds_ge_20": 56,
+          "seconds_ge_5": 123
+        },
+        "duration_sum": 6000,
+        "events": 174,
+        "feedback": {
+          "bookmark": 1,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 9,
+          "open_comments": 0,
+          "share": 2
+        },
+        "ratio_gt_1": 38,
+        "timespent_255": 1,
+        "watch_sum": 3983
+      },
+      "12": {
+        "candidates": {
+          "like": 6,
+          "like_or_share_or_bookmark": 7,
+          "ratio_ge_0.5": 175,
+          "ratio_ge_0.8": 121,
+          "ratio_ge_1.0": 101,
+          "seconds_ge_10": 199,
+          "seconds_ge_20": 92,
+          "seconds_ge_5": 437
+        },
+        "duration_sum": 62006,
+        "events": 1272,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 6,
+          "open_comments": 3,
+          "share": 1
+        },
+        "ratio_gt_1": 89,
+        "timespent_255": 1,
+        "watch_sum": 9497
+      },
+      "13": {
+        "candidates": {
+          "like": 16,
+          "like_or_share_or_bookmark": 42,
+          "ratio_ge_0.5": 449,
+          "ratio_ge_0.8": 373,
+          "ratio_ge_1.0": 318,
+          "seconds_ge_10": 426,
+          "seconds_ge_20": 275,
+          "seconds_ge_5": 540
+        },
+        "duration_sum": 20354,
+        "events": 677,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 16,
+          "open_comments": 3,
+          "share": 35
+        },
+        "ratio_gt_1": 268,
+        "timespent_255": 16,
+        "watch_sum": 22036
+      },
+      "14": {
+        "candidates": {
+          "like": 35,
+          "like_or_share_or_bookmark": 48,
+          "ratio_ge_0.5": 475,
+          "ratio_ge_0.8": 397,
+          "ratio_ge_1.0": 332,
+          "seconds_ge_10": 523,
+          "seconds_ge_20": 380,
+          "seconds_ge_5": 634
+        },
+        "duration_sum": 39145,
+        "events": 887,
+        "feedback": {
+          "bookmark": 1,
+          "click_on_author": 20,
+          "dislike": 0,
+          "like": 35,
+          "open_comments": 31,
+          "share": 15
+        },
+        "ratio_gt_1": 297,
+        "timespent_255": 5,
+        "watch_sum": 24598
+      },
+      "15": {
+        "candidates": {
+          "like": 29,
+          "like_or_share_or_bookmark": 32,
+          "ratio_ge_0.5": 381,
+          "ratio_ge_0.8": 300,
+          "ratio_ge_1.0": 236,
+          "seconds_ge_10": 441,
+          "seconds_ge_20": 298,
+          "seconds_ge_5": 537
+        },
+        "duration_sum": 30220,
+        "events": 732,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 8,
+          "dislike": 0,
+          "like": 29,
+          "open_comments": 10,
+          "share": 4
+        },
+        "ratio_gt_1": 195,
+        "timespent_255": 3,
+        "watch_sum": 17855
+      },
+      "16": {
+        "candidates": {
+          "like": 9,
+          "like_or_share_or_bookmark": 9,
+          "ratio_ge_0.5": 123,
+          "ratio_ge_0.8": 95,
+          "ratio_ge_1.0": 79,
+          "seconds_ge_10": 121,
+          "seconds_ge_20": 68,
+          "seconds_ge_5": 184
+        },
+        "duration_sum": 9501,
+        "events": 307,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 9,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 66,
+        "timespent_255": 1,
+        "watch_sum": 5065
+      },
+      "17": {
+        "candidates": {
+          "like": 14,
+          "like_or_share_or_bookmark": 15,
+          "ratio_ge_0.5": 248,
+          "ratio_ge_0.8": 182,
+          "ratio_ge_1.0": 146,
+          "seconds_ge_10": 189,
+          "seconds_ge_20": 85,
+          "seconds_ge_5": 320
+        },
+        "duration_sum": 13456,
+        "events": 510,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 1,
+          "dislike": 0,
+          "like": 14,
+          "open_comments": 4,
+          "share": 1
+        },
+        "ratio_gt_1": 115,
+        "timespent_255": 1,
+        "watch_sum": 6067
+      },
+      "18": {
+        "candidates": {
+          "like": 33,
+          "like_or_share_or_bookmark": 36,
+          "ratio_ge_0.5": 351,
+          "ratio_ge_0.8": 277,
+          "ratio_ge_1.0": 225,
+          "seconds_ge_10": 369,
+          "seconds_ge_20": 293,
+          "seconds_ge_5": 462
+        },
+        "duration_sum": 31019,
+        "events": 601,
+        "feedback": {
+          "bookmark": 1,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 33,
+          "open_comments": 17,
+          "share": 2
+        },
+        "ratio_gt_1": 189,
+        "timespent_255": 0,
+        "watch_sum": 17717
+      },
+      "19": {
+        "candidates": {
+          "like": 9,
+          "like_or_share_or_bookmark": 10,
+          "ratio_ge_0.5": 67,
+          "ratio_ge_0.8": 47,
+          "ratio_ge_1.0": 40,
+          "seconds_ge_10": 64,
+          "seconds_ge_20": 36,
+          "seconds_ge_5": 90
+        },
+        "duration_sum": 5188,
+        "events": 169,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 9,
+          "open_comments": 1,
+          "share": 1
+        },
+        "ratio_gt_1": 38,
+        "timespent_255": 2,
+        "watch_sum": 3139
+      },
+      "2": {
+        "candidates": {
+          "like": 650,
+          "like_or_share_or_bookmark": 982,
+          "ratio_ge_0.5": 30521,
+          "ratio_ge_0.8": 21714,
+          "ratio_ge_1.0": 18100,
+          "seconds_ge_10": 30297,
+          "seconds_ge_20": 17480,
+          "seconds_ge_5": 53719
+        },
+        "duration_sum": 5373290,
+        "events": 122605,
+        "feedback": {
+          "bookmark": 46,
+          "click_on_author": 237,
+          "dislike": 23,
+          "like": 650,
+          "open_comments": 963,
+          "share": 347
+        },
+        "ratio_gt_1": 16041,
+        "timespent_255": 438,
+        "watch_sum": 1516895
+      },
+      "20": {
+        "candidates": {
+          "like": 87,
+          "like_or_share_or_bookmark": 94,
+          "ratio_ge_0.5": 95,
+          "ratio_ge_0.8": 82,
+          "ratio_ge_1.0": 63,
+          "seconds_ge_10": 81,
+          "seconds_ge_20": 51,
+          "seconds_ge_5": 113
+        },
+        "duration_sum": 5076,
+        "events": 191,
+        "feedback": {
+          "bookmark": 4,
+          "click_on_author": 3,
+          "dislike": 0,
+          "like": 87,
+          "open_comments": 9,
+          "share": 8
+        },
+        "ratio_gt_1": 51,
+        "timespent_255": 0,
+        "watch_sum": 3413
+      },
+      "21": {
+        "candidates": {
+          "like": 29,
+          "like_or_share_or_bookmark": 105,
+          "ratio_ge_0.5": 85,
+          "ratio_ge_0.8": 74,
+          "ratio_ge_1.0": 66,
+          "seconds_ge_10": 88,
+          "seconds_ge_20": 59,
+          "seconds_ge_5": 123
+        },
+        "duration_sum": 9438,
+        "events": 233,
+        "feedback": {
+          "bookmark": 101,
+          "click_on_author": 3,
+          "dislike": 0,
+          "like": 29,
+          "open_comments": 13,
+          "share": 4
+        },
+        "ratio_gt_1": 59,
+        "timespent_255": 3,
+        "watch_sum": 4830
+      },
+      "22": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 14,
+          "ratio_ge_0.8": 10,
+          "ratio_ge_1.0": 5,
+          "seconds_ge_10": 14,
+          "seconds_ge_20": 7,
+          "seconds_ge_5": 19
+        },
+        "duration_sum": 990,
+        "events": 25,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 4,
+        "timespent_255": 0,
+        "watch_sum": 616
+      },
+      "23": {
+        "candidates": {
+          "like": 0,
+          "like_or_share_or_bookmark": 0,
+          "ratio_ge_0.5": 10,
+          "ratio_ge_0.8": 9,
+          "ratio_ge_1.0": 7,
+          "seconds_ge_10": 13,
+          "seconds_ge_20": 8,
+          "seconds_ge_5": 14
+        },
+        "duration_sum": 669,
+        "events": 17,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 0,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 7,
+        "timespent_255": 0,
+        "watch_sum": 421
+      },
+      "3": {
+        "candidates": {
+          "like": 985,
+          "like_or_share_or_bookmark": 1171,
+          "ratio_ge_0.5": 15875,
+          "ratio_ge_0.8": 12597,
+          "ratio_ge_1.0": 10400,
+          "seconds_ge_10": 15297,
+          "seconds_ge_20": 9335,
+          "seconds_ge_5": 20930
+        },
+        "duration_sum": 1077012,
+        "events": 30644,
+        "feedback": {
+          "bookmark": 77,
+          "click_on_author": 1791,
+          "dislike": 8,
+          "like": 985,
+          "open_comments": 773,
+          "share": 183
+        },
+        "ratio_gt_1": 8215,
+        "timespent_255": 52,
+        "watch_sum": 604027
+      },
+      "4": {
+        "candidates": {
+          "like": 408,
+          "like_or_share_or_bookmark": 446,
+          "ratio_ge_0.5": 11168,
+          "ratio_ge_0.8": 8202,
+          "ratio_ge_1.0": 6743,
+          "seconds_ge_10": 10349,
+          "seconds_ge_20": 5205,
+          "seconds_ge_5": 17249
+        },
+        "duration_sum": 1246657,
+        "events": 37518,
+        "feedback": {
+          "bookmark": 6,
+          "click_on_author": 16,
+          "dislike": 1,
+          "like": 408,
+          "open_comments": 117,
+          "share": 39
+        },
+        "ratio_gt_1": 4666,
+        "timespent_255": 28,
+        "watch_sum": 386540
+      },
+      "5": {
+        "candidates": {
+          "like": 584,
+          "like_or_share_or_bookmark": 661,
+          "ratio_ge_0.5": 13208,
+          "ratio_ge_0.8": 10048,
+          "ratio_ge_1.0": 8420,
+          "seconds_ge_10": 11970,
+          "seconds_ge_20": 6339,
+          "seconds_ge_5": 19113
+        },
+        "duration_sum": 1159140,
+        "events": 34862,
+        "feedback": {
+          "bookmark": 9,
+          "click_on_author": 82,
+          "dislike": 3,
+          "like": 584,
+          "open_comments": 129,
+          "share": 84
+        },
+        "ratio_gt_1": 2861,
+        "timespent_255": 19,
+        "watch_sum": 443708
+      },
+      "6": {
+        "candidates": {
+          "like": 769,
+          "like_or_share_or_bookmark": 1651,
+          "ratio_ge_0.5": 19577,
+          "ratio_ge_0.8": 17444,
+          "ratio_ge_1.0": 16054,
+          "seconds_ge_10": 18973,
+          "seconds_ge_20": 13149,
+          "seconds_ge_5": 22318
+        },
+        "duration_sum": 817749,
+        "events": 26297,
+        "feedback": {
+          "bookmark": 26,
+          "click_on_author": 112,
+          "dislike": 6,
+          "like": 769,
+          "open_comments": 605,
+          "share": 992
+        },
+        "ratio_gt_1": 15209,
+        "timespent_255": 203,
+        "watch_sum": 892615
+      },
+      "7": {
+        "candidates": {
+          "like": 6,
+          "like_or_share_or_bookmark": 12,
+          "ratio_ge_0.5": 1566,
+          "ratio_ge_0.8": 1077,
+          "ratio_ge_1.0": 859,
+          "seconds_ge_10": 1928,
+          "seconds_ge_20": 1016,
+          "seconds_ge_5": 3573
+        },
+        "duration_sum": 383379,
+        "events": 9308,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 3,
+          "dislike": 1,
+          "like": 6,
+          "open_comments": 8,
+          "share": 6
+        },
+        "ratio_gt_1": 494,
+        "timespent_255": 1,
+        "watch_sum": 77511
+      },
+      "8": {
+        "candidates": {
+          "like": 16,
+          "like_or_share_or_bookmark": 20,
+          "ratio_ge_0.5": 387,
+          "ratio_ge_0.8": 287,
+          "ratio_ge_1.0": 242,
+          "seconds_ge_10": 380,
+          "seconds_ge_20": 193,
+          "seconds_ge_5": 635
+        },
+        "duration_sum": 55290,
+        "events": 1497,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 1,
+          "dislike": 0,
+          "like": 16,
+          "open_comments": 7,
+          "share": 4
+        },
+        "ratio_gt_1": 112,
+        "timespent_255": 1,
+        "watch_sum": 15376
+      },
+      "9": {
+        "candidates": {
+          "like": 162,
+          "like_or_share_or_bookmark": 186,
+          "ratio_ge_0.5": 807,
+          "ratio_ge_0.8": 635,
+          "ratio_ge_1.0": 551,
+          "seconds_ge_10": 785,
+          "seconds_ge_20": 488,
+          "seconds_ge_5": 1095
+        },
+        "duration_sum": 59563,
+        "events": 1818,
+        "feedback": {
+          "bookmark": 9,
+          "click_on_author": 6,
+          "dislike": 0,
+          "like": 162,
+          "open_comments": 19,
+          "share": 27
+        },
+        "ratio_gt_1": 432,
+        "timespent_255": 4,
+        "watch_sum": 33240
+      }
+    },
+    "platform": {
+      "0": {
+        "candidates": {
+          "like": 67098,
+          "like_or_share_or_bookmark": 80682,
+          "ratio_ge_0.5": 1190998,
+          "ratio_ge_0.8": 948141,
+          "ratio_ge_1.0": 768407,
+          "seconds_ge_10": 1217486,
+          "seconds_ge_20": 824938,
+          "seconds_ge_5": 1651303
+        },
+        "duration_sum": 108877731,
+        "events": 2523744,
+        "feedback": {
+          "bookmark": 2478,
+          "click_on_author": 6689,
+          "dislike": 822,
+          "like": 67098,
+          "open_comments": 24123,
+          "share": 14465
+        },
+        "ratio_gt_1": 330449,
+        "timespent_255": 2060,
+        "watch_sum": 52288080
+      },
+      "1": {
+        "candidates": {
+          "like": 33643,
+          "like_or_share_or_bookmark": 42282,
+          "ratio_ge_0.5": 549842,
+          "ratio_ge_0.8": 440413,
+          "ratio_ge_1.0": 357802,
+          "seconds_ge_10": 531996,
+          "seconds_ge_20": 354802,
+          "seconds_ge_5": 723855
+        },
+        "duration_sum": 41769427,
+        "events": 1059139,
+        "feedback": {
+          "bookmark": 1461,
+          "click_on_author": 848,
+          "dislike": 214,
+          "like": 33643,
+          "open_comments": 19661,
+          "share": 9201
+        },
+        "ratio_gt_1": 292197,
+        "timespent_255": 870,
+        "watch_sum": 22230579
+      },
+      "10": {
+        "candidates": {
+          "like": 2,
+          "like_or_share_or_bookmark": 2,
+          "ratio_ge_0.5": 778,
+          "ratio_ge_0.8": 706,
+          "ratio_ge_1.0": 607,
+          "seconds_ge_10": 855,
+          "seconds_ge_20": 715,
+          "seconds_ge_5": 947
+        },
+        "duration_sum": 64009,
+        "events": 1135,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 2,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 67,
+        "timespent_255": 1,
+        "watch_sum": 45141
+      },
+      "2": {
+        "candidates": {
+          "like": 3466,
+          "like_or_share_or_bookmark": 3466,
+          "ratio_ge_0.5": 47708,
+          "ratio_ge_0.8": 38271,
+          "ratio_ge_1.0": 29066,
+          "seconds_ge_10": 53156,
+          "seconds_ge_20": 39288,
+          "seconds_ge_5": 66577
+        },
+        "duration_sum": 4436033,
+        "events": 90772,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 2,
+          "dislike": 37,
+          "like": 3466,
+          "open_comments": 5,
+          "share": 1
+        },
+        "ratio_gt_1": 19225,
+        "timespent_255": 79,
+        "watch_sum": 2356872
+      },
+      "3": {
+        "candidates": {
+          "like": 796,
+          "like_or_share_or_bookmark": 798,
+          "ratio_ge_0.5": 14346,
+          "ratio_ge_0.8": 11383,
+          "ratio_ge_1.0": 8823,
+          "seconds_ge_10": 15705,
+          "seconds_ge_20": 11525,
+          "seconds_ge_5": 20052
+        },
+        "duration_sum": 1226088,
+        "events": 26661,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 1,
+          "dislike": 14,
+          "like": 796,
+          "open_comments": 19,
+          "share": 3
+        },
+        "ratio_gt_1": 7938,
+        "timespent_255": 26,
+        "watch_sum": 683816
+      },
+      "4": {
+        "candidates": {
+          "like": 95,
+          "like_or_share_or_bookmark": 125,
+          "ratio_ge_0.5": 1811,
+          "ratio_ge_0.8": 1420,
+          "ratio_ge_1.0": 1085,
+          "seconds_ge_10": 1718,
+          "seconds_ge_20": 1019,
+          "seconds_ge_5": 2400
+        },
+        "duration_sum": 119216,
+        "events": 3715,
+        "feedback": {
+          "bookmark": 1,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 95,
+          "open_comments": 4,
+          "share": 36
+        },
+        "ratio_gt_1": 879,
+        "timespent_255": 35,
+        "watch_sum": 75835
+      },
+      "5": {
+        "candidates": {
+          "like": 10,
+          "like_or_share_or_bookmark": 10,
+          "ratio_ge_0.5": 167,
+          "ratio_ge_0.8": 134,
+          "ratio_ge_1.0": 78,
+          "seconds_ge_10": 178,
+          "seconds_ge_20": 117,
+          "seconds_ge_5": 222
+        },
+        "duration_sum": 12979,
+        "events": 290,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 10,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 62,
+        "timespent_255": 0,
+        "watch_sum": 7344
+      },
+      "6": {
+        "candidates": {
+          "like": 294,
+          "like_or_share_or_bookmark": 319,
+          "ratio_ge_0.5": 3436,
+          "ratio_ge_0.8": 2724,
+          "ratio_ge_1.0": 2122,
+          "seconds_ge_10": 3476,
+          "seconds_ge_20": 2403,
+          "seconds_ge_5": 4548
+        },
+        "duration_sum": 271533,
+        "events": 6588,
+        "feedback": {
+          "bookmark": 15,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 294,
+          "open_comments": 0,
+          "share": 12
+        },
+        "ratio_gt_1": 1452,
+        "timespent_255": 3,
+        "watch_sum": 146805
+      },
+      "7": {
+        "candidates": {
+          "like": 212,
+          "like_or_share_or_bookmark": 231,
+          "ratio_ge_0.5": 2461,
+          "ratio_ge_0.8": 1993,
+          "ratio_ge_1.0": 1633,
+          "seconds_ge_10": 2549,
+          "seconds_ge_20": 1817,
+          "seconds_ge_5": 3289
+        },
+        "duration_sum": 201017,
+        "events": 4696,
+        "feedback": {
+          "bookmark": 7,
+          "click_on_author": 5,
+          "dislike": 4,
+          "like": 212,
+          "open_comments": 73,
+          "share": 25
+        },
+        "ratio_gt_1": 1347,
+        "timespent_255": 4,
+        "watch_sum": 110965
+      },
+      "8": {
+        "candidates": {
+          "like": 76,
+          "like_or_share_or_bookmark": 80,
+          "ratio_ge_0.5": 1673,
+          "ratio_ge_0.8": 1313,
+          "ratio_ge_1.0": 1010,
+          "seconds_ge_10": 1510,
+          "seconds_ge_20": 1040,
+          "seconds_ge_5": 2099
+        },
+        "duration_sum": 102862,
+        "events": 2750,
+        "feedback": {
+          "bookmark": 9,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 76,
+          "open_comments": 1,
+          "share": 1
+        },
+        "ratio_gt_1": 861,
+        "timespent_255": 0,
+        "watch_sum": 62550
+      },
+      "9": {
+        "candidates": {
+          "like": 8,
+          "like_or_share_or_bookmark": 8,
+          "ratio_ge_0.5": 273,
+          "ratio_ge_0.8": 156,
+          "ratio_ge_1.0": 31,
+          "seconds_ge_10": 393,
+          "seconds_ge_20": 283,
+          "seconds_ge_5": 530
+        },
+        "duration_sum": 49842,
+        "events": 838,
+        "feedback": {
+          "bookmark": 0,
+          "click_on_author": 0,
+          "dislike": 0,
+          "like": 8,
+          "open_comments": 0,
+          "share": 0
+        },
+        "ratio_gt_1": 7,
+        "timespent_255": 0,
+        "watch_sum": 15797
+      }
+    },
+    "week": {
+      "0": {
+        "candidates": {
+          "like": 2933,
+          "like_or_share_or_bookmark": 3512,
+          "ratio_ge_0.5": 46052,
+          "ratio_ge_0.8": 36501,
+          "ratio_ge_1.0": 29677,
+          "seconds_ge_10": 45834,
+          "seconds_ge_20": 30178,
+          "seconds_ge_5": 62531
+        },
+        "duration_sum": 3849208,
+        "events": 95257,
+        "feedback": {
+          "bookmark": 106,
+          "click_on_author": 174,
+          "dislike": 14,
+          "like": 2933,
+          "open_comments": 993,
+          "share": 645
+        },
+        "ratio_gt_1": 15602,
+        "timespent_255": 71,
+        "watch_sum": 1882844
+      },
+      "1": {
+        "candidates": {
+          "like": 3812,
+          "like_or_share_or_bookmark": 4535,
+          "ratio_ge_0.5": 66680,
+          "ratio_ge_0.8": 53122,
+          "ratio_ge_1.0": 43026,
+          "seconds_ge_10": 67473,
+          "seconds_ge_20": 44353,
+          "seconds_ge_5": 92492
+        },
+        "duration_sum": 5922081,
+        "events": 143466,
+        "feedback": {
+          "bookmark": 121,
+          "click_on_author": 213,
+          "dislike": 40,
+          "like": 3812,
+          "open_comments": 1196,
+          "share": 776
+        },
+        "ratio_gt_1": 22951,
+        "timespent_255": 105,
+        "watch_sum": 2845675
+      },
+      "10": {
+        "candidates": {
+          "like": 4060,
+          "like_or_share_or_bookmark": 4952,
+          "ratio_ge_0.5": 75183,
+          "ratio_ge_0.8": 59847,
+          "ratio_ge_1.0": 49563,
+          "seconds_ge_10": 72943,
+          "seconds_ge_20": 49774,
+          "seconds_ge_5": 99610
+        },
+        "duration_sum": 6356195,
+        "events": 148625,
+        "feedback": {
+          "bookmark": 175,
+          "click_on_author": 271,
+          "dislike": 55,
+          "like": 4060,
+          "open_comments": 1636,
+          "share": 946
+        },
+        "ratio_gt_1": 28758,
+        "timespent_255": 129,
+        "watch_sum": 3202738
+      },
+      "11": {
+        "candidates": {
+          "like": 4265,
+          "like_or_share_or_bookmark": 5244,
+          "ratio_ge_0.5": 73749,
+          "ratio_ge_0.8": 59014,
+          "ratio_ge_1.0": 48416,
+          "seconds_ge_10": 70256,
+          "seconds_ge_20": 46067,
+          "seconds_ge_5": 98173
+        },
+        "duration_sum": 6098504,
+        "events": 147661,
+        "feedback": {
+          "bookmark": 168,
+          "click_on_author": 265,
+          "dislike": 43,
+          "like": 4265,
+          "open_comments": 1713,
+          "share": 1039
+        },
+        "ratio_gt_1": 28477,
+        "timespent_255": 96,
+        "watch_sum": 3038192
+      },
+      "12": {
+        "candidates": {
+          "like": 4167,
+          "like_or_share_or_bookmark": 5168,
+          "ratio_ge_0.5": 75035,
+          "ratio_ge_0.8": 59479,
+          "ratio_ge_1.0": 48273,
+          "seconds_ge_10": 73242,
+          "seconds_ge_20": 49320,
+          "seconds_ge_5": 100998
+        },
+        "duration_sum": 6526752,
+        "events": 153670,
+        "feedback": {
+          "bookmark": 160,
+          "click_on_author": 251,
+          "dislike": 42,
+          "like": 4167,
+          "open_comments": 1918,
+          "share": 1065
+        },
+        "ratio_gt_1": 27879,
+        "timespent_255": 97,
+        "watch_sum": 3166944
+      },
+      "13": {
+        "candidates": {
+          "like": 4734,
+          "like_or_share_or_bookmark": 5907,
+          "ratio_ge_0.5": 87293,
+          "ratio_ge_0.8": 69446,
+          "ratio_ge_1.0": 57205,
+          "seconds_ge_10": 83251,
+          "seconds_ge_20": 51664,
+          "seconds_ge_5": 115586
+        },
+        "duration_sum": 6507189,
+        "events": 171896,
+        "feedback": {
+          "bookmark": 165,
+          "click_on_author": 234,
+          "dislike": 47,
+          "like": 4734,
+          "open_comments": 1867,
+          "share": 1274
+        },
+        "ratio_gt_1": 31852,
+        "timespent_255": 144,
+        "watch_sum": 3319072
+      },
+      "14": {
+        "candidates": {
+          "like": 4678,
+          "like_or_share_or_bookmark": 5745,
+          "ratio_ge_0.5": 78371,
+          "ratio_ge_0.8": 62366,
+          "ratio_ge_1.0": 50706,
+          "seconds_ge_10": 75596,
+          "seconds_ge_20": 48477,
+          "seconds_ge_5": 106921
+        },
+        "duration_sum": 6397625,
+        "events": 162958,
+        "feedback": {
+          "bookmark": 172,
+          "click_on_author": 253,
+          "dislike": 43,
+          "like": 4678,
+          "open_comments": 1895,
+          "share": 1158
+        },
+        "ratio_gt_1": 28632,
+        "timespent_255": 108,
+        "watch_sum": 3157826
+      },
+      "15": {
+        "candidates": {
+          "like": 4377,
+          "like_or_share_or_bookmark": 5305,
+          "ratio_ge_0.5": 78346,
+          "ratio_ge_0.8": 62340,
+          "ratio_ge_1.0": 50558,
+          "seconds_ge_10": 79642,
+          "seconds_ge_20": 53376,
+          "seconds_ge_5": 108219
+        },
+        "duration_sum": 6838159,
+        "events": 164685,
+        "feedback": {
+          "bookmark": 165,
+          "click_on_author": 332,
+          "dislike": 46,
+          "like": 4377,
+          "open_comments": 1908,
+          "share": 995
+        },
+        "ratio_gt_1": 28499,
+        "timespent_255": 115,
+        "watch_sum": 3361934
+      },
+      "16": {
+        "candidates": {
+          "like": 4293,
+          "like_or_share_or_bookmark": 5216,
+          "ratio_ge_0.5": 76909,
+          "ratio_ge_0.8": 61520,
+          "ratio_ge_1.0": 49474,
+          "seconds_ge_10": 82064,
+          "seconds_ge_20": 56617,
+          "seconds_ge_5": 107056
+        },
+        "duration_sum": 6620515,
+        "events": 159286,
+        "feedback": {
+          "bookmark": 165,
+          "click_on_author": 343,
+          "dislike": 56,
+          "like": 4293,
+          "open_comments": 2005,
+          "share": 967
+        },
+        "ratio_gt_1": 28169,
+        "timespent_255": 127,
+        "watch_sum": 3409707
+      },
+      "17": {
+        "candidates": {
+          "like": 4320,
+          "like_or_share_or_bookmark": 5062,
+          "ratio_ge_0.5": 75122,
+          "ratio_ge_0.8": 60143,
+          "ratio_ge_1.0": 48338,
+          "seconds_ge_10": 79812,
+          "seconds_ge_20": 57148,
+          "seconds_ge_5": 103709
+        },
+        "duration_sum": 6628433,
+        "events": 152913,
+        "feedback": {
+          "bookmark": 175,
+          "click_on_author": 374,
+          "dislike": 45,
+          "like": 4320,
+          "open_comments": 2014,
+          "share": 768
+        },
+        "ratio_gt_1": 27297,
+        "timespent_255": 118,
+        "watch_sum": 3376935
+      },
+      "18": {
+        "candidates": {
+          "like": 4202,
+          "like_or_share_or_bookmark": 5048,
+          "ratio_ge_0.5": 72722,
+          "ratio_ge_0.8": 58352,
+          "ratio_ge_1.0": 46584,
+          "seconds_ge_10": 81426,
+          "seconds_ge_20": 61310,
+          "seconds_ge_5": 104368
+        },
+        "duration_sum": 7262599,
+        "events": 153907,
+        "feedback": {
+          "bookmark": 166,
+          "click_on_author": 356,
+          "dislike": 50,
+          "like": 4202,
+          "open_comments": 1965,
+          "share": 884
+        },
+        "ratio_gt_1": 25291,
+        "timespent_255": 123,
+        "watch_sum": 3671275
+      },
+      "19": {
+        "candidates": {
+          "like": 4495,
+          "like_or_share_or_bookmark": 5143,
+          "ratio_ge_0.5": 71003,
+          "ratio_ge_0.8": 56054,
+          "ratio_ge_1.0": 44953,
+          "seconds_ge_10": 72633,
+          "seconds_ge_20": 51006,
+          "seconds_ge_5": 98773
+        },
+        "duration_sum": 7138186,
+        "events": 152838,
+        "feedback": {
+          "bookmark": 161,
+          "click_on_author": 359,
+          "dislike": 36,
+          "like": 4495,
+          "open_comments": 1582,
+          "share": 669
+        },
+        "ratio_gt_1": 23925,
+        "timespent_255": 166,
+        "watch_sum": 3373730
+      },
+      "2": {
+        "candidates": {
+          "like": 4172,
+          "like_or_share_or_bookmark": 4890,
+          "ratio_ge_0.5": 68793,
+          "ratio_ge_0.8": 55247,
+          "ratio_ge_1.0": 44857,
+          "seconds_ge_10": 68607,
+          "seconds_ge_20": 44916,
+          "seconds_ge_5": 93867
+        },
+        "duration_sum": 5744878,
+        "events": 145107,
+        "feedback": {
+          "bookmark": 139,
+          "click_on_author": 270,
+          "dislike": 41,
+          "like": 4172,
+          "open_comments": 1503,
+          "share": 780
+        },
+        "ratio_gt_1": 23543,
+        "timespent_255": 74,
+        "watch_sum": 2795416
+      },
+      "20": {
+        "candidates": {
+          "like": 4515,
+          "like_or_share_or_bookmark": 5236,
+          "ratio_ge_0.5": 67644,
+          "ratio_ge_0.8": 53350,
+          "ratio_ge_1.0": 42745,
+          "seconds_ge_10": 71472,
+          "seconds_ge_20": 50511,
+          "seconds_ge_5": 94873
+        },
+        "duration_sum": 6967502,
+        "events": 144520,
+        "feedback": {
+          "bookmark": 167,
+          "click_on_author": 398,
+          "dislike": 47,
+          "like": 4515,
+          "open_comments": 1701,
+          "share": 769
+        },
+        "ratio_gt_1": 24068,
+        "timespent_255": 206,
+        "watch_sum": 3335441
+      },
+      "21": {
+        "candidates": {
+          "like": 5023,
+          "like_or_share_or_bookmark": 5977,
+          "ratio_ge_0.5": 78073,
+          "ratio_ge_0.8": 62329,
+          "ratio_ge_1.0": 49064,
+          "seconds_ge_10": 84532,
+          "seconds_ge_20": 60350,
+          "seconds_ge_5": 108781
+        },
+        "duration_sum": 7552783,
+        "events": 159564,
+        "feedback": {
+          "bookmark": 169,
+          "click_on_author": 369,
+          "dislike": 40,
+          "like": 5023,
+          "open_comments": 2259,
+          "share": 1019
+        },
+        "ratio_gt_1": 28277,
+        "timespent_255": 197,
+        "watch_sum": 3809346
+      },
+      "22": {
+        "candidates": {
+          "like": 5241,
+          "like_or_share_or_bookmark": 6146,
+          "ratio_ge_0.5": 75873,
+          "ratio_ge_0.8": 60432,
+          "ratio_ge_1.0": 47386,
+          "seconds_ge_10": 82757,
+          "seconds_ge_20": 58872,
+          "seconds_ge_5": 107127
+        },
+        "duration_sum": 7437786,
+        "events": 156610,
+        "feedback": {
+          "bookmark": 193,
+          "click_on_author": 420,
+          "dislike": 49,
+          "like": 5241,
+          "open_comments": 2155,
+          "share": 958
+        },
+        "ratio_gt_1": 27194,
+        "timespent_255": 192,
+        "watch_sum": 3695570
+      },
+      "23": {
+        "candidates": {
+          "like": 4861,
+          "like_or_share_or_bookmark": 6081,
+          "ratio_ge_0.5": 87232,
+          "ratio_ge_0.8": 68675,
+          "ratio_ge_1.0": 53854,
+          "seconds_ge_10": 93522,
+          "seconds_ge_20": 64478,
+          "seconds_ge_5": 123283
+        },
+        "duration_sum": 7919073,
+        "events": 176791,
+        "feedback": {
+          "bookmark": 221,
+          "click_on_author": 417,
+          "dislike": 56,
+          "like": 4861,
+          "open_comments": 2223,
+          "share": 1234
+        },
+        "ratio_gt_1": 30491,
+        "timespent_255": 184,
+        "watch_sum": 3980876
+      },
+      "24": {
+        "candidates": {
+          "like": 4392,
+          "like_or_share_or_bookmark": 5237,
+          "ratio_ge_0.5": 80804,
+          "ratio_ge_0.8": 64515,
+          "ratio_ge_1.0": 51095,
+          "seconds_ge_10": 86822,
+          "seconds_ge_20": 62351,
+          "seconds_ge_5": 114442
+        },
+        "duration_sum": 7615711,
+        "events": 164151,
+        "feedback": {
+          "bookmark": 171,
+          "click_on_author": 420,
+          "dislike": 64,
+          "like": 4392,
+          "open_comments": 2174,
+          "share": 865
+        },
+        "ratio_gt_1": 30433,
+        "timespent_255": 185,
+        "watch_sum": 3816807
+      },
+      "3": {
+        "candidates": {
+          "like": 3838,
+          "like_or_share_or_bookmark": 4548,
+          "ratio_ge_0.5": 63732,
+          "ratio_ge_0.8": 51290,
+          "ratio_ge_1.0": 41947,
+          "seconds_ge_10": 62110,
+          "seconds_ge_20": 39138,
+          "seconds_ge_5": 85936
+        },
+        "duration_sum": 5271604,
+        "events": 134545,
+        "feedback": {
+          "bookmark": 155,
+          "click_on_author": 269,
+          "dislike": 27,
+          "like": 3838,
+          "open_comments": 1377,
+          "share": 776
+        },
+        "ratio_gt_1": 22743,
+        "timespent_255": 82,
+        "watch_sum": 2512901
+      },
+      "4": {
+        "candidates": {
+          "like": 4250,
+          "like_or_share_or_bookmark": 5091,
+          "ratio_ge_0.5": 75766,
+          "ratio_ge_0.8": 61596,
+          "ratio_ge_1.0": 50684,
+          "seconds_ge_10": 70658,
+          "seconds_ge_20": 44295,
+          "seconds_ge_5": 97784
+        },
+        "duration_sum": 5559231,
+        "events": 145908,
+        "feedback": {
+          "bookmark": 140,
+          "click_on_author": 282,
+          "dislike": 41,
+          "like": 4250,
+          "open_comments": 1655,
+          "share": 928
+        },
+        "ratio_gt_1": 27085,
+        "timespent_255": 97,
+        "watch_sum": 2823639
+      },
+      "5": {
+        "candidates": {
+          "like": 2873,
+          "like_or_share_or_bookmark": 3601,
+          "ratio_ge_0.5": 46661,
+          "ratio_ge_0.8": 37119,
+          "ratio_ge_1.0": 30007,
+          "seconds_ge_10": 44439,
+          "seconds_ge_20": 29055,
+          "seconds_ge_5": 61653
+        },
+        "duration_sum": 3598912,
+        "events": 93543,
+        "feedback": {
+          "bookmark": 122,
+          "click_on_author": 181,
+          "dislike": 28,
+          "like": 2873,
+          "open_comments": 1252,
+          "share": 744
+        },
+        "ratio_gt_1": 15597,
+        "timespent_255": 51,
+        "watch_sum": 1780663
+      },
+      "6": {
+        "candidates": {
+          "like": 3334,
+          "like_or_share_or_bookmark": 4200,
+          "ratio_ge_0.5": 59433,
+          "ratio_ge_0.8": 47702,
+          "ratio_ge_1.0": 39466,
+          "seconds_ge_10": 58399,
+          "seconds_ge_20": 38411,
+          "seconds_ge_5": 80626
+        },
+        "duration_sum": 4715197,
+        "events": 122732,
+        "feedback": {
+          "bookmark": 113,
+          "click_on_author": 233,
+          "dislike": 46,
+          "like": 3334,
+          "open_comments": 1481,
+          "share": 937
+        },
+        "ratio_gt_1": 21806,
+        "timespent_255": 92,
+        "watch_sum": 2380994
+      },
+      "7": {
+        "candidates": {
+          "like": 4156,
+          "like_or_share_or_bookmark": 5192,
+          "ratio_ge_0.5": 74106,
+          "ratio_ge_0.8": 59185,
+          "ratio_ge_1.0": 48476,
+          "seconds_ge_10": 72384,
+          "seconds_ge_20": 47881,
+          "seconds_ge_5": 99851
+        },
+        "duration_sum": 6083624,
+        "events": 152958,
+        "feedback": {
+          "bookmark": 165,
+          "click_on_author": 297,
+          "dislike": 46,
+          "like": 4156,
+          "open_comments": 1709,
+          "share": 1099
+        },
+        "ratio_gt_1": 27143,
+        "timespent_255": 91,
+        "watch_sum": 3010485
+      },
+      "8": {
+        "candidates": {
+          "like": 4420,
+          "like_or_share_or_bookmark": 5575,
+          "ratio_ge_0.5": 79330,
+          "ratio_ge_0.8": 63024,
+          "ratio_ge_1.0": 51897,
+          "seconds_ge_10": 74117,
+          "seconds_ge_20": 48852,
+          "seconds_ge_5": 104327
+        },
+        "duration_sum": 6419726,
+        "events": 160833,
+        "feedback": {
+          "bookmark": 147,
+          "click_on_author": 275,
+          "dislike": 45,
+          "like": 4420,
+          "open_comments": 1799,
+          "share": 1257
+        },
+        "ratio_gt_1": 28831,
+        "timespent_255": 122,
+        "watch_sum": 3144171
+      },
+      "9": {
+        "candidates": {
+          "like": 4289,
+          "like_or_share_or_bookmark": 5392,
+          "ratio_ge_0.5": 79581,
+          "ratio_ge_0.8": 64006,
+          "ratio_ge_1.0": 52413,
+          "seconds_ge_10": 75031,
+          "seconds_ge_20": 49547,
+          "seconds_ge_5": 104836
+        },
+        "duration_sum": 6099264,
+        "events": 155904,
+        "feedback": {
+          "bookmark": 170,
+          "click_on_author": 289,
+          "dislike": 44,
+          "like": 4289,
+          "open_comments": 1906,
+          "share": 1192
+        },
+        "ratio_gt_1": 29941,
+        "timespent_255": 106,
+        "watch_sum": 3130603
+      }
+    }
+  },
+  "source_revision": "084a18386e149a454dd6dbe0123478e75c6b09ce",
+  "task_id": "P3",
+  "utc": "2026-10-07T00:59:36.204353+00:00",
+  "watch_summary": {
+    "max": 255,
+    "min": 1,
+    "p50": 9,
+    "p90": 58,
+    "p95": 72,
+    "p99": 135,
+    "sample_count": 3720328,
+    "sample_unit": "interaction",
+    "value_unit": "seconds"
+  }
+}

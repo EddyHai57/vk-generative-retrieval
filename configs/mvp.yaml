@@ -18,7 +18,7 @@ data:
   query_scope: fixed_audit_set_pending_freeze
 
 resources:
-  default_gpu: Thunder_Compute_RTX_A6000_48GB
+  default_gpu: Vast_ai_RTX_A6000_48GB
   acceptance_probe_max_hours: 1
   phase_budget_aud_max: 100
   gpu_hours_target_max: 30

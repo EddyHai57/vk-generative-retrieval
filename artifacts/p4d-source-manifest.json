@@ -1,0 +1,91 @@
+{
+  "architecture_spec": {
+    "content_transformer": {
+      "architecture": "content_transformer",
+      "content": "immutable official normalized float32 64D buffer",
+      "content_projection": "Linear(64,64,bias=False) default U(-1/sqrt(64),1/sqrt(64))",
+      "dimension": 64,
+      "dtype": "float32",
+      "exact": "float64 fixed-pair einsum optimize=False on exported float32, raw item-ID ties",
+      "export": "NumPy float32 norm axis=1 keepdims; zero remains zero",
+      "id_initialization": "torch Embedding default N(0,1), PAD row zero",
+      "id_support": "full-train likes; unsupported output fixed zero",
+      "mean_user_projection": false,
+      "ordinal_decay": null,
+      "transformer": {
+        "activation": "relu",
+        "batch_first": true,
+        "dropout": 0.1,
+        "feedforward": 256,
+        "heads": 4,
+        "internal_bias": true,
+        "layer_norm_eps": 1e-05,
+        "layers": 1,
+        "mask": "past-only prefix bidirectional; PAD key mask; valid output mean",
+        "norm_first": false,
+        "positions": "Embedding(50,64) N(0,1), ordinal count of valid events",
+        "user_projection": "Linear(64,64,bias=False) default initialization"
+      }
+    },
+    "id_content_mean": {
+      "architecture": "id_content_mean",
+      "content": "immutable official normalized float32 64D buffer",
+      "content_projection": "Linear(64,64,bias=False) default U(-1/sqrt(64),1/sqrt(64))",
+      "dimension": 64,
+      "dtype": "float32",
+      "exact": "float64 fixed-pair einsum optimize=False on exported float32, raw item-ID ties",
+      "export": "NumPy float32 norm axis=1 keepdims; zero remains zero",
+      "id_initialization": "torch Embedding default N(0,1), PAD row zero",
+      "id_support": "full-train likes; unsupported output fixed zero",
+      "mean_user_projection": false,
+      "ordinal_decay": null,
+      "transformer": null
+    },
+    "id_mean": {
+      "architecture": "id_mean",
+      "content": null,
+      "content_projection": null,
+      "dimension": 64,
+      "dtype": "float32",
+      "exact": "float64 fixed-pair einsum optimize=False on exported float32, raw item-ID ties",
+      "export": "NumPy float32 norm axis=1 keepdims; zero remains zero",
+      "id_initialization": "torch Embedding default N(0,1), PAD row zero",
+      "id_support": "full-train likes; unsupported output fixed zero",
+      "mean_user_projection": false,
+      "ordinal_decay": null,
+      "transformer": null
+    },
+    "ordinal_content_mean": {
+      "architecture": "ordinal_content_mean",
+      "content": "immutable official normalized float32 64D buffer",
+      "content_projection": "Linear(64,64,bias=False) default U(-1/sqrt(64),1/sqrt(64))",
+      "dimension": 64,
+      "dtype": "float32",
+      "exact": "float64 fixed-pair einsum optimize=False on exported float32, raw item-ID ties",
+      "export": "NumPy float32 norm axis=1 keepdims; zero remains zero",
+      "id_initialization": "torch Embedding default N(0,1), PAD row zero",
+      "id_support": "full-train likes; unsupported output fixed zero",
+      "mean_user_projection": false,
+      "ordinal_decay": 0.8,
+      "transformer": null
+    }
+  },
+  "claims": {
+    "formal_training_executed": false,
+    "shared_batch_frozen": false,
+    "test_gate": "closed"
+  },
+  "consumer_source_fingerprint": "6d40156315b9ad8ba467f6f998a54d6451d864fa40f6bd7a7a77e04ed66d568b",
+  "inherited_public_p4c_sha256": "639ba5701c9fb19dbd04373d4d6e3713049c94a90a478e56e21752994958666f",
+  "kind": "core_source",
+  "prepared_manifest_sha256": "7f3ccd70c02157542e94f41f39e62988fbd650b4be8976455ff20cfe1e4394d2",
+  "schema_version": 1,
+  "source_and_tests": {
+    "src/vkgr/retrieval_experiment.py": "a129984e99f5707549dd5c4eb9c54308ce2f5f3a83f8ccdbba1586d1415bd050",
+    "src/vkgr/retrieval_models.py": "56d421f23934271a461071c7eda79fc78cf1d456e898dba4e40923c574153c93",
+    "tests/test_retrieval_experiment.py": "72a5461ea191ef52df87d18968cf39653f41d9db2191009e7015029eb831927e",
+    "tests/test_retrieval_models.py": "9138983dcca267bde03757e1d233ef07606e3386a3c966ce05e949aaa8d310d6"
+  },
+  "status": "awaiting_source_review",
+  "task_id": "P4D"
+}

@@ -1,0 +1,152 @@
+{
+  "accepted_checks": {
+    "actual_training_decode_replay": true,
+    "query_shard_sizes": [
+      3,
+      3,
+      1
+    ],
+    "subprocess_cli_commands": 6
+  },
+  "boundary": "CPU original synthetic engineering only; no real training, CUDA or model-quality comparison",
+  "consumer": {
+    "exact_dependencies": {
+      "PyYAML": "6.0.2",
+      "numpy": "1.26.4",
+      "pyarrow": "19.0.1",
+      "torch": "2.11.0"
+    },
+    "git_base": "0376d9a8119f3500cbf78519675cc7bf18013c1b",
+    "git_dirty": true,
+    "lock_sha256": "8b231cef0c5056b4a6a8365f5a02070ba4e1c043b55fc9faa020188c10bf2063",
+    "python": "3.11.17",
+    "source_members": {
+      "artifacts/p3d-retrieval-contract-manifest.json": "36fc3a451f1e8bd2dc691b15c382015b6762fec8342d318ce9771bad5adfc972",
+      "artifacts/p4b-pipeline-manifest.json": "d31cc460273c3d94afc48b70f976cd0697aa893af5107d2495f772fd031781f0",
+      "artifacts/p5-sid-manifest.json": "26b9073f6bf5685965f12e528a4b8803710bdb108229da7b94d1247a1f5453cc",
+      "configs/generative-core-v1.json": "21bac9b6313c27f33880cd05501f0d5ac9631d4e3f45fefa070198d78db20480",
+      "configs/traditional.yaml": "00b8122cc251465506779e79f3820fb7f5a2b674bd22e2d741dd1b65a54bc8d1",
+      "docs/data_contract.md": "d3a2528731d8f5b9160039b6236e519c761f618d54a4f34939ef4df5ea70efa4",
+      "docs/generative_contract_v1.md": "d80eb545fdff157bae85d6b9938edef1ddd86942f6f9c26d82f56c39109ec5f2",
+      "provenance/g0-v1/inventory.json": "15e4a8d9b7f063f4b2476e95bf75c410249ed9294a885bcb1593841015f13030",
+      "pyproject.toml": "4ec83f6cfcd6318e9c5743804652b6a121ce96bd5d6e92916758313623f4c667",
+      "src/vkgr/__init__.py": "323fedc682877b25bcd5250f80b22c8d9b213af4d5caaff2494e855ba9e6f1bc",
+      "src/vkgr/__main__.py": "b3261b3886687607d3cc83ebe722bf69719200e17d1d8bd2195d001f8247ec59",
+      "src/vkgr/baseline_run.py": "26937152a2f996d9c5f58cde1aba76c70c36a05c3fe64bf66b1ea5ef02439c45",
+      "src/vkgr/baselines.py": "ec92bb0b9858e9da7e192f8cc32da96d5a274ad195413220695b093361b96a0b",
+      "src/vkgr/config.py": "540a878c5cfc8945bdfcc083609770e32cae92cebf566f980f9235fe0ba24546",
+      "src/vkgr/data_audit.py": "c7f5f28cdb7e19181fc46f8d69140dba9711ff66f5b8537399692e37e4ded182",
+      "src/vkgr/generative_data.py": "ea4357989c3a520e7c7dbc1dfce2bbeff192f3d89e4e5f0703cfd27bf8e0c7c7",
+      "src/vkgr/generative_evaluation.py": "a70adb8ef10b118c8310cb033d0a70abc57352557c78a0e1fe5986e1372ccd20",
+      "src/vkgr/generative_experiment.py": "b0a94b26151c5fab13b0bd35bf0b3a0ff8ed8a3173f6b5aa08d410a83296b846",
+      "src/vkgr/generative_foundation.py": "3abfd2ea84ce713296d6745256afbf37bf804f0ce2cb2069433049ee92a844b9",
+      "src/vkgr/generative_training.py": "3de7c934df486dbeaa29afb3d60cd0c0b6078a365fdb3338d29fc4f4b2382bfb",
+      "src/vkgr/manifest.py": "3b06a12b3129aec87320eebbcc17a5859814e99fb479d57d10a6a8febe415f17",
+      "src/vkgr/retrieval.py": "40a9d636cf1f31b08d1fcd0e1501ef5137083d920e40bb3109ae1b31cece810c",
+      "src/vkgr/retrieval_baselines.py": "d49c18a5a63de38f84b6b7ab14805a7d05e7726d99d3bf33bbdf13802754cc39",
+      "src/vkgr/retrieval_data.py": "1fa39c85b98ba8aebfabfd0c23659c4a178a1f3f842a5985469656c9deadb867",
+      "src/vkgr/retrieval_experiment.py": "4b29d02710582a933c2aed8fc908f0113ee70a7111f09da112c6f5a935f7caa7",
+      "src/vkgr/retrieval_models.py": "a482cfde4ec0b6bf5525fa51d3bf226d8c10a4dc4aac785c1440721ee68f30f2",
+      "src/vkgr/retrieval_training.py": "b947d301087fd8ab74d46ba93a976e01ed876f8dbeb2f615cb75087bffd8e9a6",
+      "src/vkgr/runtime.py": "ede19b05543327ec790f4c59301bd05006c750f89e4c149d75f0193cb4d8f4e8",
+      "src/vkgr/sid.py": "9602580f907cc2e8cfa3684aec7828df2bdfc87b59e71b6fd3865a9a19de91a3",
+      "src/vkgr/sid_run.py": "bea7121443d7dd7afb19a96454bceb571a4a58b184416a0e7b7af908c771bfed",
+      "src/vkgr/tiger.py": "09ab37d79da8e46dabf522d8d73d6dbd88b5b77985375e459e4977896a18c352",
+      "src/vkgr/tiger_run.py": "ead24365f8ed942f87c1213cc9d099b721f6363bb3f88411eb8a94e80110a517",
+      "src/vkgr/training.py": "b58f3ffe0d7313529c349fca86b00fa1589f65af600d42b957990968bc44ddbd",
+      "tests/fixtures/g2_synthetic.json": "fa8b5e4b539ccf5bcb9cd50aa177b03128b27ee8d033e26f16b0f66491094b6d",
+      "tests/test_generative_data.py": "da3d97ae071feef697f66d9dc153d0f1b09ef7497f3e2c31185612aa4d71737b",
+      "tests/test_generative_evaluation.py": "2b8abf627e25f237e2161e8dbe5645f8631645ba7612acbf0f78b3b17a203d5e",
+      "tests/test_generative_experiment.py": "16338e25ffaf922d9bf527e0103849b83d0aa18a94b0590406c3296590f0290e",
+      "tests/test_generative_foundation.py": "c994e07ce19baae8eeff838068f31178cc18352481ac471efc9c9604133e2c2b",
+      "tests/test_generative_training.py": "67b38a840f4f71e99ed7ddae3682e63fadcd269881109b74d4c966fe88ab6098",
+      "uv.lock": "8b231cef0c5056b4a6a8365f5a02070ba4e1c043b55fc9faa020188c10bf2063"
+    },
+    "source_sha256": "d12e7d78ef16d147010a625fb6cf1a98730e5ac613d62465a65b5b4c2970c82d"
+  },
+  "core_config_sha256": "21bac9b6313c27f33880cd05501f0d5ac9631d4e3f45fefa070198d78db20480",
+  "effective_config": {
+    "d_model": 64,
+    "decoder_layers": 1,
+    "dropout": 0.0,
+    "effective_batch": 512,
+    "encoder_layers": 1,
+    "ff": 256,
+    "gradient_clip_norm": 1.0,
+    "heads": 4,
+    "learning_rate": 0.001,
+    "precision": "fp32",
+    "seed": 42,
+    "weight_decay": 0.0001
+  },
+  "fixture_sha256": "fa8b5e4b539ccf5bcb9cd50aa177b03128b27ee8d033e26f16b0f66491094b6d",
+  "g1_audit": {
+    "aggregate_sha256": "d03978b3e4d5346208c605866640b25d83a36e4164419364dc5bd4c0be817e47",
+    "supervision_sha256": "ce39dac731f7ff411a8831bdda255338dc1b1e4de11f476bc33d1173a4097d4c"
+  },
+  "g1_manifest_sha256": "40863ebbe96f9e2e1da8f53d916e68ead1fa098b41ab80237481e53a22e2506d",
+  "item_computation_sha256": "22cd5bae7787ea5ff6f6063ef09dcee8c80049a3645452a2db0ea338ddee87cb",
+  "limits": {
+    "max_epochs": 2,
+    "max_optimizer_steps": 2,
+    "max_resume_attempts": 1,
+    "max_wall_seconds": 60,
+    "microbatch": 2
+  },
+  "metrics": {
+    "all_eligible": {
+      "count": 7,
+      "ndcg@10": 0.5248195074879939,
+      "ndcg@20": 0.5248195074879939,
+      "ndcg@50": 0.5248195074879939,
+      "recall@10": 0.8571428571428571,
+      "recall@20": 0.8571428571428571,
+      "recall@50": 0.8571428571428571
+    },
+    "in_catalog": {
+      "count": 6,
+      "ndcg@10": 0.6122894254026595,
+      "ndcg@20": 0.6122894254026595,
+      "ndcg@50": 0.6122894254026595,
+      "recall@10": 1.0,
+      "recall@20": 1.0,
+      "recall@50": 1.0
+    },
+    "oov": {
+      "count": 1,
+      "ndcg@10": 0.0,
+      "ndcg@20": 0.0,
+      "ndcg@50": 0.0,
+      "recall@10": 0.0,
+      "recall@20": 0.0,
+      "recall@50": 0.0
+    }
+  },
+  "real_training_gate": "closed",
+  "runtime_observations": {
+    "latency": {
+      "count": 7,
+      "definition": "per-query tokenization+encoder+four-position beam; linear quantile",
+      "p50_seconds": 0.0013953326269984245,
+      "p95_seconds": 0.002062937291339039
+    },
+    "rss_bytes": 288931840,
+    "rss_definition": "process lifetime observed high-water RSS; not evaluation-only peak",
+    "vram": "not_applicable"
+  },
+  "schema_version": 1,
+  "selection": {
+    "bad_epochs": 1,
+    "best_epoch": 1,
+    "best_metric": [
+      0.8571428571428571,
+      0.5248195074879939
+    ],
+    "epoch": 2
+  },
+  "source_scope": "G1 explicit 33 members plus three G2 modules, three tests and fixture; excludes this summary and appendable validation document",
+  "state_sha256": "d4aa162fa3c959b7eab10d0de73df57e69b2ec6b8bd948f7ef1a27e1a9a94ee9",
+  "status": "local_engineering_pass_pending_Astra_acceptance",
+  "task_id": "G2",
+  "test_gate": "closed"
+}

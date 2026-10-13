@@ -1,0 +1,140 @@
+{
+  "bound_files": [
+    {
+      "path": "docs/data_contract.md",
+      "sha256": "d3a2528731d8f5b9160039b6236e519c761f618d54a4f34939ef4df5ea70efa4"
+    },
+    {
+      "path": "configs/traditional.yaml",
+      "sha256": "00b8122cc251465506779e79f3820fb7f5a2b674bd22e2d741dd1b65a54bc8d1"
+    },
+    {
+      "path": "configs/p3.yaml",
+      "sha256": "093f6a64b4d5e1ccd3606af796328f2795bf4b7fbf29739741fa20e46da4b49e"
+    },
+    {
+      "path": "artifacts/p3-data-contract-manifest.json",
+      "sha256": "3b042b7635972e9a255c0b2cd8de0a7b7a472a08a0d074eb3133068d527c1e0f"
+    },
+    {
+      "path": "artifacts/p3c-data-quality-manifest.json",
+      "sha256": "66d552a1f1387edfc1d40226a93e4ead5cc99f04399dc7b1f959dcf0ba6664e0"
+    },
+    {
+      "path": "artifacts/p4-baselines-manifest.json",
+      "sha256": "84cdef9a5062c489155c92456b544ffe28901ecc6aeb901ed6d8459228a73b2f"
+    },
+    {
+      "path": "docs/data_quality.md",
+      "sha256": "99ca27b5160bc94e61543bcce6bd0067f607324acc3101f8bb9a7e4105438205"
+    },
+    {
+      "path": "docs/p3c_validation.md",
+      "sha256": "c89b6466c509628f6482b7d7dbc9f51c202ab665075caf580beed64bb3274b5f"
+    },
+    {
+      "path": "uv.lock",
+      "sha256": "8b231cef0c5056b4a6a8365f5a02070ba4e1c043b55fc9faa020188c10bf2063"
+    },
+    {
+      "path": "src/vkgr/data_audit.py",
+      "sha256": "c7f5f28cdb7e19181fc46f8d69140dba9711ff66f5b8537399692e37e4ded182"
+    },
+    {
+      "path": "scripts/p3c_data_quality.py",
+      "sha256": "497f24389ee9aec948ae0d1d406664d5fdbaf7d58d957820ccb00c17c236d9f3"
+    },
+    {
+      "path": "docs/p3_validation.md",
+      "sha256": "fa6ab43076914798705b07bb0dcc2db5e90b39fbbcfdbde9d20599d41eda29dd"
+    },
+    {
+      "path": "docs/p6_validation.md",
+      "sha256": "c05cd49139831e16e1bf577fcbf89607c5b1f3d663198da67cc545c4075686bc"
+    }
+  ],
+  "catalog_sha256": "80201c574fad26bd29f2e2425a5ad98db8fe7c2a9be91e07d2fc6aedc48d47f3",
+  "config_ref": "configs/traditional.yaml",
+  "contract_ref": "docs/data_contract.md#traditional-like-v1",
+  "current_entry_lock_evidence_ref": "docs/p6_validation.md",
+  "full_query_pins": [
+    {
+      "role": "validation-queries.json",
+      "sha256": "9077a1c9495d494bc8ec209c0bf3305fd68db5bfcca24abcadc4a1e552e60a97"
+    },
+    {
+      "role": "test-queries.json",
+      "sha256": "02b419771860420cb544497518f4ccb0f232c876b4fb14ac3c2fe91d38440b45"
+    }
+  ],
+  "hash_graph": "manifest binds full contract/config/prior bytes; no self hash; contract/config only reference manifest path",
+  "legacy_audit_artifact_hashes": {
+    "test-audit.json": "0af77fa043c87287d941e27e8f7752cbf85205151a45563eaac7ad273eccf3f8",
+    "validation-audit.json": "726965d6eae9049e27f8636fe39c0aa96dadb493311dd954f039367584bb2e5b"
+  },
+  "legacy_audit_set_hashes": {
+    "test": "412bd72b60223a7a1456178917335c54dbcc9265affefbf624f8b5a75e67874c",
+    "validation": "084290bdc4184487dc1190505d9fbb4ff3d5e938b4189f73912b3109bd3714a2"
+  },
+  "legacy_contract_prefix": {
+    "bytes": 8305,
+    "path": "docs/data_contract.md",
+    "sha256": "3834eab5ac327fdd759c93a2550858752d5dd7c44af7f98e370aed325510f251"
+  },
+  "legacy_lock_evidence_ref": "docs/p3_validation.md",
+  "legacy_p3_producer": {
+    "audit_module_sha256": "c7f5f28cdb7e19181fc46f8d69140dba9711ff66f5b8537399692e37e4ded182",
+    "dependencies": {
+      "PyYAML": "6.0.2",
+      "numpy": "1.26.4",
+      "pyarrow": "19.0.1"
+    },
+    "git_commit": "0376d9a8119f3500cbf78519675cc7bf18013c1b",
+    "git_dirty": true,
+    "lock_sha256": "323c9b2c61a2f2baa4fc89769afd5908562f91d15b92672eda71aa57056e3575",
+    "python_implementation": "CPython",
+    "python_major_minor": [
+      3,
+      11
+    ],
+    "python_version": "3.11.16",
+    "source_fingerprint": "f73c77690a37d0564292e9a1b762349ba574745d6e66c344a26ce9115ccb802d"
+  },
+  "legacy_p3c_producer": {
+    "helper_script_sha256": "7d7335a55c70f76b039c1abb0345b347ed5733b98be73b389b5ca9692f1fb669",
+    "prior_eda_sha256": "3ec3a384e3fa3fb8f0444a8ecb792225b2c9b60d51457e0773e7d4c9c8282239",
+    "prior_train_audit_sha256": "3cc2d3ffb9812d7e83709f53d85463876f9be13daf4173829b748dbe1ee1c3fe",
+    "script_sha256": "497f24389ee9aec948ae0d1d406664d5fdbaf7d58d957820ccb00c17c236d9f3"
+  },
+  "legacy_policy_config_sha256": "093f6a64b4d5e1ccd3606af796328f2795bf4b7fbf29739741fa20e46da4b49e",
+  "legacy_policy_sha256": "3be46f445676d302c4b4f69cebfff0e4af35c040f09473f1c08d54dfe7507a01",
+  "limitations": [
+    "test26_previously_used_not_pristine",
+    "official_order_assumption_not_timestamp_verification",
+    "static_content_generation_time_unknown",
+    "no_new_holdout_metrics_or_training"
+  ],
+  "new_consumer": {
+    "implementation_state": "not_implemented",
+    "legacy_producer_verification": "unchanged_independent_of_new_consumer_source",
+    "required_runtime_pins": [
+      "actual_git_base",
+      "dirty_state",
+      "source_fingerprint",
+      "config",
+      "lock",
+      "exact_dependencies",
+      "input_artifacts",
+      "catalog",
+      "queries",
+      "training_examples",
+      "idmap"
+    ],
+    "source_fingerprint": null
+  },
+  "protocol_version": "traditional-like-v1",
+  "schema_version": 1,
+  "scope": "contract_freeze_only_no_training_or_new_holdout_metrics",
+  "source_revision": "084a18386e149a454dd6dbe0123478e75c6b09ce",
+  "task_id": "P3-D"
+}

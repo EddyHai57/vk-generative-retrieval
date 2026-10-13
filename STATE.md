@@ -1,46 +1,21 @@
-# STATE
+# KIRO_CONTINUES / CODEX_PRELOAD_ONLY — G3-R2 replacement monitor 当前快照（2026-10-11）
 
-密级: 公开
+Eddy最新明确Kiro继续作为G/P两线唯一协调与执行owner；Codex只可只读预加载，不得启动writer、monitor或job，除非Eddy以后明确切换。原唯一monitor PID27709已不存在，退出原因UNKNOWN。只读核验报告为主仓`.agents/tasks/g-monitor-readonly-recovery-check.md`；replacement packet为`cache/g3-monitor-recovery-v1/`，packet SHA `6910de1cd4f9ed46fd039edf0284f393ad311b7e885eaec72c9cd15ff092804b`，validation内immutable launch-member SHA `22773ecaecc4c9cff87e1f4ef54329584a8d52f3f08240b699741fe222f81910`。
 
-> 当前状态唯一事实源。历史证据见`handoff.md`，路线定义见`tasks.md`。
+Kiro terminal7持有唯一replacement monitor runtime owner PID2836，input SHA `8e801a49e9b0824e3e7e32adce3eaa5f59e84620b9a5b698f993f045e0ba950`，started_at epoch `1791734602.037766`，`readonly=true`、`no_submit_restart=true`。首receipt transport exit0/no timeout，observation epoch `1791734605.107748`：core01/core02/core03为TERMINAL/RUNNING/RUNNING。core01 terminal complete、actual worker exit0、elapsed `21241.7523078979s`、terminal SHA `bca51b1a2acd54231d3cf886ec59affae3204bce18cf08432dbb892ab76e3b6d`、owned groups closed；core02/core03保持原start SHA `3780c19d0a67082af28869e3e567f2b00a7b79d6649e851058cb5fabe401c154`/`5c84b86141ef7227d91c27f28353a1aa8f3b0d44a019e024a5a0582154a0f269`且owner live。首观察之后没有state-change receipt，只有PID2836产生state-change receipt后才更新G状态。
 
-## 当前阶段
+三个v2 attempt与旧失败attempt均保持spent，原caps不重置。下一步只由PID2836按退避接收core02/core03 terminal；不启动重复monitor，不追加SSH，不submit/restart/resume。三个v2未全部terminal前不收口，四个seed42配置未齐前不select。
 
-- Phase：P1 — 基础代码与可审计运行框架
-- Status：Complete — coordinator fresh review passed；已commit并本地合并main
-- P0：Complete，已批准bootstrap基点经fresh核对
-- Next gate：GitHub公开操作及P2 scope/费用确认；P2尚未开始
-- Scope：用户已批准P1、独立worktree与首次必要依赖联网准备；不得进入P2
+# 历史：G3首slot指标已读取；当时剩余G全部PAUSED（2026-10-11，顶部当前状态覆盖）
 
-## 当前仓库
+固定train/best artifact经SHA-bound bounded reader核验，指标唯一摘要已写`docs/experiment_log.md`，读取收据`cache/g3-metrics-read-v1/receipt.json`。这是四配置中的首个one-seed slot，不能冻结winner。原104h/36GiB aggregate草案因超过D-007的48 GPU-hours hard ceiling已否决并由`cache/g3-remaining-budget-proposal-v1/decision.json`标为superseded；剩余5个G3 core及3个G4 control均保持暂停。先完成P4F第三attempt，之后只起草缩减分阶段预算，不自动启动。
 
-- Worktree：当前为项目主工作区；P1隔离worktree保留本地运行证据
-- Branch：`main`
-- P1实现commit：`9f8f6555f41931019c968477920a69d36699fb55`；最新HEAD以fresh Git为准
-- Remote：0，未配置GitHub remote
-- Git：P1已按用户授权commit并fast-forward合并；本次仅追加收口文档提交，无push/Git配置修改
-- Production code：仅P1 config/runtime/manifest/CLI
-- Dependencies：main已用uv offline/locked从本地缓存创建独立`.venv`，Python3.11.17、PyYAML6.0.2；未借用其他worktree环境
-- Data：只有明确人工synthetic fixture；未下载真实数据
-- Server / GPU：未连接、未使用
-- Experiments / model metrics：无
+# Claude Code已接管：G3首slot终态验收（2026-10-11）
 
-## 当前证据与阻塞
+主仓STATE/handoff为当前治理快照。Claude于02:48用已审progress observer对原job做一次同job只读观察：`TERMINAL/complete`，start SHA `1c430779…dfa022`、approval SHA `4e8ca5…75b0e`未变，fresh owned groups closed。formal/replay各14 epochs、各2380 steps，decode累计73080，0resume/1attempt，wall约36741.30s，观察磁盘峰值772947968bytes；均在原48h/20GiB/10200updates/153720decode caps内。train/best/verify均actual exit0，consumer seal与test gate closed。五个真实artifact已独立重算SHA并与terminal receipt一致；摘要`cache/g3-formal-A-actual-v1/status-024-takeover-summary.json`。未重复submit、未恢复Codex heartbeat、未重置deadline或spent。剩余5个core及G4运行预算仍未批准；下一步冻结首slot指标/选择证据并按实测成本汇总有限预算提案。
 
-- 执行Agent的RED/GREEN与主协调Agent的fresh测试、两次新smoke/verify、独立hash/稳定字段及公开边界检查详见`docs/p1_validation.md`
-- 主协调Agent作为未参与实现的reviewer已完成源码、测试、diff与证据复核；在批准的P1范围内无阻塞发现
-- 已发现环境/边界/测试问题与处理tradeoff见`docs/issue_log.md` I-017～I-021
-- main合并后fresh unittest 31项通过；收口仅修改治理文档，生产源码无变化
-- 四份运行manifest/result仍在原P1 worktree本地保留，未纳入Git提交；hash证据在验证文档，无未解释文件
+# STATE — G3 对话PAUSED（2026-10-10）
 
-## 下一任务
+Eddy经main最新明确暂停所有对话，停止模型推进/SSH/诊断/测试/review/新实验。原G heartbeat g3-core-00-seed42已实际设PAUSED；等待明确恢复。原远端job/产物/预算/唯一owner保持，不kill/restart/delete，对话暂停不代表训练停止。暂停前最后实际status-021：RUNNING、latest_stage_entered=train、worker_identity_live=true；epoch/update/currentactive/replay进度unknown，best/verify missing。进度读取已在暂停指令到达前完成；此前新progress heartbeat升级脚本因本地配置文件读取失败未更新automation，无远端动作。恢复后先核原job，不重提，原48h/20GiB/0resume/1attempt预算不reset。
 
-Task：P1已完成本地整合；下一task为P2，尚未获准启动完整执行。
-
-Owner：主协调Astra。
-
-读取`handoff.md`最新本地整合记录与`docs/p1_validation.md`。Eddy计划自行创建GitHub仓库并租用服务器；该计划不等同于Agent已配置remote、push、连接服务器或完成验收。下一轮先对齐P2输入、验收、预算和stop gates，不自动下载数据、训练或创建计费资源。每个part按docs/codex_handoff.md规定汇报过程、成果、问题处理与下一步。
-
-## Housekeeping
-
-旧`AGENTS.draft.md`只在原目录忽略保留；本worktree未复制、删除或修改它。受保护AGENTS与tasks/data_contract/architecture/后续configs未修改。
+2026-10-10 19:07:05：Eddy要求当前进度，单次已验收progress只读status-022返回RUNNING/train已进入/workeridentity alive。epoch/update/currentactive/replay unknown，未见best/verify。此为单次状态询问，不恢复heartbeat或其他暂停工作；原预算与attempt保持。
