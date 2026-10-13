@@ -231,3 +231,6 @@ P与G是两个独立推进的项目，唯一真正融合点是后续协同召回
 
 ## G seed2025 与 seed2024 同机并行（2026-10-13 19:5x，Eddy直接决定）
 Eddy批准在同一A6000上立即提交 selected-seed2025，与运行中的 seed2024 并行（原话 main05/direct-human-seed2025-parallel-20261013.json）。理由：G为单核CPU瓶颈（实测train进程98.5% CPU、GPU 0–1%），64核/48GB下并行不互相拖慢；两seed与seed42同硬件，避免换机后的硬件可比性问题。caps不变（每run 108000s/20GiB/1 attempt/0 resume）。替换旧“先2024后2025”的顺序。admission最小改动：只放行已登记 seed2024 owner 的后代进程，其余vkgr进程仍STOP。
+
+## 工作流规范化与服务器迁移（2026-10-13 20:xx，Eddy直接确认）
+Eddy确认按工业界流程统一工作流，写入AGENTS.md顶部“工作流硬规则”（覆盖旧“未经要求不commit/push”等条款）：Git唯一代码来源与按SHA部署、public repo push前扫描与路径占位符（方案B）、作业detached与SSH解耦、gate只管自身进程树与资源、两线独立并行、单owner、review仅在不可逆节点前。服务器迁移：subset阶段换3090/≥16vCPU/≥64GB RAM/500GB；备份走服务器直传，代码走GitHub、数据重下；P4D/P4E仅保留P4G冻结引用的best checkpoint（调查报告 cache/migration-checkpoint-keep-v1/report.md）；旧机在G seed2024/2025收口且传输核对后由Eddy销毁。计划见STATE迁移进度节。

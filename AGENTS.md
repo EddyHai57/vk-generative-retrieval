@@ -4,6 +4,19 @@
 
 > 本文件只保存稳定行动规范与事实源指针。当前状态见`STATE.md`，跨对话接力见`handoff.md`，阶段计划见`tasks.md`。
 
+## 工作流硬规则（2026-10-13，Eddy确认“按工业界流程来”，最高优先，覆盖下文所有冲突条款）
+
+1. **Git是唯一代码来源**：每个task结束即commit；服务器只运行已push的commit。每个run的manifest记录commit SHA、数据hash、config、seed。服务器上不直接改代码；运维脚本（launcher/admission/observe/driver）也必须进版本管理，不得只放在`cache/`。
+2. **部署**：服务器用只读deploy key `git fetch`，`git worktree`检出指定SHA；部署时仍逐文件校验sha256。旧“tar包+stdin上传”只作历史记录。
+3. **push边界**：可直接push到工作分支；合并到`main`前做一次review；force push、改写历史、删除远端分支需Eddy单独批准。repo为public：每次push前扫描数据/checkpoint/密钥/IP端口/本机绝对路径/公司名，>1MB文件拒绝。文档中的本机路径一律用占位符（映射见gitignored的`docs/local_paths.md`）。
+4. **作业与SSH解耦**：所有作业detached运行（setsid/nohup，日志写run目录）。任何人随时SSH登录、断线、重连不得导致作业停止；连接断开≠作业停止。
+5. **gate只管自己**：只检查本作业进程树与GPU/RAM/磁盘余量（≥20%）。不因外部未知进程、sshd认证进程或另一条线的终态而STOP。（现有旧gate代码按此在迁移task E1中改造。）
+6. **两线独立**：G与P各自run目录、预算、终态，互不等待；唯一融合点是协同召回。资源够时尽量并行，避免GPU或CPU闲置；新作业前先估算瓶颈（CPU单核/GPU/IO）。
+7. **单owner**：Kiro统一调度两线，并是事实源文件唯一writer；subagent只做边界明确的短任务（实现、调查、review），不长期占有作业。
+8. **review只放在不可逆节点前**：提交正式作业、push到main/public、销毁或删除数据之前各一次。普通修复自己fresh RED→GREEN→回归后直接继续，不复审。
+9. **不可逆操作**：删除数据/checkpoint、销毁实例由Eddy执行或单独点头；先给出逐路径清单与可恢复性。
+10. **事实源**：指标只写experiment_log；风险写issue_log；决策写decision_log；STATE只写当前状态。
+
 ## 最新直接授权：Kiro / Opus 5.5 接管（2026-10-13，优先）
 
 Eddy明确要求暂停定时检测并让Kiro的Opus 5.5全权接手。Codex Main05仅完成STATE/handoff/交接提示词后停止模型推进、轮询和写入；现有服务器driver/publisher/训练与有限transport保留，不kill/restart/resubmit。Kiro必须先核Main原项目事实源、原job/source/queue/spent/deadline和新收据，记录实际ACK后成为唯一模型执行者；未ACK不得声称接收完成，实际模型选择未核验不得伪称已切换。此条覆盖后文单Codex/旧Kiro停止/仅Sol模型的历史要求，不覆盖科学、数据、test、身份、资源与禁止push等边界。项目automations保持PAUSED，不自行恢复或新增timer。当前快照与具体步骤只见STATE/handoff和docs/kiro_opus55_takeover_prompt.md，不扫描/继承全部历史。
@@ -51,7 +64,7 @@ Eddy明确要求“以后不用astra了…sol就行了”，以减少token消耗
 - 同一文件不得由多个agent并行修改；fan-out任务使用独立branch/worktree。
 - 完成前必须运行相关验证；exit code 0不等于目标达成。
 - 完整可验收交付完成后进行一次独立fresh-context review；不对每个内部步骤重复加review。
-- 未经明确要求不commit、push、创建remote或修改Git配置。
+- commit/push按顶部“工作流硬规则”第1、3条执行；不修改Git配置，不创建新remote。
 - 删除、覆盖、丢弃改动、计费资源和其他高风险操作必须先列清单并等待确认。
 
 ## Agent 调度与训练监控

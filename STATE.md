@@ -28,3 +28,10 @@
 
 ## review
 - 合并review b（main05/recovery01-review-b/review.md，a995e68c…）CHANGES_REQUIRED：H1 select env、M1 submit绑定固定preflight、M2 deploy G校验前置——均已修，按Eddy要求小修不复审。
+
+## 迁移进度（2026-10-13 20:1x）
+- Eddy确认：备份走服务器直传（代码在GitHub、数据可重下）；P4D/P4E只留P4G选中checkpoint；public方案B；推三分支；新机Eddy健身后开；旧机传输完再销毁。
+- C完成：本地脱敏（docs/local_paths.md映射，gitignored；过程档案local-only）并push：main 61f0a0a、codex/p4e-ablations 34ee6fd、codex/g0-generative-foundation 17eb776（ls-remote一致；扫描0公司名/本机路径/密钥/IP）。旧commit 0376d9a历史中仍有任何公司字样（未改写，force push需Eddy另批）。脱敏前备份：各仓 cache/pre-sanitize-backup-20261013.tar。
+- 结构缺口：服务器实际执行的运维脚本（G包、main05 driver/mux）在cache/（gitignored），不在GitHub → E1需把launcher/admission/observe迁入受版本管理的目录。
+- B1：服务器盘点完成（main05/kiro-b-inv-fetch-01.stdout：model 213G、meta 31G、array 10G）。P4G保留清单调查 wf_13d55e70ae188b53 进行中。
+- 连接：热点下formal07/08/09相继断，当前formal10（hold_mux_n.py/transport_mux_n.py通用版）。
