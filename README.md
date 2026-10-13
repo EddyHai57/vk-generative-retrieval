@@ -1,12 +1,12 @@
 # VK Generative Retrieval
 
-这是一个尚无模型实验结果的公开项目 scaffold；P1提供人工 synthetic fixture 的可审计 CPU dry-run。
+这是一个已完成P3数据合同冻结、并取得P6 small TIGER-style真实训练/resume/decode smoke证据的公开项目；阶段验收状态以 STATE.md 为准。
 
 项目计划在VK-LSVD上构建可审计的generative retrieval benchmark，并研究week-level SID staleness、aligned refresh与dense fallback。
 
 ## 当前状态
 
-P1实现与验收状态以 STATE.md 为准。
+P0～P7已正式验收，P7统一固定audit比较与MVP交接通过独立review及协调验收；当前阶段与下一步只读 STATE.md。统一绑定见[`artifacts/p7-comparison-manifest.json`](./artifacts/p7-comparison-manifest.json)，过程与面试复盘见[`docs/p7_validation.md`](./docs/p7_validation.md)，指标与限制唯一见[`docs/experiment_log.md`](./docs/experiment_log.md)。
 
 实时状态见[`STATE.md`](./STATE.md)。
 
@@ -27,15 +27,15 @@ P1实现与验收状态以 STATE.md 为准。
 - 数据：VK-LSVD
 - MVP：`ur0.01_ir0.01`
 - Flagship：`ur0.01` scale audit
-- 主label：尚未冻结，P3只用train审计后决定
-- 时间：当前只确认week partition，文件内顺序待下载后验证
+- 主label：P3已只用train审计并冻结；完整规则只读[`docs/data_contract.md`](./docs/data_contract.md)
+- 时间：采用official-order assumption与稳定physical row ordinal；已完成P3顺序读取与prefix核对，但没有timestamp，不称独立验证隐藏时间单调
 - 内容：官方64D content embedding；本项目不声称训练多模态encoder
 
 完整合同见[`docs/data_contract.md`](./docs/data_contract.md)。
 
 ## 两天Vertical Slice
 
-Planned范围：
+已实现并逐阶段正式验收的范围：
 
 - Synthetic运行框架
 - A6000验收与MVP数据完整性
@@ -58,11 +58,11 @@ Planned范围：
 - Million-item ANN与fixed-query exact audit
 - Quality–latency–memory–refresh-cost联合分析
 
-达到`tasks.md`的G7/G8证据门槛后，才称Advanced Generative Retrieval。
+旗舰方向尚未执行；须满足`tasks.md`后续阶段证据门槛，不能用当前small smoke替代。
 
 ## 服务器与预算
 
-- Planned GPU：Thunder Compute RTX A6000 48GB
+- GPU平台选择：见`docs/decision_log.md` D-049；SSH方法、验收规则与历史证据见`docs/server_runbook.md`
 - Acceptance probe：不超过1小时，需用户批准计费操作
 - 总预算：不超过100 AUD
 - GPU目标：不超过30小时；hard ceiling 48小时
@@ -89,7 +89,7 @@ PYTHONPATH=src .venv/bin/python -B -m vkgr verify --manifest outputs/p1-example-
 PYTHONPATH=src .venv/bin/python -B -m unittest discover -s tests -v
 ```
 
-成功和失败诊断写stderr；成功exit 0，输入/边界错误exit 2。已存在目录会被拒绝，不覆盖产物。smoke生成`result.json`和`run_manifest.json`；result默认被Git忽略，manifest是允许检查的小型脱敏产物，当前没有commit/push。
+成功和失败诊断写stderr；成功exit 0，输入/边界错误exit 2。已存在目录会被拒绝，不覆盖产物。smoke生成`result.json`和`run_manifest.json`；result默认被Git忽略，manifest是允许检查的小型脱敏产物。P1已发布；本轮P2～P7 overlay尚未commit/push。
 
 Fixture明确标记为人工整数，不对应VK schema、label/history/split/catalog。独立`random.Random(seed)`生成少量权重，再计算整数加权和。同fixture/config/seed得到相同result字节与SHA-256；manifest的时间、elapsed及output路径允许不同。
 

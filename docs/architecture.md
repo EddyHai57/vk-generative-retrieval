@@ -8,7 +8,7 @@
 
 本文件只定义接口、数据流和artifact boundary，不包含实现代码。
 
-当前未下载数据、未安装依赖、未训练模型、未产生指标。
+P2已按批准范围完成固定revision服务器下载、隔离依赖与资源验收。P3已实现数据审计与prefix生成并冻结合同；P4已实现未训练的Popularity/content baseline及固定audit exact evaluator，实际质量/resource摘要只读experiment_log，整体验收状态只读STATE。
 
 ## 总体数据流
 
@@ -52,15 +52,15 @@ Gate：synthetic dry-run可复现；manifest能定位config、输入指纹、see
 
 输入：P1可复现框架、官方VK-LSVD source manifest，以及用户对计费实例的明确批准。
 
-输出：Thunder A6000不超过1小时的acceptance probe报告、服务器本地raw partitions、checksum inventory、许可快照和失败恢复记录。
+输出：当前已确认平台A6000不超过1小时的acceptance probe报告、服务器本地raw partitions、checksum inventory、许可快照和失败恢复记录。
 
-Gate：按`docs/server_runbook.md`验证SSH reconnect、CUDA/PyTorch、FAISS、RAM/disk、Hugging Face吞吐、disk I/O与snapshot restore；只取得批准的subset；原始数据不进入Git；磁盘余量满足runbook。
+Gate：按`docs/server_runbook.md`验证SSH reconnect、CUDA/PyTorch、FAISS、RAM/disk、固定revision dataset传输吞吐、disk I/O与经批准的平台持久化/恢复验证；只取得批准的subset；原始数据不进入Git；磁盘余量满足runbook。
 
 ## P3｜数据探查与合同冻结
 
-输入：MVP raw partitions。
+输入：P2固定revision/hash的MVP raw partitions，仅服务器只读。
 
-输出：schema/order evidence、feedback coverage、sequence length、duplicate、catalog/first-seen/OOV报告，以及冻结的label/history/split/catalog policy。
+输出：schema/order evidence、feedback coverage、sequence length、duplicate、catalog/first-seen/OOV报告，以及版本化label/history/split/catalog manifest。生产模块src/vkgr/data_audit.py提供train→freeze→holdout CLI；实际producer/source/lock/精确依赖与policy由train audit绑定。完整queries/catalog/training examples保留server-only，Public Git只保存脱敏冻结manifest。
 
 Gate：只用train定label；若`like`覆盖不足才定义composite；看valid/test前冻结。
 
@@ -68,7 +68,7 @@ Gate：只用train定label；若`like`覆盖不足才定义composite；看valid/
 
 输入：冻结queries、catalog和64D content embedding。
 
-输出：Popularity、content-centroid + `IndexFlatIP`、chunked exact evaluator和固定query audit set。
+输出：Popularity、normalized-content centroid、固定float64 pair reduction的blockwise exact evaluator与固定query audit set；IndexFlatIP只作canonical tie后的toy reference。原创src/vkgr/baselines.py与baseline_run.py消费冻结静态P3输入，run manifest verify重算抽样、两baseline预测与stored-prediction指标。真实score矩阵只物化bounded query/item块，完整query/预测只留服务器。
 
 Gate：toy brute-force、chunked exact与IndexFlat结果一致；不物化完整score matrix。
 
@@ -83,6 +83,8 @@ Gate：toy brute-force、chunked exact与IndexFlat结果一致；不物化完整
 Gate：所有train-observed item可逆映射；collision、utilization、entropy/Gini与prefix occupancy可计算。
 
 首版只做一个tokenizer；RQ-VAE/collaborative tokenizer不属于两天硬承诺。
+
+P5生产接口见sid.py/sid_run.py。SID固定3语义digits+1确定性collision suffix，per-position token namespace独立。Constraint用sorted uint64 mixed-radix SID keys+uint32 item permutation查询prefix range；empty prefix为root，完整SID为terminal。static reader要求调用方pin manifest SHA并校验map/codebook graph/capacities/constraint/features/audit/producer/resource证据；producer replay另重读固定官方features并refit，不能把static checksum检查冒充真实fit复算。完整map/codebook/constraint/normalized cache仅server-only，Public只保存小aggregate/hash。算法/gate细节读p5_validation。
 
 ## P6｜TIGER smoke
 
@@ -173,3 +175,27 @@ API key、SSH key、cloud token、signed URL、account identifier和完整连接
 - LIGER: https://arxiv.org/abs/2411.18814
 - SID staleness: https://arxiv.org/abs/2604.13273
 - Collision-faithful evaluation: https://arxiv.org/abs/2605.25330
+
+## P6实际接口补充
+
+原创tiger.py提供SIDTokens/TigerModel/constrained_beam/decode_history；四digit namespace与learned absolute位置编码共享history/target。Encoder padding与decoder causal/cross-attention padding masks明确，固定4输出无需EOS；每query memory只编码一次再复用beam。Training.py提供ShuffledCursor、finite train_step与caller-pinned自有checkpoint（weights_only）恢复model/optimizer/global RNG/data cursor。tiger_run.py消费静态固定P3examples/P4audit/P5SID，通过train→实际退出→resume→decode→verify独立CLI阶段；冻结config/source/lock/input绑定，最后资源gate与artifact hashes之后独占发布successmanifest。所有checkpoint/optimizer/完整query与prediction仅服务器，公开只脱敏摘要。参数与失败/验证证据唯一入口p6_validation，指标数字只experiment_log。
+
+
+## P7实际统一比较边界
+
+P7不增加生产模块。只消费已验收P4/P6 audit与metric artifact；ignored cache中的独立stdlib审计逐字比较query/history/target/OOV、重建抽样成员并手写item指标。Public artifacts/p7-comparison-manifest.json用role/hash绑定P3合同、P4baseline、P5SID、P6run与同源feature/catalog/query，不放完整candidates或私有路径。统一质量与系统成本摘要只读experiment_log；latency边界不同，调参次数相同不等于计算预算相同。当前验收状态只读STATE，P8之后的数据流仍是计划。
+
+## P4B traditional consumer boundary
+
+`retrieval_data`负责冻结hash/catalog/PAD、严格prefix/fullpast证据、按split reader和server-only prepared artifacts；不调用同时加载holdouts的旧baseline reader。`retrieval_training`负责独立epoch cursor、distinct-target/mask/FP32 loss和可恢复checkpoint状态，不复用旧TIGER跨epoch补batch的cursor。`retrieval`组合来源/资源audit、真实train-only prepare及bounded synthetic train/verify；test gate关闭。Formal architectures/validation选择、baseline/index/export/fusion/ANN仍由后续owner实现。
+
+## P4C traditional baseline boundary
+
+retrieval_baselines负责all-train-like Pop/binary incidence、逐row sparse cosine top200、history事件sum/Popfill、shared exact content评价及input-to-output replay；retrieval组合validation-only pinned输入、bounded graph/resource pilot、exclusive realrun/verify与legacy regression。P4B prepared producer identity保持原版本，P4C consumer另绑定source/transport/dependencies。Graph/arrays/predictions不进public Git，test gate closed；后续architectures仍由P4D负责。
+
+## P4D formal core consumer boundary
+
+retrieval_models提供四个固定TwoTower表示；retrieval_experiment提供finiteconfig/runtime gates、validation-best session/epochcheckpointchain、preparedvalidation-only loader、actualCUDAresourcepilot、float32 export与逐checkpoint输入到输出verify、completefixedsearchselection。它复用既有P4B sampler/mask/FP32step/checkpoint及P4 exact scorer，不改producer或旧TIGER接口。FormalCLI单独模块，旧syntheticCLI回归保留；实体vectors/checkpoints/predictions只server。当前状态/实际实验只读STATE/experiment_log。
+
+
+P4D v2 stats serialization compatibility使用独立scripts/p4d_v2_verifier_compat.py：训练producer文件和fingerprint保持原v2，完整原transport固定pin；只在隔离namespace中替换verify_session/verify_draw_provenance的两处stats表示比较。其余函数保持相同codeobject；epochs键严格同类int或canonicalstr，非法key/数值漂移拒绝。train/resume/verify/select每次调用均显式进入adapter并在模型创建前保存producer＋adapter/proof双身份sidecar；验证结果另有receipt，旧manifest/checkpoint不重stamp。长GPU oracle为same-process独立构造恢复，先前真实bounded不同进程恢复证据另列。

@@ -1,0 +1,75 @@
+{
+  "artifacts": {
+    "audit.json": {
+      "boundary": "server_only",
+      "sha256": "1c4df044f1702fcdc5c0cfb9f17c3429318c7134d43187b92afcbf82c5545b9e",
+      "size_bytes": 1186
+    },
+    "codebook.json": {
+      "boundary": "server_only",
+      "sha256": "179f92b081bb56a6c67daaa102f828f2fdd7aa4a68fb679e071036cc79a58d5e",
+      "size_bytes": 5960077
+    },
+    "constraint.npz": {
+      "boundary": "server_only",
+      "sha256": "aa15fc6be69c7169ab9e13fac73c337b40c08403fff52720e3bc04290f2f242f",
+      "size_bytes": 1445484
+    },
+    "mapping.npz": {
+      "boundary": "server_only",
+      "sha256": "9c0c76600dec91957a87119405018793b7216db28f07597556ef79876e4ebfc7",
+      "size_bytes": 2408800
+    },
+    "normalized-features.npy": {
+      "boundary": "server_only",
+      "sha256": "a4f04e06bea02779b592690b977ecf285c1d5d41e66c19c8be8c0a6b0810f1e8",
+      "size_bytes": 30826368
+    }
+  },
+  "claim_boundary": "deterministic greedy balanced hierarchical kmeans and collision suffix only; no optimality or model quality claim; audit summary in docs/experiment_log.md",
+  "dependency_versions": {
+    "PyYAML": "6.0.2",
+    "numpy": "1.26.4",
+    "pyarrow": "19.0.1"
+  },
+  "effective_config": {
+    "branching": 16,
+    "depth": 3,
+    "max_iter": 10,
+    "seed": 42,
+    "task_id": "P5"
+  },
+  "feature_array_sha256": "766317a88353dcda241d7579aee6da73b5ad8ea0a627470e2ac8a68c99530c84",
+  "git_base": "0376d9a8119f3500cbf78519675cc7bf18013c1b",
+  "input_fingerprints": [
+    {
+      "role": "p3_frozen",
+      "sha256": "3b042b7635972e9a255c0b2cd8de0a7b7a472a08a0d074eb3133068d527c1e0f"
+    },
+    {
+      "role": "p3_train",
+      "sha256": "3cc2d3ffb9812d7e83709f53d85463876f9be13daf4173829b748dbe1ee1c3fe"
+    },
+    {
+      "role": "catalog",
+      "sha256": "80201c574fad26bd29f2e2425a5ad98db8fe7c2a9be91e07d2fc6aedc48d47f3"
+    },
+    {
+      "role": "p4_manifest",
+      "sha256": "65d90cc9fb4df88824786a794349e3e2a6724ff0a8e08e4f95b573c699bdb801"
+    },
+    {
+      "role": "official_features",
+      "sha256": "6a4024ad7623f5d8150e59c5faaaf42fb7d7f48e2beec44c6917e5e57debea7c"
+    }
+  ],
+  "python_major_minor": [
+    3,
+    11
+  ],
+  "schema_version": 1,
+  "server_manifest_sha256": "669029504ab18df5f6a6109820d3d4a36a243f6ab0d3e8c46fc8ce17b1b6bbe9",
+  "source_fingerprint": "c61ffbc1651dd0b8bd508f498cdde265de886fd4df45aeede6f7ebc1e2e65729",
+  "status": "implementation_ready_awaiting_coordinator_review",
+  "task_id": "P5"
+}

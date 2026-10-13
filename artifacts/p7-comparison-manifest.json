@@ -1,0 +1,98 @@
+{
+  "claim_boundary": [
+    "original small TIGER-style engineering vertical slice only",
+    "one seed; small fixed audit; no statistical superiority claim",
+    "like-only/train-only evaluation histories/official physical-order assumption",
+    "irX sampling semantics unspecified; no platform representativeness claim",
+    "balanced hierarchical kmeans, not RQ-VAE; unconverged nodes and nonmonotonic objectives disclosed",
+    "OOV structurally unreachable in shared train catalog",
+    "latency boundaries differ; no direct latency ranking",
+    "no full-test/online/CTR/causal/dynamic-catalog/OneRec/AI-Search claim"
+  ],
+  "evaluation_artifacts": {
+    "P4": {
+      "metrics.json": "b0e43673c7b0a68aba03ce1807c13065a6ffa5a8d8c030b49a82c78f5b795b1c",
+      "test-audit.json": "0af77fa043c87287d941e27e8f7752cbf85205151a45563eaac7ad273eccf3f8",
+      "validation-audit.json": "726965d6eae9049e27f8636fe39c0aa96dadb493311dd954f039367584bb2e5b"
+    },
+    "P6": {
+      "metrics.json": "6539f9eebf94b3984bded88b2be623722253712d2e85eafb1e5a714b4e2b138d",
+      "test-audit.json": "f1abb0f7c8feca14c32e260f32f7cdecd65d9bcc977b998c162c103a38e1ae48",
+      "validation-audit.json": "fc987a07e28229293e853fa57dce25611fded9fe822a05cc88664d9f0bd7f103"
+    }
+  },
+  "fairness": {
+    "feature_consumption": "Popularity uses train counts; content directly uses normalized content features; P6 histories/targets use P5 SIDs fitted from those same features. No claim of identical model input representations.",
+    "hyperparameter_search": "none; no test tuning; equal search count, not equal compute cost",
+    "item_level_only": true,
+    "query_history_target_oov_exact_equality": true,
+    "sampling": "seeded SHA256 user ranking, independent of target/OOV/hit; fixed audit, not full test",
+    "seen_item_masking": false,
+    "shared_official_content_feature_lineage": true,
+    "shared_train_catalog": true,
+    "single_preregistered_configuration_per_method": true
+  },
+  "git_base": "0376d9a8119f3500cbf78519675cc7bf18013c1b",
+  "metric_summary": "docs/experiment_log.md#p7--\u7edf\u4e00\u56fa\u5b9aaudit\u6bd4\u8f83",
+  "public_boundary": "hashes, role aliases, configuration and statements only; no private paths, IDs, full predictions, SID map or weights",
+  "resource_summary": "docs/experiment_log.md",
+  "schema_version": 1,
+  "shared_inputs": {
+    "audit_set_sha256": {
+      "test": "412bd72b60223a7a1456178917335c54dbcc9265affefbf624f8b5a75e67874c",
+      "validation": "084290bdc4184487dc1190505d9fbb4ff3d5e938b4189f73912b3109bd3714a2"
+    },
+    "catalog_sha256": "80201c574fad26bd29f2e2425a5ad98db8fe7c2a9be91e07d2fc6aedc48d47f3",
+    "full_query_sha256": {
+      "test": "02b419771860420cb544497518f4ccb0f232c876b4fb14ac3c2fe91d38440b45",
+      "validation": "9077a1c9495d494bc8ec209c0bf3305fd68db5bfcca24abcadc4a1e552e60a97"
+    },
+    "normalized_feature_array_sha256": "766317a88353dcda241d7579aee6da73b5ad8ea0a627470e2ac8a68c99530c84",
+    "normalized_feature_file_sha256": "a4f04e06bea02779b592690b977ecf285c1d5d41e66c19c8be8c0a6b0810f1e8",
+    "official_feature_sha256": "6a4024ad7623f5d8150e59c5faaaf42fb7d7f48e2beec44c6917e5e57debea7c",
+    "policy_sha256": "3be46f445676d302c4b4f69cebfff0e4af35c040f09473f1c08d54dfe7507a01"
+  },
+  "stages": {
+    "P3": {
+      "config_sha256": "093f6a64b4d5e1ccd3606af796328f2795bf4b7fbf29739741fa20e46da4b49e",
+      "public_manifest": "artifacts/p3-data-contract-manifest.json",
+      "public_manifest_sha256": "3b042b7635972e9a255c0b2cd8de0a7b7a472a08a0d074eb3133068d527c1e0f",
+      "seed": null,
+      "server_manifest_sha256": "3b042b7635972e9a255c0b2cd8de0a7b7a472a08a0d074eb3133068d527c1e0f",
+      "source_fingerprint": "f73c77690a37d0564292e9a1b762349ba574745d6e66c344a26ce9115ccb802d"
+    },
+    "P4": {
+      "config_sha256": "416ed090453f20ce578087627cba367ccfc20227e56c3594518dfd2144c5b3d4",
+      "public_manifest": "artifacts/p4-baselines-manifest.json",
+      "public_manifest_sha256": "84cdef9a5062c489155c92456b544ffe28901ecc6aeb901ed6d8459228a73b2f",
+      "seed": 42,
+      "server_manifest_sha256": "65d90cc9fb4df88824786a794349e3e2a6724ff0a8e08e4f95b573c699bdb801",
+      "source_fingerprint": "51db4ea2320b0f8aae0a92d2036ba273bd1984966c6db553b640a5f17956176e"
+    },
+    "P5": {
+      "config_sha256": "6af2731c33f61f4f43fd09d02db0712817d53f18a7d3dde6112317d39bdb2448",
+      "public_manifest": "artifacts/p5-sid-manifest.json",
+      "public_manifest_sha256": "26b9073f6bf5685965f12e528a4b8803710bdb108229da7b94d1247a1f5453cc",
+      "seed": 42,
+      "server_manifest_sha256": "669029504ab18df5f6a6109820d3d4a36a243f6ab0d3e8c46fc8ce17b1b6bbe9",
+      "source_fingerprint": "c61ffbc1651dd0b8bd508f498cdde265de886fd4df45aeede6f7ebc1e2e65729"
+    },
+    "P6": {
+      "config_sha256": "cfd4ff78bf754cad80f5a942b1f6d9c69cd09fed252f79690a67f1968ce1cb2b",
+      "public_manifest": "artifacts/p6-smoke-manifest.json",
+      "public_manifest_sha256": "599cedf0168cee963bd4ed5a53d9df7c759c4640a981c1a3969e3279b6c162db",
+      "seed": 42,
+      "server_manifest_sha256": "17a0b10b6216b2b350e9b842117ccac3e1df172509e5395076daa651d6c45f23",
+      "source_fingerprint": "6472ddb1ca6f103a895ba5cdd5a727b1af7717125d3b6029997e5e83c7ba4d32"
+    }
+  },
+  "status": "implementation_ready_awaiting_independent_review",
+  "task_id": "P7",
+  "verification": {
+    "result": "p7_independent_fairness_pass",
+    "result_sha256": "b70118e5954325476d127a5402349479e4ed5443e0ba1a2f9f46390ee1007195",
+    "scope": "all audit rows, three methods, all slices; existing pins and lineage; no new fit/train/model replay",
+    "script_sha256": "13256f3ad84624ca6d644374a111eff0e4af07b8b0d8b8f813f621405f259e9d",
+    "verified_at_utc": "2026-10-06T21:37:49.095104+00:00"
+  }
+}

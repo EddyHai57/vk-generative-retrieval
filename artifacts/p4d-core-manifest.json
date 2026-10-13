@@ -1,0 +1,681 @@
+{
+  "task_id": "P4D",
+  "trainer_source": "2b8658b06ece14ca703f1b33cf84d8f24a096b9748d1f91ff91a3ce640bd2848",
+  "adapter_sha256": "1080be987c036521e9a551b77b6a1c6b23c7539d1527f4b27ecd9aed2cafeb20",
+  "proof_sha256": "3aca890e46cc708c383aa26ab0c1e39656ece569175ec3d005e831650a71b2bf",
+  "completion_sha256": "d51d5a179e59ff82c8f698cb9cba478991eb38ef6c257c884ffea240904d225d",
+  "selection_sha256": "bc70aae38aa53af8ff70c6e159f0a523cbf362d72b20cbc04039daf44657b6de",
+  "representative_seed": 42,
+  "best_architecture": "id_mean",
+  "test_gate": "closed",
+  "schema_version": 1,
+  "kind": "sanitized_core_delivery",
+  "status": "awaiting_coordinator_acceptance",
+  "contract": "traditional-like-v1",
+  "data_scope": "official ur0.01_ir0.01 subset; not parent full data",
+  "formal_runs": 24,
+  "shared_batch": 512,
+  "reported_seeds": [
+    42,
+    2024,
+    2025
+  ],
+  "extractor_sha256": "b0d8a33497d1750064a9386b2bc5373c4c4bf81a5fa6d805da79ae54ccbe1a92",
+  "metrics_source": "docs/experiment_log.md",
+  "resource_scope": "terminal invocation segment only; not historical global minima",
+  "raw_artifacts": "remain server; no raw/prediction/embedding/checkpoint/optimizer bytes included",
+  "selected_configs": {
+    "content_transformer": {
+      "config": {
+        "architecture": "content_transformer",
+        "learning_rate": 0.0003,
+        "seed": 42,
+        "temperature": 0.15
+      },
+      "manifest_sha256": "4d1dca62f21e3d8b32d2e199f9b523ab5f228723c83e9ab7a444f7130acc48c8",
+      "checkpoint_logical_ref": "core-16-content_transformer-seed42/checkpoint-step-680.pt",
+      "checkpoint_sha256": "a0b8b87e9c9ffa1b0c4b149cc5b17563f7f97c1f4a2525d15bcda8777ca8f2e8"
+    },
+    "id_content_mean": {
+      "config": {
+        "architecture": "id_content_mean",
+        "learning_rate": 0.0003,
+        "seed": 42,
+        "temperature": 0.15
+      },
+      "manifest_sha256": "87c7d5165302887fb7b13c36f787a2d1049a91e75f21b5bca03b56ac6880eb00",
+      "checkpoint_logical_ref": "core-08-id_content_mean-seed42/checkpoint-step-1190.pt",
+      "checkpoint_sha256": "9d6d1af0f725fd80b9bbbeccffe2a9605570a0fad3be94891ae0102dfb93b92f"
+    },
+    "id_mean": {
+      "config": {
+        "architecture": "id_mean",
+        "learning_rate": 0.001,
+        "seed": 42,
+        "temperature": 0.15
+      },
+      "manifest_sha256": "bc9fbb23f15494b989c21a602410395cbe7d3a6d0edf7c022df87e5aed3077a5",
+      "checkpoint_logical_ref": "core-02-id_mean-seed42/checkpoint-step-5100.pt",
+      "checkpoint_sha256": "5a8549b8f1fe6799028f3f2b71fb4226a28c7516486044ffde11c0b9088725db"
+    },
+    "ordinal_content_mean": {
+      "config": {
+        "architecture": "ordinal_content_mean",
+        "learning_rate": 0.001,
+        "seed": 42,
+        "temperature": 0.15
+      },
+      "manifest_sha256": "cb5f24f308eaf7b6debbc2ddc65d860b10c3414c7e0399af35db12d48c152402",
+      "checkpoint_logical_ref": "core-10-ordinal_content_mean-seed42/checkpoint-step-1020.pt",
+      "checkpoint_sha256": "a35203bd86c4dc5512a50bd574e10359a1f8df54975e54438c67cf08ca47c16b"
+    }
+  },
+  "runs": [
+    {
+      "slot": 1,
+      "config": {
+        "architecture": "id_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.07
+      },
+      "manifest_logical_ref": "core-01-id-mean-seed42/manifest-step-5100.json",
+      "manifest_sha256": "5e015123bf3b4c0ccd7f098d5c98cf9f485830ee87d22d7139b4629dfceca298",
+      "best_artifacts": {
+        "item-vectors.npy": "f44f21d8343db1b7721b64950efb2dbc533a3eef71f7646dd75491a44c08d34e",
+        "metrics.json": "083303d412e6376f55e9ff483b07b0a1e0fa86c5dab0f0dca5d0c570551a3100",
+        "predictions.json": "6bdd5c4b5e31e31a263a833e1431341cb08a04ed392a6fedbd14e1067ba1548d",
+        "user-vectors.npy": "5f520f2192e8380bf95591aded135797cba6516c64f63e8f7a4ea5c994dabecf"
+      },
+      "resource_completion_sha256": "6fcbfa7e8c5dc28f0bbe65565732d8be43d5378a36486f3783f0a925b305e227",
+      "best_checkpoint_sha256": "78a70c845e2c28667f49b953bd48cbb5a56eb57a6b74e58ac2c2a96ab7f23f85"
+    },
+    {
+      "slot": 2,
+      "config": {
+        "architecture": "id_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-02-id_mean-seed42/manifest-step-5100.json",
+      "manifest_sha256": "bc9fbb23f15494b989c21a602410395cbe7d3a6d0edf7c022df87e5aed3077a5",
+      "best_artifacts": {
+        "item-vectors.npy": "8857e5e570d295d5af358b56d7e489af092f08cd0355ee6062ca7cb3f876783a",
+        "metrics.json": "ce1b306de929d974450892e6394456159f119ac2b081355d456e5b57bc1aa404",
+        "predictions.json": "1f9e38a45c778ee2d317eca84bf1e04f4fb5d479c1f0c29a9ed64722fc662521",
+        "user-vectors.npy": "c875d15a58e7f3e91b1c0b72f0eb5750069c39ba83d3f705df3dfb1e9e0fe799"
+      },
+      "resource_completion_sha256": "d497131986cf226561371ea1971a93688806e9359c53b461b0bbb546f6d27ab5",
+      "best_checkpoint_sha256": "5a8549b8f1fe6799028f3f2b71fb4226a28c7516486044ffde11c0b9088725db"
+    },
+    {
+      "slot": 3,
+      "config": {
+        "architecture": "id_mean",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.07
+      },
+      "manifest_logical_ref": "core-03-id_mean-seed42/manifest-step-1700.json",
+      "manifest_sha256": "2cbf1774f930f28b7ed138d25d748b73e5920fc645d89d11129a591ac7056e8e",
+      "best_artifacts": {
+        "item-vectors.npy": "58697cd3ef689f1e33bbe2440ec372f78a1275dd8adf90bc1d12b79676de53cf",
+        "metrics.json": "74edb2e738527b93e7e7d504b0397cd8457a8c83be6bcc3289053c4d9bbecaef",
+        "predictions.json": "8d435dbd9cfe1faefadb5059b28e543b27790eaf00e466eaac02936a8e3a2a40",
+        "user-vectors.npy": "d8478f23a561136c46849c17da2425c265539402e18af07595574c7c6ecd38dc"
+      },
+      "resource_completion_sha256": "47f40a17fe7fb5dad48dea30de40d853315a3e5f10ed96ad13736e1a6dd1a314",
+      "best_checkpoint_sha256": "b5b8c32aef7a6166cc6361082d0fd256c80e534a712351cdce3028c28ba72982"
+    },
+    {
+      "slot": 4,
+      "config": {
+        "architecture": "id_mean",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-04-id_mean-seed42/manifest-step-1530.json",
+      "manifest_sha256": "866d65120ed32ce987db62a82b54c7b55d8b775b0b150b3be8fe67d221dea765",
+      "best_artifacts": {
+        "item-vectors.npy": "a39d2641673e8a15d77c99fa63eaaa10f75bf373b9c9b517243565790774f4f0",
+        "metrics.json": "74edb2e738527b93e7e7d504b0397cd8457a8c83be6bcc3289053c4d9bbecaef",
+        "predictions.json": "6a835718f526a4e8e4cd9c2d865352b372d73fb0cdfb5c4a87b5860f56d07a5d",
+        "user-vectors.npy": "00badcbc395f68cca452c3241b569c8fc292a3e8dfd00a3922250d5f8a50ce91"
+      },
+      "resource_completion_sha256": "74584da01806080af418ee4ebc4674abb539169fdda90bf9ecc8822385e6a586",
+      "best_checkpoint_sha256": "da7902000d08a195492a091f2d14d935b5f28dfbbd74d9df45e6198ab6955aea"
+    },
+    {
+      "slot": 5,
+      "config": {
+        "architecture": "id_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.07
+      },
+      "manifest_logical_ref": "core-05-id_content_mean-seed42/manifest-step-850.json",
+      "manifest_sha256": "82bde9e8a1c21d6e460eda129b27b64284f588ef2dd38543991ee21fd363b3e7",
+      "best_artifacts": {
+        "item-vectors.npy": "e6ac4d80b79bcf0c1b8585d9c6f8406df433b38880f4f1a17abaeece4d9d8045",
+        "metrics.json": "a88aab8b8941f73deb3faddcc4a9539176ff542820ab0ab5095239952eede4c4",
+        "predictions.json": "7c84b1a5d6d99b74e8f82c2ffe189c3255cc18b7269c9ee292fc492c091fb64b",
+        "user-vectors.npy": "bff49a2420beec1340b7e17eaa79808910b1171d73c40cb7da4a9f1b0cc5e2e8"
+      },
+      "resource_completion_sha256": "090d12c24a24739df20f6405d6328720cbd5319dbd15f36f1eb7e273867c2990",
+      "best_checkpoint_sha256": "43b3de6f88fdcb0ba9553fa668ba0aa356387cc757475a35d07b818472e1b7f6"
+    },
+    {
+      "slot": 6,
+      "config": {
+        "architecture": "id_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-06-id_content_mean-seed42/manifest-step-850.json",
+      "manifest_sha256": "892980bdf20e87b4f984295d43dcec04f9c59f696b7d9f5c797938203ba7b384",
+      "best_artifacts": {
+        "item-vectors.npy": "1c1f15a2d16c235534a4f3abd8a67b8a122e2e2aa01e9d06141c605f4f118219",
+        "metrics.json": "1c036b3ef0038415bb90932f0c19224d520f2a134967d198ae8de5a1dec3f982",
+        "predictions.json": "96f9b3519c169f73dcf6bb4469af6532142d8f2c6b605aac9838b997d7d4f5e4",
+        "user-vectors.npy": "bc431bb350dbcfcdc4f5b1b768c65e0b5cdf6f55d7f220637d77b381f79a7eb3"
+      },
+      "resource_completion_sha256": "32cfecf0d75e1369126ace11eb1d31ec6b45361a376c665e9823eb22a023f5d6",
+      "best_checkpoint_sha256": "1a5e32667c5a20ea26c5f6065c086cef3c47bbcc9f02e3ef913e9161716aa37a"
+    },
+    {
+      "slot": 7,
+      "config": {
+        "architecture": "id_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.07
+      },
+      "manifest_logical_ref": "core-07-id_content_mean-seed42/manifest-step-680.json",
+      "manifest_sha256": "dd780cbcf1880120cc91d680b59828436736a8bd4faef53e1282bbe0a654760a",
+      "best_artifacts": {
+        "item-vectors.npy": "accd2f23a8241f72d540d3bfc0395370e7cc16b68377977d280e79f80f7a9c2b",
+        "metrics.json": "2072360bb31f1e34122c908ac0220b325b80703117782b5c37aaa45ae312ad50",
+        "predictions.json": "c01fdd1fb7ea02c2889ea86076be21e416c0b0c0fe1c3671e2d7cda9a6b1ac15",
+        "user-vectors.npy": "d6b009fec758b3e46cde81d9b7c9d52e4a431b1e47c77d561857571aad3f51af"
+      },
+      "resource_completion_sha256": "797e25e75d7eede908bca6f44dbb5b7cb2796c18ccc1aaf74a22e9bfdd00fd61",
+      "best_checkpoint_sha256": "7433ed221b5955bc30bc7d1433857fcfd672adf4afb49c473a7b7f3c2afb2141"
+    },
+    {
+      "slot": 8,
+      "config": {
+        "architecture": "id_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-08-id_content_mean-seed42/manifest-step-1700.json",
+      "manifest_sha256": "87c7d5165302887fb7b13c36f787a2d1049a91e75f21b5bca03b56ac6880eb00",
+      "best_artifacts": {
+        "item-vectors.npy": "f341f117c42c0825d3b857ec6a1975e24df48fd29cc3f596ee9d81e1e3c702a4",
+        "metrics.json": "4c8b1c48f73100de8a765dab8a8c39dbf9ab2a9690d34978d1f829e1b34e5afa",
+        "predictions.json": "703583fae9c1b9ee122684b62167c441d41b55ffcf8e8844b0791137223d3eef",
+        "user-vectors.npy": "d291412d53ac480a95dbe447719149ea8a270cc9aeb9aebbb53eb15ae0a5ea16"
+      },
+      "resource_completion_sha256": "33f84c0c608d42f04e8abcd8547c7d5cc234055a094c36174a8d548919ee840c",
+      "best_checkpoint_sha256": "9d6d1af0f725fd80b9bbbeccffe2a9605570a0fad3be94891ae0102dfb93b92f"
+    },
+    {
+      "slot": 9,
+      "config": {
+        "architecture": "ordinal_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.07
+      },
+      "manifest_logical_ref": "core-09-ordinal_content_mean-seed42/manifest-step-1530.json",
+      "manifest_sha256": "c148b885ca2bbf449177a71f56df6fc7ad8efc6ba6f5784cd4e815b2a28982ba",
+      "best_artifacts": {
+        "item-vectors.npy": "73ca1c6719f7fd8e9c5a640f90572d0c33c8c5e7065efd49d0d1ba2f8179c9ce",
+        "metrics.json": "b6e2e37d1c2aebcf73a553d167044a00e0648a7007d1722cef3682c2ce9d6be3",
+        "predictions.json": "acb43ad4b702bec23a11d8b6354ddd63e2d073fac3e1b982255bfa0c75112cea",
+        "user-vectors.npy": "c828f7aae6c0dd4f597a823a70a1237200f44ae68da186d499e714a8ffb9f16d"
+      },
+      "resource_completion_sha256": "0f2ac5c8f0d8d254654cf65673f2504e924f8b66deae1bae419e0ac8587aed55",
+      "best_checkpoint_sha256": "6e5d66fdeda5fa12586283ae3b3a3a27182da9b780a446139cb041a15cdcd468"
+    },
+    {
+      "slot": 10,
+      "config": {
+        "architecture": "ordinal_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-10-ordinal_content_mean-seed42/manifest-step-1530.json",
+      "manifest_sha256": "cb5f24f308eaf7b6debbc2ddc65d860b10c3414c7e0399af35db12d48c152402",
+      "best_artifacts": {
+        "item-vectors.npy": "a58b29e7e5aa661e6a813feb09fe0fbb4aca8066c3f66d42d723b55fd1733f77",
+        "metrics.json": "08cd1160035c9c581861095a13acf5f984085b0f62030c7bea905a851b6f9a36",
+        "predictions.json": "854fbaea0aef03ebd6ea073e5049147246d3062fa6cac12968894d73e5c70139",
+        "user-vectors.npy": "8c910e772fcd68c74359f846ee16f9c81f6fc8bf97bd121480b50871e682c0e2"
+      },
+      "resource_completion_sha256": "07d45a164dac587da0f08e9259365191293f66d3ac04c2eef99bbff32b4197fd",
+      "best_checkpoint_sha256": "a35203bd86c4dc5512a50bd574e10359a1f8df54975e54438c67cf08ca47c16b"
+    },
+    {
+      "slot": 11,
+      "config": {
+        "architecture": "ordinal_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.07
+      },
+      "manifest_logical_ref": "core-11-ordinal_content_mean-seed42/manifest-step-680.json",
+      "manifest_sha256": "eff60e0ea607ebf5e034ec6d5f99896117c0f2007d431a3b469b1e5936d0b07d",
+      "best_artifacts": {
+        "item-vectors.npy": "1ecd2b91ff68eeea4f451d1d2ed2af3e5c1b24bbbfbf70d9b30ce4f8dab868b4",
+        "metrics.json": "47cde6b92dcc7e55c71d6ae7da5ff15ce3be8295c08a429aae866937e2deaca2",
+        "predictions.json": "54c4a1b5859c594323a7251d83b252ff877f366b9ac197781c22e25befde9fed",
+        "user-vectors.npy": "4775458cfc3ce06c66801bd833a4ae18aeec7b103131fd3cf6121a09d178d484"
+      },
+      "resource_completion_sha256": "88e8cf97a51ae14ad2f8bcafaff07af3a2243a99108a127374de02e7f3c6f1b7",
+      "best_checkpoint_sha256": "4b29ea671677c5949312ef51a0fd7a30e38ad27e77ce65de95dd7a36c520abca"
+    },
+    {
+      "slot": 12,
+      "config": {
+        "architecture": "ordinal_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-12-ordinal_content_mean-seed42/manifest-step-680.json",
+      "manifest_sha256": "7f1a2b75fc72a36b2e4142ca3fcd0381f6d37e190827ebbb9d5e3827ea8567de",
+      "best_artifacts": {
+        "item-vectors.npy": "926b4549786ac050ee3f6cd7448e946631602288afc8419269da1d76af556cc1",
+        "metrics.json": "47cde6b92dcc7e55c71d6ae7da5ff15ce3be8295c08a429aae866937e2deaca2",
+        "predictions.json": "2fa1e1468dddabe069d664b82f2fedff15409d17d2cdd20e833b6bb3f04211c3",
+        "user-vectors.npy": "08d0cda7e6bcad68c6fa2e17d8dc1eb3571a353408342a12cdf6637fd7113921"
+      },
+      "resource_completion_sha256": "203d76961ae237164fef0efe4e7d0c815e6bf153766904fe1a8879925b6ee9ad",
+      "best_checkpoint_sha256": "5790dc56c636c8cf7ee165917ca0abf48cc46bb6e93daa2e4f176f58b75da693"
+    },
+    {
+      "slot": 13,
+      "config": {
+        "architecture": "content_transformer",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.07
+      },
+      "manifest_logical_ref": "core-13-content_transformer-seed42/manifest-step-680.json",
+      "manifest_sha256": "68132310b10f2372007c909aecf7e62f1fa228b5449601896bbb64650a3b3f7c",
+      "best_artifacts": {
+        "item-vectors.npy": "bdc2b7ad0b22e87db2033db3859db64ddc60427f42242a25ecc15e178b9b1d13",
+        "metrics.json": "f1347817989a5e981b1a9c076c514782a370fb1bc552d913852166a92b1cc87b",
+        "predictions.json": "fe2600145835c0b91792531abe39ca30bfde9b411780995fe4db687703437abf",
+        "user-vectors.npy": "e0a6d568338b05533aaecc9dde45e4e3b7ee62d8c4b85005278899849a20b074"
+      },
+      "resource_completion_sha256": "f49deb43de412bb91cf7c023fce12a2d68c115e7ab1a0c3c9794ee47b3574aa6",
+      "best_checkpoint_sha256": "eb2d4ff482f0e1ae4953ef0fe59806bab5d7a08a8ed5e025e665e4708eecc104"
+    },
+    {
+      "slot": 14,
+      "config": {
+        "architecture": "content_transformer",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-14-content_transformer-seed42/manifest-step-1190.json",
+      "manifest_sha256": "4e334365417123ac04f041dab690a1c3f0a1dc3859650980dc03f609ab7bd21b",
+      "best_artifacts": {
+        "item-vectors.npy": "c0a669bcb5f6f9fbb25090bd0fa54073ff4520248fbc1c6585232f66dd8bf3c3",
+        "metrics.json": "e8c521cc548b21b258b220ccc2d0d2485ebf03bf82426c98c1a9d2e325e6f1fd",
+        "predictions.json": "960ea55b937eac45d1fcb8ef017b5964f7ffb9ab9e97a6e820bac3d902902f6a",
+        "user-vectors.npy": "692400dda4abc277e80efd4badde5b989d7f2fe043ba6e2aa325d8b1101e858d"
+      },
+      "resource_completion_sha256": "5f430f7a2a7610a18d3d6d3257ccd1b0ba36a16764d8b8f739acf8873fdc6a06",
+      "best_checkpoint_sha256": "6d491047a1a34c0e67d067e6d75773f0df0f5df788494be08ea8b048346d2ed7"
+    },
+    {
+      "slot": 15,
+      "config": {
+        "architecture": "content_transformer",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.07
+      },
+      "manifest_logical_ref": "core-15-content_transformer-seed42/manifest-step-680.json",
+      "manifest_sha256": "6ee3adeffed05cccf8391313d8346cc69eeb74931890b11e16d89b09af1f8347",
+      "best_artifacts": {
+        "item-vectors.npy": "1bcfd387258762a0681334f0477d46a8b730394adec20c630c19dacd3d490915",
+        "metrics.json": "f1347817989a5e981b1a9c076c514782a370fb1bc552d913852166a92b1cc87b",
+        "predictions.json": "6a6f7c344852e0fbca18692999746717ae894eeb36eeb988f3d1858667892498",
+        "user-vectors.npy": "5d836b05244fc7acd9af28caa15bd33d3c4cd0733940df30befa0fabbb51950c"
+      },
+      "resource_completion_sha256": "e138aa0841aed81a908e49fa9a8156ddb4d6d2faf726e7553f38435c569c5405",
+      "best_checkpoint_sha256": "6c1890b6622d298c4802637b71f9521d894c7de5000335ae2dd31878c4c3726a"
+    },
+    {
+      "slot": 16,
+      "config": {
+        "architecture": "content_transformer",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 42,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-16-content_transformer-seed42/manifest-step-1190.json",
+      "manifest_sha256": "4d1dca62f21e3d8b32d2e199f9b523ab5f228723c83e9ab7a444f7130acc48c8",
+      "best_artifacts": {
+        "item-vectors.npy": "6248d107085ec2171cffa4dcc3c71839554fb268cc40b2ccf131052ad29ad512",
+        "metrics.json": "a3ac17fc5e4b3e44fc7a28ab0d75846889d336e2b36853e4cbc8fdf79149dfc5",
+        "predictions.json": "ca31266cfe2ad2cb9068d8db4ee48688b3a71763d9f405f45eddfcf92a4bc706",
+        "user-vectors.npy": "8b735bddb266ba619a46d2ea14c2ebd4e734010fa58f58199da30390a8f2eca4"
+      },
+      "resource_completion_sha256": "b3f1da85c4edb1b36ff486c144d488047ad35f5d8bab3973825d05076cecf1ef",
+      "best_checkpoint_sha256": "a0b8b87e9c9ffa1b0c4b149cc5b17563f7f97c1f4a2525d15bcda8777ca8f2e8"
+    },
+    {
+      "slot": 17,
+      "config": {
+        "architecture": "id_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 2024,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-17-id_mean-seed2024/manifest-step-5100.json",
+      "manifest_sha256": "f1fc34cce6e2ac0f7c621f82cd6b23d243a505d33de5451f572238e1f2679639",
+      "best_artifacts": {
+        "item-vectors.npy": "31e3b108b5187d685d97a194775cdd5cbb3afd13668e44864209d6fefdd38ce0",
+        "metrics.json": "3e55b0fec661351bf3952f0371322a525aecb5e7839563688324669b195fdbc4",
+        "predictions.json": "a81f374139448bc63709f1a2f1b1583fc6c01e5fbe7c42395ecb013ace0db824",
+        "user-vectors.npy": "966769a5aca0d629a369d34131a30cc54b280c3da68461e8233e01861eda31e9"
+      },
+      "resource_completion_sha256": "98b7f2740c0249890251d213643d6e5c331f86f1375c382b67891b9892755adc",
+      "best_checkpoint_sha256": "6a5f626c3c096b35cae66bb61647bdf479a3c8130cefbe1b64fc8ceb975d0945"
+    },
+    {
+      "slot": 18,
+      "config": {
+        "architecture": "id_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 2025,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-18-id_mean-seed2025/manifest-step-5100.json",
+      "manifest_sha256": "56c89fb0d8457fdc875753d4f5ab31b72baacbbdc60033cce3c203c4cce868d8",
+      "best_artifacts": {
+        "item-vectors.npy": "3f923f26d2fcf496e2f1e7d0245e7b2e331362f960abd6fce3e015ebc8aa7109",
+        "metrics.json": "469694d2ba94b4c75c0e648a06ace6c8fbf3d5c51f61592954432a7746ed3c10",
+        "predictions.json": "53cd6bea6c5a5765050f56f062702c420a7585bed25076521305aeab19045c11",
+        "user-vectors.npy": "3a6b29c85b23d28bca1624d860ad10db3063813ea5a6477659dda95fb7c909b5"
+      },
+      "resource_completion_sha256": "22806bbe181f06363ca56041ca50f77b5f55bec9fbfe66b72c2e932c8dab9efb",
+      "best_checkpoint_sha256": "47d687444ca46e04ce960cb1037e63e25c8ba26d07801090329de8950133d30d"
+    },
+    {
+      "slot": 19,
+      "config": {
+        "architecture": "id_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 2024,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-19-id_content_mean-seed2024/manifest-step-1530.json",
+      "manifest_sha256": "50374367985158ef8e5cb664586ed4f5c2358977924d581e16edbfeef6a366a4",
+      "best_artifacts": {
+        "item-vectors.npy": "ed7c9db907b41e5f475449d71f841b6124c4fc168d1e0081d8557bd997abc5a7",
+        "metrics.json": "d28455dbb5bbb1ab973d3ad4eb9d90510fa1df5c485765d25321ee19a4519ff2",
+        "predictions.json": "4fd3948df7de8e76fb52f116559fd09be43c7328d30e6d41ed1c9f7e33ffc35f",
+        "user-vectors.npy": "82e657c32a2b800c0c5e50598ee1dcaf7c605ba68351533e5a36ca7d9a24b908"
+      },
+      "resource_completion_sha256": "49a3b4fa9f70bd68b7186f9743401546a4748d45a1f7359ce19c10b17067d71b",
+      "best_checkpoint_sha256": "3507e77ec1474abfda46162b25db700d1c6eb0504ccf47b308cae4e17cec9b9b"
+    },
+    {
+      "slot": 20,
+      "config": {
+        "architecture": "id_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 2025,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-20-id_content_mean-seed2025/manifest-step-2040.json",
+      "manifest_sha256": "67ef035fa456524c6004ce894a01462ca329f9fadd88b5f4267a2ad0918a944a",
+      "best_artifacts": {
+        "item-vectors.npy": "b40d3267c7a9283c4bec73d0b5b4f9c397ee94433535c9d0a393d00b08c23bb7",
+        "metrics.json": "16246205aa0e10070125adae5e6c50b344b4f408aa7df7f6695ffe2eac24e838",
+        "predictions.json": "1f77b6099bbcc1cc136fde015f187d9103aa5848274c5bab18274b8802a03f85",
+        "user-vectors.npy": "8678c91ecfb0f9f979c0406be68fb5bd57e1f6d7c86f732141d236c7152e8af3"
+      },
+      "resource_completion_sha256": "afc3d08e256973819f7883d1c53f61c8dc34dd8fb457236f50aeb57092e3f1f1",
+      "best_checkpoint_sha256": "32b8ae809d2c20353fd00f8caeb3a7c1605298cb2f6a170c285fff7ee28e8181"
+    },
+    {
+      "slot": 21,
+      "config": {
+        "architecture": "ordinal_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 2024,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-21-ordinal_content_mean-seed2024/manifest-step-3230.json",
+      "manifest_sha256": "34356a4e1aa97b16e457a1bad135fe465b167f29556e28885a577501811bbbaa",
+      "best_artifacts": {
+        "item-vectors.npy": "6c2f2589150e343a6a640645c17e79e2f5a7cedbc8c2be72764938a733e64145",
+        "metrics.json": "e6573e8d5b27fcfa446c48260f760fc4d3b4c8e43cb0b5801c5af752650566c0",
+        "predictions.json": "9b958547c508c0baa3b5f87cd0c196cbe196e18ece3f54c8959a7ac479a39361",
+        "user-vectors.npy": "401d6893b4ca69273f7e93bc628ace75fa45714d1bf7a341f13a7adf55773c90"
+      },
+      "resource_completion_sha256": "18df0cba4ebdbbb6330f410c6a02a549f20c36ba8714e682ca49286cf3d5fb8f",
+      "best_checkpoint_sha256": "477c43edeec947b86cb7f0bb70248acbff59f9505e0f4891c3425cd2868a71f0"
+    },
+    {
+      "slot": 22,
+      "config": {
+        "architecture": "ordinal_content_mean",
+        "batch_size": 512,
+        "learning_rate": 0.001,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 2025,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-22-ordinal_content_mean-seed2025/manifest-step-1360.json",
+      "manifest_sha256": "07ac515ccca0cf40ec6b1770548ca853eeb7025e994d75bd527d156e4df0e596",
+      "best_artifacts": {
+        "item-vectors.npy": "4aa31d8d9dc79dac254de482a7bb33dc42e4cf08c8afea1c3cb852ccd25fe4d4",
+        "metrics.json": "b5d75b082a99dca1efef6b5fc2ad9608a9df7d0ae4b09796ba778b317c855077",
+        "predictions.json": "0a5afe3fe1b63d15b2061cdcc6453572780f106e8d4518358dc4afa973109a81",
+        "user-vectors.npy": "9e913f35bc1f735d8bf29fccfd797fe9ae44fba5e7c4b56f82b2dcd96b259b2c"
+      },
+      "resource_completion_sha256": "65aefd4b6baba0288846e3eb476bda308d5c45fa516226274cba38d95e6c0b99",
+      "best_checkpoint_sha256": "0e25b61a8b5ec771f7d4ec4a938f1aec6198c883ed09a1c20380e0ce81d0ffc0"
+    },
+    {
+      "slot": 23,
+      "config": {
+        "architecture": "content_transformer",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 2024,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-23-content_transformer-seed2024/manifest-step-680.json",
+      "manifest_sha256": "331c626545dded4b36ae602586668a2dbd750d675beb1880dcbc8f7dc7771e50",
+      "best_artifacts": {
+        "item-vectors.npy": "91d06c3da5395802280f3d60fa08bcd3cececd7b9ba45f9bd7038d9daecdf900",
+        "metrics.json": "f1347817989a5e981b1a9c076c514782a370fb1bc552d913852166a92b1cc87b",
+        "predictions.json": "5ed4d94df08e6ace540b7f440eda9368d657f3a3dae39f4e5308975bb55e6e8d",
+        "user-vectors.npy": "a3f0f82e5f4a74f479721f3f7a7f584b9edb40cda173a654635dd268c24ad9af"
+      },
+      "resource_completion_sha256": "c1fa8c8437d38d3c6be961f239cf8880848f0d269f20f57fbe6ce7fb3dd7f185",
+      "best_checkpoint_sha256": "0cc16a3f815c175521e394b7f044c15322068d59ff12e72e404f2c1973499daf"
+    },
+    {
+      "slot": 24,
+      "config": {
+        "architecture": "content_transformer",
+        "batch_size": 512,
+        "learning_rate": 0.0003,
+        "max_epochs": 30,
+        "patience": 3,
+        "precision": "fp32",
+        "schema_version": 1,
+        "seed": 2025,
+        "task_id": "P4D",
+        "temperature": 0.15
+      },
+      "manifest_logical_ref": "core-24-content_transformer-seed2025/manifest-step-680.json",
+      "manifest_sha256": "b6c07a76ab90736d34e707d1d7ca2a0d097ea7c4eb2808d3be3db0dc64cc5f0f",
+      "best_artifacts": {
+        "item-vectors.npy": "c17ab3a4243f6089c86bdc258f34b9a328c892438af421cb5bb54a58216a556c",
+        "metrics.json": "29412eb135d89a55bed82875819835727cdc1aa4c61b70c7f3624d0b5e914cbc",
+        "predictions.json": "03d36a5fa2696bacb184a9e488bca8be261a2e7327b1dc3c1043600e9da897f7",
+        "user-vectors.npy": "7868d15325f28dedbfe827741fe4bd3ba339b4aac64c930110c5e0a383f6d457"
+      },
+      "resource_completion_sha256": "53798d9def7ae3a71dd31fff25c0e51658f5426315ff798ffe115a682334fdee",
+      "best_checkpoint_sha256": "47121bb047183ac31fa05f147ec3182dc340b2a752af0f27a00ff352a0e84f4d"
+    }
+  ],
+  "limitations": [
+    "validation only; no test metrics",
+    "fixed budget; no extra HPO or bestseed",
+    "weak content models retained; no causal claims",
+    "historical source manifest is source-stage evidence; actual formal producer identity pinned here"
+  ]
+}

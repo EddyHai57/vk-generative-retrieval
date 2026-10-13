@@ -1,0 +1,27 @@
+{
+  "files": {
+    "src/vkgr/retrieval_ann.py": "0e414d5117205dd9641bffa5232118574948a726bd73d1a078eda9523eeb2836",
+    "src/vkgr/retrieval_fusion.py": "5f67b553f8661ab81488ec15a32336c139789721901ff9d94511a66352ddbdeb",
+    "src/vkgr/retrieval_infer_run.py": "7ea1f2ba50e6e05c3fbcb43cbce60bd92c1095a4b0c06634bfb29166e581a227",
+    "tests/test_p4d_v2_verifier_compat.py": "d3b679170f9afaf7203736440aa06f1a37841ba8fd494081d53a1d403f88e901",
+    "tests/test_retrieval_ann.py": "ebfbfce1fe44ae9a40610428a70db35106687561e7c3101edc23aaf32bfa4c27",
+    "tests/test_retrieval_fusion.py": "285b986a35a43af1f786450db8f027c946718e14a55bf4e1804878f77000554d",
+    "tests/test_retrieval_infer_run.py": "50056e6a9562da65736f1ecaec6466aa048499bb4c1016f50f2b156f6b05b9de"
+  },
+  "fixture_revision": "historical exact membership/hash; new project modules isolated, producer mutations rejected",
+  "kind": "local_consumer_source_review",
+  "limitations": [
+    "real FAISS integration pending existing dependency",
+    "exact offline inference; ANN index audit separate",
+    "no server or test evaluation executed",
+    "Linux and power-loss durability unverified"
+  ],
+  "metrics_pointer": "docs/experiment_log.md",
+  "previous_manifest_sha256": "5f94f22f9f2ce6e2a4e7d91cd3ce925364f599ca8c8e8a439d7c419b3a7d35a3",
+  "schema_version": 1,
+  "scientific_plan_sha256": "8d8e2a657824743f02cb9f7360dfeda9b120b7b26f81a9deec6ac49040257f3d",
+  "scientific_source_sha256": "573c1bdc586f27ead094bf20d497ae16a447264faedbaf421302e230b147a508",
+  "status": "local_implementation_ready_awaiting_coordinator_acceptance",
+  "task_id": "P4F",
+  "validation_pointer": "docs/p4f_validation.md"
+}

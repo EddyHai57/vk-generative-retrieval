@@ -1,0 +1,59 @@
+{
+  "artifacts": {
+    "graph.json": "ac12e49e46c76407deb8c798089956109ad47a314b89c4f04e81d4be6a5a724c",
+    "legacy-regression.json": "b40df6fc83745fd37067826af6d6c627b007603d26a3147d2f4062d584f0934a",
+    "metrics.json": "b53f8378e46094951f0be80a204d4b604b78d4c08de2a425b5a972556a1f2dbd",
+    "predictions.json": "1e89bdd9e9deec2627cd186d7b77d2f2afdcdab8b3599bb60598f745e4b6f8ea"
+  },
+  "catalog_identity_sha256": "80201c574fad26bd29f2e2425a5ad98db8fe7c2a9be91e07d2fc6aedc48d47f3",
+  "claim_boundary": "fixed baseline validation exploration; no test/online/causal/ANN/TT claims",
+  "config_sha256": "00b8122cc251465506779e79f3820fb7f5a2b674bd22e2d741dd1b65a54bc8d1",
+  "dependencies": {
+    "PyYAML": "6.0.2",
+    "numpy": "1.26.4",
+    "pyarrow": "19.0.1",
+    "torch": "2.11.0+cu128"
+  },
+  "independent_acceptance": "P4C Complete: independent source/final docs/public review, Astra full regression and full raw/pair graph/all-query strict rank/metrics/coverage/fill/legacy audit passed",
+  "legacy_validation_sha256": "726965d6eae9049e27f8636fe39c0aa96dadb493311dd954f039367584bb2e5b",
+  "lock_sha256": "8b231cef0c5056b4a6a8365f5a02070ba4e1c043b55fc9faa020188c10bf2063",
+  "metrics_ref": "docs/experiment_log.md",
+  "parent_p4b_public_manifest_sha256": "d31cc460273c3d94afc48b70f976cd0697aa893af5107d2495f772fd031781f0",
+  "prepared_manifest_sha256": "7f3ccd70c02157542e94f41f39e62988fbd650b4be8976455ff20cfe1e4394d2",
+  "prepared_original_source_fingerprint": "5868c2c5db3df83bcd8f15a0235aba39a31ea4a6d532f31a4a69dfe1699fe6fe",
+  "production_full_input_replay_status": "verified",
+  "protocol_version": "traditional-like-v1",
+  "python": "3.11.16",
+  "query_identity_sha256": "9077a1c9495d494bc8ec209c0bf3305fd68db5bfcca24abcadc4a1e552e60a97",
+  "runtime_final_manifest_sha256": "596b2df22449491f9627d2024310275ebce1bca4c898c3f8a33ed08dca25cc64",
+  "runtime_git": {
+    "commit": null,
+    "dirty": null
+  },
+  "schema_version": 1,
+  "source_and_test_files": [
+    {
+      "path": "src/vkgr/retrieval.py",
+      "sha256": "40a9d636cf1f31b08d1fcd0e1501ef5137083d920e40bb3109ae1b31cece810c"
+    },
+    {
+      "path": "src/vkgr/retrieval_baselines.py",
+      "sha256": "d49c18a5a63de38f84b6b7ab14805a7d05e7726d99d3bf33bbdf13802754cc39"
+    },
+    {
+      "path": "tests/test_retrieval_baselines.py",
+      "sha256": "82882e8aa1430fba251321c65c9676c5e6d49eeb3529e4fb2d1c72dd1056c6aa"
+    }
+  ],
+  "source_fingerprint": "d3f0eb1c644e95430e8eb27703515159ceda7099ca95d54853693aa0d2d99452",
+  "source_transport_origin": {
+    "git_commit": "0376d9a8119f3500cbf78519675cc7bf18013c1b",
+    "git_dirty": true,
+    "source_fingerprint": "d3f0eb1c644e95430e8eb27703515159ceda7099ca95d54853693aa0d2d99452",
+    "upload_ledger_sha256": "af1eda070431240c1187ce6e8a77e4c5729a7477131f89e618012ae675db9b7f"
+  },
+  "status": "accepted_by_coordinator",
+  "task_id": "P4C",
+  "test_gate": "closed_hash_only_no_new_test_values",
+  "validation_ref": "docs/p4c_validation.md"
+}

@@ -1,0 +1,27 @@
+{
+  "batch_size": 64,
+  "beam": 20,
+  "beam_normalization": "full_vocab_before_constraint",
+  "checkpoint_step": 100,
+  "clip": 1.0,
+  "d_model": 128,
+  "decoder_layers": 2,
+  "dropout": 0.0,
+  "encoder_layers": 2,
+  "eos": false,
+  "ff": 512,
+  "global_deadline_utc": "2026-10-07T02:46:21+00:00",
+  "history_items": 50,
+  "ks": [
+    10,
+    20
+  ],
+  "lr": 0.001,
+  "max_steps": 1000,
+  "max_train_seconds": 2700,
+  "nhead": 4,
+  "seed": 42,
+  "task_id": "P6",
+  "train_deadline_utc": "2026-10-07T02:16:21+00:00",
+  "weight_decay": 0.01
+}

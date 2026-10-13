@@ -19,7 +19,7 @@ data:
   final_holdout: pending
 
 resources:
-  default_gpu: Thunder_Compute_RTX_A6000_48GB
+  default_gpu: Vast_ai_RTX_A6000_48GB
   gpu_memory_gb: 48
   ram_gb_min: 64
   disk_gb_min: 300

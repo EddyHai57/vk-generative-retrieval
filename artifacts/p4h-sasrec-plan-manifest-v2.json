@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "task_id": "P4H-01",
+  "kind": "p4h_sasrec_plan_freeze",
+  "status": "LOCAL_FROZEN_REMOTE_BLOCKED",
+  "source_plan": {
+    "logical_ref": "main:.agents/tasks/model-audit/p-sasrec-parallel-plan-v5.md",
+    "sha256": "ea3f7566750c4fad13dfba80fd03a5f8fdf7e81c4c68aa8912b09b3e0e732121"
+  },
+  "source_review": {
+    "logical_ref": "main:.agents/reviews/p-sasrec-parallel-plan-v5-review.md",
+    "sha256": "3de5ad402b6dd9e033d068567d046071ba4998e888914f5ac49c155c035287a1",
+    "verdict": "APPROVED"
+  },
+  "members": {
+    "configs/p4h-sasrec-v2.json": {"bytes": 7456, "sha256": "54dc204db580028d0b148d33bb88580d85262d5d0c63d2e75b70a900a86a31c3"},
+    "docs/p4h_sasrec_protocol_v2.md": {"bytes": 6317, "sha256": "5f0ddd361534e42bdc600f64ef853c7e012a05729df74b1b1e800f15bbe785f2"},
+    "src/vkgr/retrieval_sasrec_plan.py": {"bytes": 35165, "sha256": "0abeae8ad74473fc2021456a164a72a1969a93ec05ccd698ea93147f4d08cf31"},
+    "tests/test_retrieval_sasrec_plan.py": {"bytes": 14377, "sha256": "53649a2f32dd7e45aac9dd5db9613df7c9352cc84ea02e841e0185b3c16a80aa"}
+  },
+  "manifest_self_hash_policy": "external_after_freeze_no_self_reference",
+  "task_ids": 9,
+  "formal_slots": 12,
+  "pilot_static_cases": 4,
+  "verifier_role_counts": {"pilot-verify": 21, "formal-verify": 27, "infer-route-verify": 25},
+  "commands": 11,
+  "remote_decisions": {
+    "D-P4H-REMOTE-01": "BLOCKED",
+    "D-P4H-REMOTE-02": "BLOCKED",
+    "D-P4H-G5-01": "BLOCKED_DEFAULT_ORIGINAL_P4D_TT"
+  },
+  "common_test": "CLOSED",
+  "p4g_freeze_preserved": true,
+  "g4_cutoff_default": "ORIGINAL_P4D_TT",
+  "p4h_blocks_g5": false,
+  "remote_actions": false,
+  "p4h_02_started": false,
+  "commit_push_publish": false
+}

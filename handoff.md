@@ -1,131 +1,49 @@
-# Handoff
+# KIRO_CONTINUES / CODEX_PRELOAD_ONLY — P4H-03B恢复入口（2026-10-11）
 
-密级: 公开
+Eddy最新明确Kiro继续作为G/P两线唯一协调与执行owner；Codex只是提前只读了解进度，不发生owner迁移，不得启动writer、monitor或job，除非Eddy以后明确切换。P路径`<P_WORKTREE>`，branch `codex/p4e-ablations`，HEAD `0376d9a8119f3500cbf78519675cc7bf18013c1b`；大量未提交tracked/untracked改动必须原样保留，no discard/reset/stash/commit/push。P4H-01 targeted15；02 own10/combined23；03A own12/related60；03B v6 source/test `fd53b42adb990ba8f3b95148a250b20cf4dcbeb7d5e56ed1781cf3d54c2982d9`/`00e70e01bfac14e1e0279b024d8775ea0bdde13391a2f88dd054652babd0eb0a`，最终review-required11、targeted74、legacy51、full301+2skip，无已知半写code edit。Kiro正在进行v6独立fresh review；最新独立review `.agents/reviews/p4h-local-operation-v5-fresh-review.md` 两个HIGH仍未关闭，v6 packet `cache/p4h-local-operation-review-v6/review.json` SHA `9bf8c4cf11612db72367800bad9d646179e32aee5e1bdaf334ddc1c15a75e6a6`只是READY候选。Packet内facts hashes是本次owner纠正前快照；本次只改STATE/handoff/tasks current状态，source/test/packet bytes未变。same-UID恶意整体自洽重写out of scope；P4H-04/remote/SSH/GPU/train/infer/test关闭。
 
-> 新对话接力入口。当前阶段、阻塞和下一task只读`STATE.md`；路线定义只读`tasks.md`。
+# 历史：P4H-03B v6 READY_FOR_FRESH_REVIEW（2026-10-11）
 
-## 恢复顺序
+Source/test SHA `fd53b42a…82d9`/`00e70e01…b0a`；fresh RED为4 tests中3 failures+2 errors，最终review-required11、targeted74、legacy51、full301+2skip。Ignored packet `cache/p4h-local-operation-review-v6/review.json`；独立review未完成，不称APPROVE。主仓decision/issue固定approved threat boundary与same-UID out-of-scope；remote/P4H-04/test/SSH/G关闭。
 
-1. 读取`AGENTS.md`
-2. 读取`STATE.md`
-3. 读取本文件的“上一轮证据”和“恢复检查”
-4. 按`STATE.md`指定的task读取`tasks.md`及相关`docs/`
-5. 先复述scope、验收与stop gate，等Eddy确认后执行
+# 历史：P4H-03B v6修复恢复入口（2026-10-11）
 
-## 上一轮证据
+当前`LOCAL_FIX_IN_PROGRESS`。唯一issue指针为主仓`docs/issue_log.md#p4h-03b-v5-operational-evidence-closure2026-10-11fixing`；信任边界见主仓`docs/decision_log.md#2026-10-11--p4h-operational-integrity-信任边界`。只修03B source/tests与必要03A tests，目标ignored packet `cache/p4h-local-operation-review-v6/`；same-UID恶意整体自洽重写明确out of scope。Remote/P4H-04/test/SSH/G关闭。
 
-- Eddy手动将thin规则落位为`AGENTS.md`
-- Harness已拆分：AGENTS保存稳定规范，STATE保存当前快照，handoff保存接力证据，tasks保存路线
-- README改为公开导航；CLAUDE只保留兼容指针
-- P2/P3/P4/P8/P9阶段owner冲突已修正
-- P1 Smoke固定为synthetic/local CPU/no network
-- `.gitignore`采用default-deny，拦截数据、大产物、凭据和本地治理草案
-- Scaffold与Harness的fresh-context review最终通过
-- Eddy明确批准创建bootstrap commit；本handoff随P0 scaffold进入该commit
+# 历史：P4H-03B 完成恢复入口（2026-10-11）
 
-## 最近验证证据
+03B已`COMPLETE_LOCAL_FROZEN / READY_FOR_OVERALL_FRESH_REVIEW`。Operation/test SHA `c54d7cb3…f238`/`256bf44b…fa8`；指定classes10/10、own14/14、full280 total（278 passed+2既有conditional skip）。Ignored packet `cache/p4h-local-operation-review-v2/review.json` SHA `f2decceb…205af`，包含RED/GREEN、hash inventory、synthetic proof并明确独立review未完成。01/02/03A和旧P4D/E bytes不变；下一步仅01～03B整体fresh review，不开始P4H-04或任何remote/test/G动作。
 
-- Thin AGENTS内容与预审版本一致
-- P0～P13阶段编号和owner对齐
-- 3份YAML解析与关键contract检查通过
-- 7类敏感future paths的`git check-ignore`检查通过
-- Secret、内部字段与废弃口径定向搜索无匹配
-- 无生产`.py/.sh/.ipynb`和空文件
-- Commit前本地Git为`main`、commit=0、remote=0
+# P4H-03A 完成恢复入口（2026-10-11）
 
-这些是上一轮的时间点证据，不是永久当前状态；新对话必须重新读取`STATE.md`并执行必要的只读检查。
+Science/test `COMPLETE_LOCAL_FROZEN`，SHA `ce4274435c001b52e191a0d254943c2b96485915d05093db9ca0095eb2afb77a`/`86558a6747a2e759c3fb2667ec999c8bb3ec2048ea7f975b9dfbc944c0bdbc8c`；own12/12、related60/60。03A仅typed in-memory API；无CLI/manifest/path/process ownership。P4H-01/02与旧source不变，03B/remote/test/G未触碰；下一等主owner明确local task。
 
-## 恢复检查
+# P4H-03A 当前恢复入口（2026-10-11）
 
-在执行`STATE.md`的下一task前，按任务需要核对：
+仅两文件typed science TDD；无CLI/manifest/path/process。输入为P4H-01 frozen registry与P4H-02 model，输出finite in-memory science records、negative summary、strict80/shard verifier；03B以后才拥有operation/IO。前序bytes冻结，remote/test/G不触碰。
 
-```text
-AGENTS/STATE/handoff/tasks是否存在
-当前branch/commit/remote
-git status与staged files
-YAML和本地链接
-secret/data ignore边界
-```
+# P4H-02 完成恢复入口（2026-10-11）
 
-不得仅凭本handoff中的历史输出声称当前仍然通过。
+Model/test `COMPLETE_LOCAL_FROZEN`，SHA `301b7086af2a2ada58e28c4440d18c880bdd50ddf7ccafc19fd470dcfb80f00c`/`2be2a3aa70f1dad109db242cc0bfa816379a6048840b88d81efbedb07365c78b`。Fresh RED 1 fail/9 skip；own10/10 clean、combined23/23、training6/6 clean。P4H-01与旧P4D/E bytes不变。P4H-03A、remote、test、G未触碰；下一步等主owner明确新local task。
 
-## Housekeeping记录
+# P4H-02 当前恢复入口（2026-10-11）
 
-- 旧`AGENTS.draft.md`未删除
-- 文件已被`.gitignore`排除
-- 是否删除或归档由Eddy决定
+只新增model/test两文件；P4H-01 manifest `2dfe420b…55c0` 与旧P4D/E source冻结。目标是固定ID-only causal last-valid模型并复用现有training `items/users`接口；先RED后最小GREEN，最后跑自身+`test_retrieval_models`+`test_retrieval_training`。P4H-03A、remote、test、G均不触碰。
 
-## GitHub说明
+# P4H-01 完成恢复入口（2026-10-11）
 
-GitHub remote不属于当前状态事实，本文件只保留方法：
+P4H-01 `COMPLETE_LOCAL_FROZEN`：15/15 targeted，artifact manifest `artifacts/p4h-sasrec-plan-manifest-v2.json` SHA `2dfe420b2760327e240e15c12c4702e03ede613e4d47ccbfa87e467d1cb855c0`。Source/test/protocol/config SHA见STATE；v2→v5 plan链、11 local protection pins、P4G/test/G cutoff均核。五个owned files从此冻结，后续只import/read；P4H-02未开始，remote/test全BLOCKED。无SSH/GPU/真实data/G操作/commit/push。
 
-- P1本地开发不依赖remote
-- 创建public remote和push属于外部公开操作，必须单独确认
-- 可以由Eddy手动创建，或明确授权Kiro使用`gh`
+# P4H-01 当前恢复入口（2026-10-11）
 
-## 下一次接手重点
+Approved v5 plan/review：主仓 `.agents/tasks/model-audit/p-sasrec-parallel-plan-v5.md` SHA `ea3f7566…2121`，review SHA `3de5ad40…7a1`。唯一owner为workflow `wf_b7bb4145e48775ed`；只允许五个P4H-01 owned files做local TDD并冻结bytes。P4G freeze/test closed、G优先/cutoff不变；三remote decisions BLOCKED，不开始P4H-02或任何remote。
 
-以`STATE.md`指定的P1为准。
+# P4G 当前恢复入口（2026-10-11）
 
-P1只实现基础代码与可审计运行框架：config schema、run manifest、logging、deterministic seed、synthetic fixture和targeted tests。
+P4F target `c227d3ab…5d437` 已获fresh review APPROVE（report `92459e74…d9f3`），正式关闭且不重跑。P4G pre-test freeze review `cache/p4g-pretest-freeze-v1/review.json` SHA `c8fd0ffa76f2a884bddb8e8b7607c41f3fd77731dbeff8f501c51786c4700e8d`，freeze SHA `c0bf8ddc9cdbee1a5902f364c3a84717f2c4e17662bcb3995eec4146743c3f87`。33/33 prereg runs齐全、missing/duplicate=0；传统selection/fusion已freeze，6条remote operational failure ledger保留。
 
-不得提前下载真实数据、连接GPU或实现P2～P13。
+当前只等待shared G selection/fusion：test input未读、metrics未算，P不新增remote job/search。恢复后先读freeze.json与主STATE，不重核P4F；共同test只能single finite pass且不得回调选择。
 
-## 新对话启动提示词
+# P4F paused by Eddy
 
-```text
-请先读取AGENTS.md、STATE.md和handoff.md。
-以STATE指定的下一task为准，再读取tasks.md和docs/codex_handoff.md。
-先复述scope、验收与stop gate，等我确认后执行。
-不要自动创建remote/push或计费资源，不要跨阶段。
-```
-
-## P1启动接力（2026-10-07）
-
-用户已批准P1 scope、独立worktree与首次必要依赖联网准备。当前隔离worktree fresh核对：基点df32a1a16a03d6f40e1a1516d95d513413a49916、clean、remote 0；detached HEAD已切换到同基点的codex/p1-runtime。Git共享metadata默认sandbox写入失败，经授权escalation后成功；没有修改main文件、Git配置或创建重复worktree。Python 3.11.17、uv 0.12.23为主协调对话安装的接力证据，本轮已fresh复核；系统Python只启动uv，不运行项目。
-
-## 最新P1交接 — 待主协调Agent验收（2026-10-07）
-
-本节承接上方P0历史记录；P1 scope、独立worktree与首次必要依赖准备已经用户批准，不重复询问。当前状态唯一源是STATE。
-
-- HEAD与批准基点一致；branch codex/p1-runtime，remote0，staged为空。未commit/push/改Git配置；原main fresh检查clean。
-- 串行完成config→runtime→manifest→CLI，未委派worker，未实现P2及之后接口。
-- 严格config schema、重复YAML/JSON keys拒绝、人工fixture校验、独立seeded整数计算、exclusive输出目录与文件、stderr logging及exit codes、manifest schema v1与hash/语义校验。
-- 当前worktree独立.venv为Python3.11.17/PyYAML6.0.2；首次uv0.12.23联网真实生成uv.lock。只审计本轮PyYAML MIT dependency，未来I-007仍Open。
-- fresh full unittest 31项通过；两次persistent smoke和各自verify通过，result字节/hash相同；manifest除时间/elapsed/output路径外字段相同。
-- Persistent产物：`outputs/p1-20261007-6ec7-a/`、`outputs/p1-20261007-6ec7-b/`。完整hash/命令及实际manifest检查见`docs/p1_validation.md`，不把模型效果数字写进本文件。
-- 8个tracked授权文件修改、17个untracked授权文件；两份小manifest保持untracked可review，两份result按既有规则ignored，.venv ignored，无残留test temp目录/未解释repo文件。无真实数据/模型产物/secret/内部内容。
-- RED/GREEN ledger保留所有真实失败，也标注了无效errors、oracle修正、symlink测试误通过与文档尾空格失败；不补造历史。
-- 关键复盘见issue I-017～I-021；实现作者已读回自检并补fixture symlink修复，自检不冒充fresh-context review。
-
-下一动作：主协调Astra在本worktree fresh核对所有diff（包括untracked），运行`PYTHONPATH=src .venv/bin/python -B -m unittest discover -s tests -v`，用全新唯一P1目录smoke/verify并检查manifest，复核hash/fingerprint/Git/secret/大产物边界。当前只称Implementation ready / awaiting coordinator review，不称P1 Complete。
-
-Known limits：hash检查一致性而非真实性；verify要求保留匹配输入/源码，源码fingerprint变化将明确拒绝；不实现并发输入修改/symlink竞态或I/O transaction，失败目录不自动删除也不复用。未测峰值RAM/CPU，无模型质量评估。最终review、commit、merge或P2均未执行。
-
-## 最新协调验收 — P1通过，停在commit前（2026-10-07）
-
-本节取代上方“待主协调Agent验收”的下一动作；上方保留为实现交接历史证据。
-
-- 主协调Agent未参与P1实现，本轮独立读取全部生产源码、测试、tracked diff、untracked文件及验证ledger，完成fresh-context review；在批准P1范围内无阻塞发现。
-- Fresh完整unittest：31项通过、exit0。新建outputs/p1-coordinator-20261007-a与-b，两次CLI smoke、verify及cmp均exit0。
-- 独立hashlib检查config/fixture/result/source fingerprint，核对manifest必需字段、运行环境、Git基点、repo-relative路径和稳定字段一致；具体hash与命令统一见docs/p1_validation.md的协调验收节。
-- 原main仍clean；branch codex/p1-runtime、HEAD仍为bootstrap、remote0、未stage/commit/merge/push。仅协调验收产物与治理文档有新增变化，生产源码未修改。
-- 当前8个tracked修改、19个授权untracked；四份result与.venv ignored，无未解释文件。P1 Complete不表示代码已合并到main。
-- 历史RED/GREEN按ledger审查，未声称重新执行历史中间版本；当前GREEN由协调Agent重新运行。
-- 限制继续有效：只证明synthetic scaffold；hash不认证真实性；不保证并发输入变动或I/O transaction，不包含模型质量、GPU或真实数据结论。
-
-下一动作：等待Eddy明确批准commit或下一步。不要自动进入P2；本worktree与全部未提交证据必须保留。
-
-## P1本地整合授权（2026-10-07）
-
-Eddy已明确批准P1 commit并合并main，当前开始本地整合；未批准本次remote/push或自动租用服务器。新增阶段汇报要求已写入docs/codex_handoff.md。提交前fresh unittest再次31项通过（2.757s，exit0）。四份运行manifest/result保留原worktree本地，hash已在验证文档保存；本次只提交原创源码、配置、lock、synthetic fixture、测试与文档，不将临时运行目录纳入提交。整合完成后再更新当前快照。
-
-## 最新本地整合结果（2026-10-07）
-
-本节取代上方等待commit/merge的下一动作。Eddy已批准本地commit与合并：P1实现commit为9f8f6555f41931019c968477920a69d36699fb55，24个原创代码/配置/测试/文档文件，已fast-forward合并main。随后追加本次状态与验证收口文档提交；最新HEAD以fresh Git为准。
-
-main以uv --offline --locked从本地cache建立自身.venv，fresh完整unittest 31项通过（2.834s，exit0），包含CLI smoke/verify、确定性与边界验证。未借用其他worktree产物。生产源码没有额外修改，source fingerprint保持不变。
-
-四份persistent manifest/result保留原P1 worktree且未纳入提交，hash见docs/p1_validation.md。分支/worktree均保留，未删除任何运行证据。原main的AGENTS.draft.md仍ignored。Remote0，未push，未连接服务器/使用GPU/下载真实数据。
-
-下一步：用户自行创建空GitHub仓库；remote/push需后续明确授权。P2须单独确认scope、预算、SSH访问与acceptance probe。截图中48GB RAM低于runbook的64GB门槛，已建议8vCPU/64GB，尚未把推荐当作实际实例事实。每part按docs/codex_handoff.md新增的过程/成果/问题处理/下一步顺序汇报。
+All work paused; wait explicit Eddy resume. No new observation or read performed for this pause. Original second attempt evidence cache/p4f-fresh-attempt-actual-v1; fixed read evidence cache/p4f-second-attempt-receipt-read-v1; local targeted RED/GREEN schema revision cache/p4f-legacy-pair-schema-revision-v1. Last known native pipeline not invoked; preflight historical wait reaped/non-timeout/owned-group-closed. Fresh remote global state unknown. Local fix sent to coordinator Sol; acceptance not yet received. Pending continuation revoked, third attempt not submitted. Preserve existing processes, artifacts, spent budgets and sole owner; conversation pause does not imply remote training stopped.

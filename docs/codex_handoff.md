@@ -1,3 +1,9 @@
+# 当前工作流唯一指针
+
+Eddy于2026-10-09批准的最新三对话协议：主协调 `<MAIN_REPO>/docs/codex_handoff.md`；实施计划同主协调 `docs/superpowers/plans/2026-10-09-agent-workflow.md`。本worktree只维护此指针，保留科学合同与运行预算。任务内自主实现/TDD/必要regression，默认不另spawn reviewer；固定packet交Astra一次fresh独立验收，真实运行仍exact-start。敏感runtime server就地绑定，通知仅脱敏摘要/整体hash；被拒一次保留，由wait/local兜底。
+
+## 历史协议（工作流条款由上述新指针覆盖；科学/安全边界保留）
+
 密级: 公开
 
 # Codex Handoff
@@ -52,7 +58,7 @@ Bootstrap commit存在前，不得创建P1 branch/worktree，也不得开始实�
 - 调用外部服务、上传数据、创建公开发布物。
 - 任何可能暴露 credentials、数据、模型产物或个人信息的操作。
 
-不得上传 HelloBike 或任何其他公司的内部数据、schema、代码、文档、截图、日志与业务信息。
+不得上传 任何公司的内部数据、schema、代码、文档、截图、日志与业务信息。
 
 不得把 secret、token、私钥、原始数据、checkpoint、index、完整 SID map 或服务器连接信息提交到 GitHub。
 

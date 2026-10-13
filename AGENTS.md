@@ -51,7 +51,7 @@
 - Public Git只允许原创代码、配置、文档、synthetic fixture、脱敏manifest和小型指标摘要。
 - Raw/processed data、完整embedding、checkpoint、optimizer state、index、trie、完整SID map和逐query预测不得进Git。
 - Secret、token、私钥、signed URL、服务器连接信息不得写入仓库或聊天。
-- HelloBike及其他公司的内部数据、schema、代码、文档、截图、日志、指标和业务信息不得进入本项目。
+- 任何公司的内部数据、schema、代码、文档、截图、日志、指标和业务信息不得进入本项目。
 - 第三方代码先做provenance/license审计；没有明确兼容许可时只按论文独立实现，不复制代码。
 
 ## 事实源
@@ -80,3 +80,7 @@
 3. 按类别更新decision/experiment/issue事实源。
 
 Hook只能提醒更新，不得自动编造状态或实验结论。
+
+
+## 最新工作流指针（2026-10-09 Eddy批准）
+三对话职责、完整task自主实施、一次最终独立验收、既有worktree复用及通知去重，按主协调 `<MAIN_REPO>/docs/codex_handoff.md` 与 `docs/superpowers/plans/2026-10-09-agent-workflow.md`。覆盖本文件旧逐微步骤审批、多重review要求；不覆盖科学合同、预算、公开边界或实际exact-start。默认不自派reviewer，Astra完成一次验收；runtime敏感值server就地绑定，仅整体证据hash回传。每文件一个writer，保留既有worktree，不commit/push。

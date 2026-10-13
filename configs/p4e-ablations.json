@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "task_id": "P4E",
+  "architecture": "id_mean",
+  "learning_rate": 0.001,
+  "temperature": 0.15,
+  "batch_size": 512,
+  "max_epochs": 30,
+  "patience": 3,
+  "precision": "fp32",
+  "weight_decay": 0.0001,
+  "gradient_clip": 1.0,
+  "extra_negatives": 128,
+  "seeds": [42, 2024, 2025],
+  "ablations": ["uniform_negatives", "user_balance", "watch_history"],
+  "test_gate": "closed_hash_only"
+}

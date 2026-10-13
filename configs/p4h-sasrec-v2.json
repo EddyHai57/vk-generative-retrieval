@@ -1,0 +1,70 @@
+{
+  "accepted_inputs": {
+    "p4d_core_manifest": "6ddccee458c3c66bb185d51527c0dc32981ae83949efe420eef97ed45881ac6e",
+    "p4d_representative_checkpoint": "5a8549b8f1fe6799028f3f2b71fb4226a28c7516486044ffde11c0b9088725db",
+    "p4d_runtime_config": "d96ef65a7d3946edf0d1b6010e6e4b91bf2bf1d9d0843973df7d2aaf0acd272c",
+    "p4e_completion": "7ffcf57e1c4aedf15b73e12c1ebfc07e1f9d72da29a131d3a3d38f1ebcb7da65",
+    "p4e_config": "dd094dd7cb378feefe48a89b26934c45899f9c13e547d15d427bd9504ce614cd",
+    "p4e_manifest": "b25336929fe6b94d24a5e847343f63cfe4c54b24ae0f9cd9b6f05deab58c58cc",
+    "p4e_summary": "64af9526000212fcb6ffa3159a60b2b894b1619b7dba0507761f359ca8600623",
+    "p4f_ann_source": "00732bc23f1130d9fcc83d0d592ec0bc8fab36e197d841ef8d203ad9539181b0",
+    "p4f_export_manifest": "1cdf012b8ebf31c1b1dc67cf66503b51f0cf08d95b3b659ca9d5ee4ec14e0fe8",
+    "p4f_fresh_review": "92459e7429291d50fb7bb87472c1ea6380fac604b5e255a62cdbbd0e771dd9f3",
+    "p4f_fusion_manifest": "3f4301f1b3152984ce6972c302ab760fcbcf8264458290a30a43a283421c6da7",
+    "p4f_fusion_source": "5f67b553f8661ab81488ec15a32336c139789721901ff9d94511a66352ddbdeb",
+    "p4f_infer_completion": "60f28a36045840ebafeaf97c907ee9bebaa143537e9ce42adcb263592e0c402d",
+    "p4f_infer_source": "c43d6d50cdc70c87f02e817658b350a50db469880e55b3e05f7d337fe098ae97",
+    "p4f_target_review": "c227d3ab6c75bf632b5ebde550b51c3397fc75510494f4ce5c3c95e77885d437",
+    "p4g_freeze": "c0bf8ddc9cdbee1a5902f364c3a84717f2c4e17662bcb3995eec4146743c3f87",
+    "p4g_freeze_review": "c8fd0ffa76f2a884bddb8e8b7607c41f3fd77731dbeff8f501c51786c4700e8d",
+    "p4g_selection": "2fe523023eb38e09308a7e26e17fee793146698c1caa2f596c8ba18a4f9534b9"
+  },
+  "best_seed_selection": false,
+  "common_test": "CLOSED",
+  "contract_registry": {
+    "commands": ["prepare-controller", "pilot", "pilot-verify", "formal-train", "formal-resume", "formal-verify", "select", "completion-verify", "summarize", "infer-route", "infer-route-verify"],
+    "feed_descriptor_schema": "p4h-g-feed-descriptor-v2",
+    "pilot_roles": ["code-archive", "source-fingerprint", "dependency-lock", "python-executable-receipt", "controller-executable", "prepared-train-rows", "watch-train", "catalog", "idmap", "train-prefix-target-free-sidecar", "p4h-plan", "p4h-config", "p4h-protocol", "g-feed-descriptor", "cooperative-stop-control-schema"],
+    "sealed_predecessor_schema": "p4h-sealed-predecessor-operation-v1",
+    "verifier_role_counts": {"formal-verify": 27, "infer-route-verify": 25, "pilot-verify": 21}
+  },
+  "formal_slots": [
+    {"encoder": "id_only_sasrec_style", "history_source": "like", "learning_rate": 0.001, "role": "secondary_screen", "seed": 42, "slot_id": "P4H-S01", "temperature": 0.07},
+    {"encoder": "id_only_sasrec_style", "history_source": "like", "learning_rate": 0.001, "role": "screen_and_primary_matched", "seed": 42, "slot_id": "P4H-S02", "temperature": 0.15},
+    {"encoder": "id_only_sasrec_style", "history_source": "like", "learning_rate": 0.0003, "role": "secondary_screen", "seed": 42, "slot_id": "P4H-S03", "temperature": 0.07},
+    {"encoder": "id_only_sasrec_style", "history_source": "like", "learning_rate": 0.0003, "role": "secondary_screen", "seed": 42, "slot_id": "P4H-S04", "temperature": 0.15},
+    {"encoder": "id_only_sasrec_style", "history_source": "observed", "learning_rate": 0.001, "role": "secondary_screen", "seed": 42, "slot_id": "P4H-S05", "temperature": 0.07},
+    {"encoder": "id_only_sasrec_style", "history_source": "observed", "learning_rate": 0.001, "role": "screen_and_primary_matched", "seed": 42, "slot_id": "P4H-S06", "temperature": 0.15},
+    {"encoder": "id_only_sasrec_style", "history_source": "observed", "learning_rate": 0.0003, "role": "secondary_screen", "seed": 42, "slot_id": "P4H-S07", "temperature": 0.07},
+    {"encoder": "id_only_sasrec_style", "history_source": "observed", "learning_rate": 0.0003, "role": "secondary_screen", "seed": 42, "slot_id": "P4H-S08", "temperature": 0.15},
+    {"encoder": "id_only_sasrec_style", "history_source": "like", "learning_rate": 0.001, "role": "independent_confirmation_primary", "seed": 2024, "slot_id": "P4H-C01", "temperature": 0.15},
+    {"encoder": "id_only_sasrec_style", "history_source": "like", "learning_rate": 0.001, "role": "independent_confirmation_primary", "seed": 2025, "slot_id": "P4H-C02", "temperature": 0.15},
+    {"encoder": "id_only_sasrec_style", "history_source": "observed", "learning_rate": 0.001, "role": "independent_confirmation_primary", "seed": 2024, "slot_id": "P4H-C03", "temperature": 0.15},
+    {"encoder": "id_only_sasrec_style", "history_source": "observed", "learning_rate": 0.001, "role": "independent_confirmation_primary", "seed": 2025, "slot_id": "P4H-C04", "temperature": 0.15}
+  ],
+  "g4_cutoff": {"default": "ORIGINAL_P4D_TT", "hard_inputs": ["G4-freeze-receipt"], "optional_inputs": ["P4H-route-receipt"], "trigger": "G4_FREEZE", "wait_for_p4h": false},
+  "g_feed": {"claim_boundary": "accidental_duplicate_stale_wrong_job_only_not_malicious_same_uid", "feed_mode": "0700", "new_dependency": false, "publisher_lock_creation": "O_CREAT|O_EXCL", "receipt_schema_id": "p4h-g-feed-receipt-v2", "unknown_writer_policy": "BLOCKED_OR_COOPERATIVE_STOP"},
+  "local_scope": {"commit_push_publish": false, "gpu": false, "real_data": false, "remote_action": false, "validation_or_test_read": false},
+  "mean_controls": [
+    {"history_source": "like", "mode": "read_only", "source": "P4D-id_mean"},
+    {"history_source": "observed", "mode": "read_only", "source": "P4E-watch_history-id_mean"}
+  ],
+  "operation_lifecycle": {"distinct_roots_controller_admission_g_receipt_worker_pgid": true, "failure_terminal": "failed+spent", "mutating_terminal": "completed+unverified", "verified_terminal": "completed+verified", "verifier_requires_predecessor": "CLOSED"},
+  "plan_version": "p-sasrec-parallel-v5",
+  "primary_slices": ["train_like_count_1", "train_like_count_2_5", "train_like_count_6_20", "train_like_count_gt20"],
+  "proposed_thresholds": {
+    "allowed_g_slowdown": {"status": "PROPOSED_BLOCKING_DECISION", "value": 1.25},
+    "approval_ttl": {"status": "PROPOSED_BLOCKING_DECISION", "value": null},
+    "throughput_floor": {"status": "PROPOSED_BLOCKING_DECISION", "value": 0.8},
+    "wall_safety_multiplier": {"status": "PROPOSED_BLOCKING_DECISION", "value": null}
+  },
+  "public_boundary": {"checkpoint_or_index_allowed": false, "identity_hash_examples_only": true, "per_query_predictions_allowed": false, "server_paths_allowed": false},
+  "remote_decisions": {"D-P4H-G5-01": "BLOCKED_DEFAULT_ORIGINAL_P4D_TT", "D-P4H-REMOTE-01": "BLOCKED", "D-P4H-REMOTE-02": "BLOCKED"},
+  "route": {"g5_route_quota": 80, "g5_total_candidates": 400, "p4h_adds_sixth_route": false, "p4h_replaces": "best_core_TT", "seen_masking": false, "tie_break": "item_id_ascending", "top_k": 80},
+  "schema_version": 2,
+  "selection": {"config_tie": "fixed_enumeration", "confirmation_seeds": [2024, 2025], "eligibility_recall_delta": "each_seed_strictly_positive", "epoch_tie": "earlier", "primary": ["validation_all_eligible_recall@50", "validation_all_eligible_ndcg@50"], "route_tie": "like"},
+  "source_plan_sha256": "ea3f7566750c4fad13dfba80fd03a5f8fdf7e81c4c68aa8912b09b3e0e732121",
+  "source_review_sha256": "3de5ad402b6dd9e033d068567d046071ba4998e888914f5ac49c155c035287a1",
+  "task_id": "P4H-01",
+  "task_ids": ["P4H-01", "P4H-02", "P4H-03A", "P4H-03B", "P4H-04", "P4H-05", "P4H-06", "P4H-07", "P4H-08"]
+}

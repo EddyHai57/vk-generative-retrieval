@@ -1,0 +1,12 @@
+{
+  "architecture": "id_mean",
+  "batch_size": 512,
+  "learning_rate": 0.001,
+  "max_epochs": 30,
+  "patience": 3,
+  "precision": "fp32",
+  "schema_version": 1,
+  "seed": 42,
+  "task_id": "P4D",
+  "temperature": 0.07
+}

@@ -1,0 +1,1039 @@
+{
+  "author_support": {
+    "authors": 50952,
+    "catalog_items_per_author": {
+      "bins": {
+        "0": {
+          "entities": 0,
+          "total": 0
+        },
+        "1": {
+          "entities": 32733,
+          "total": 32733
+        },
+        "101+": {
+          "entities": 0,
+          "total": 0
+        },
+        "11-50": {
+          "entities": 1631,
+          "total": 29444
+        },
+        "2-5": {
+          "entities": 14046,
+          "total": 38596
+        },
+        "51-100": {
+          "entities": 15,
+          "total": 882
+        },
+        "6-10": {
+          "entities": 2527,
+          "total": 18760
+        }
+      },
+      "entities": 50952,
+      "max": 77,
+      "min": 1,
+      "p50": 1,
+      "p90": 5,
+      "p95": 8,
+      "p99": 19,
+      "top_10pct_share": 0.4459660341319603,
+      "top_1pct_share": 0.12046671926255034,
+      "total": 120415,
+      "zero_entities": 0
+    },
+    "exposures": {
+      "bins": {
+        "0": {
+          "entities": 0,
+          "total": 0
+        },
+        "1": {
+          "entities": 14703,
+          "total": 14703
+        },
+        "101+": {
+          "entities": 5170,
+          "total": 3276651
+        },
+        "11-50": {
+          "entities": 7522,
+          "total": 176979
+        },
+        "2-5": {
+          "entities": 16008,
+          "total": 47346
+        },
+        "51-100": {
+          "entities": 2295,
+          "total": 164618
+        },
+        "6-10": {
+          "entities": 5254,
+          "total": 40031
+        }
+      },
+      "entities": 50952,
+      "max": 37184,
+      "min": 1,
+      "p50": 3,
+      "p90": 103,
+      "p95": 287,
+      "p99": 1463,
+      "top_10pct_share": 0.8787198333050205,
+      "top_1pct_share": 0.4203347124232057,
+      "total": 3720328,
+      "zero_entities": 0
+    },
+    "likes": {
+      "bins": {
+        "0": {
+          "entities": 39819,
+          "total": 0
+        },
+        "1": {
+          "entities": 4805,
+          "total": 4805
+        },
+        "101+": {
+          "entities": 177,
+          "total": 32651
+        },
+        "11-50": {
+          "entities": 1527,
+          "total": 34138
+        },
+        "2-5": {
+          "entities": 3341,
+          "total": 9834
+        },
+        "51-100": {
+          "entities": 230,
+          "total": 16221
+        },
+        "6-10": {
+          "entities": 1053,
+          "total": 8051
+        }
+      },
+      "entities": 50952,
+      "max": 606,
+      "min": 0,
+      "p50": 0,
+      "p90": 2,
+      "p95": 7,
+      "p99": 42,
+      "top_10pct_share": 0.9312298959318827,
+      "top_1pct_share": 0.5074172185430463,
+      "total": 105700,
+      "zero_entities": 39819
+    }
+  },
+  "catalog_sha256": "80201c574fad26bd29f2e2425a5ad98db8fe7c2a9be91e07d2fc6aedc48d47f3",
+  "cleaning": {
+    "after": {
+      "catalog_items": 120415,
+      "interactions": 3720328,
+      "like_events": 105700,
+      "like_prefixes": 86785,
+      "like_users": 18915,
+      "liked_items": 21496,
+      "train_users": 89371,
+      "users_ge_2_likes": 10863
+    },
+    "before": {
+      "catalog_items": 120415,
+      "interactions": 3720328,
+      "like_events": 105700,
+      "like_prefixes": 86785,
+      "like_users": 18915,
+      "liked_items": 21496,
+      "train_users": 89371,
+      "users_ge_2_likes": 10863
+    },
+    "decision": "preserve all; unknown anomalies flagged; no 5-core, clipping, conflict removal",
+    "deleted_interactions": 0,
+    "deleted_items": 0,
+    "deleted_users": 0,
+    "raw_immutable": true
+  },
+  "duplicate_evidence": {
+    "duplicate_user_item": 0,
+    "exact_duplicate_week_rows": 0,
+    "mode": "reuse pinned complete train audit",
+    "semantics": "user-item pairs global across train; exact records include week; no event-ID/timestamp semantic uniqueness guarantee"
+  },
+  "embedding_evidence": {
+    "catalog_items": 120415,
+    "duration_histogram": {
+      "10": 4308,
+      "100": 91,
+      "101": 91,
+      "102": 100,
+      "103": 87,
+      "104": 88,
+      "105": 83,
+      "106": 65,
+      "107": 90,
+      "108": 78,
+      "109": 83,
+      "11": 3737,
+      "110": 104,
+      "111": 76,
+      "112": 66,
+      "113": 87,
+      "114": 70,
+      "115": 70,
+      "116": 69,
+      "117": 74,
+      "118": 63,
+      "119": 64,
+      "12": 3425,
+      "120": 80,
+      "121": 58,
+      "122": 58,
+      "123": 49,
+      "124": 56,
+      "125": 65,
+      "126": 55,
+      "127": 48,
+      "128": 50,
+      "129": 52,
+      "13": 3273,
+      "130": 54,
+      "131": 55,
+      "132": 51,
+      "133": 41,
+      "134": 51,
+      "135": 47,
+      "136": 45,
+      "137": 49,
+      "138": 38,
+      "139": 44,
+      "14": 3658,
+      "140": 44,
+      "141": 39,
+      "142": 43,
+      "143": 44,
+      "144": 43,
+      "145": 43,
+      "146": 29,
+      "147": 42,
+      "148": 48,
+      "149": 37,
+      "15": 4060,
+      "150": 51,
+      "151": 43,
+      "152": 41,
+      "153": 40,
+      "154": 36,
+      "155": 42,
+      "156": 28,
+      "157": 40,
+      "158": 40,
+      "159": 48,
+      "16": 2565,
+      "160": 32,
+      "161": 34,
+      "162": 34,
+      "163": 39,
+      "164": 26,
+      "165": 37,
+      "166": 39,
+      "167": 38,
+      "168": 48,
+      "169": 39,
+      "17": 2328,
+      "170": 47,
+      "171": 47,
+      "172": 34,
+      "173": 47,
+      "174": 42,
+      "175": 61,
+      "176": 56,
+      "177": 81,
+      "178": 138,
+      "179": 290,
+      "18": 2205,
+      "180": 50,
+      "19": 2173,
+      "20": 2030,
+      "21": 1801,
+      "22": 1751,
+      "23": 1840,
+      "24": 1565,
+      "25": 1615,
+      "26": 1507,
+      "27": 1460,
+      "28": 1424,
+      "29": 1578,
+      "30": 1435,
+      "31": 1190,
+      "32": 1195,
+      "33": 1187,
+      "34": 1101,
+      "35": 1092,
+      "36": 1094,
+      "37": 981,
+      "38": 1026,
+      "39": 1035,
+      "40": 1057,
+      "41": 935,
+      "42": 980,
+      "43": 939,
+      "44": 944,
+      "45": 955,
+      "46": 930,
+      "47": 914,
+      "48": 939,
+      "49": 903,
+      "5": 2810,
+      "50": 931,
+      "51": 966,
+      "52": 946,
+      "53": 1025,
+      "54": 1032,
+      "55": 1138,
+      "56": 1127,
+      "57": 1283,
+      "58": 1885,
+      "59": 3520,
+      "6": 3448,
+      "60": 2343,
+      "61": 959,
+      "62": 736,
+      "63": 624,
+      "64": 511,
+      "65": 531,
+      "66": 458,
+      "67": 367,
+      "68": 413,
+      "69": 409,
+      "7": 3677,
+      "70": 347,
+      "71": 302,
+      "72": 310,
+      "73": 303,
+      "74": 320,
+      "75": 331,
+      "76": 268,
+      "77": 241,
+      "78": 289,
+      "79": 241,
+      "8": 3966,
+      "80": 248,
+      "81": 258,
+      "82": 242,
+      "83": 232,
+      "84": 245,
+      "85": 252,
+      "86": 256,
+      "87": 272,
+      "88": 282,
+      "89": 431,
+      "9": 4078,
+      "90": 664,
+      "91": 120,
+      "92": 140,
+      "93": 118,
+      "94": 102,
+      "95": 120,
+      "96": 115,
+      "97": 105,
+      "98": 110,
+      "99": 108
+    },
+    "duration_null": 0,
+    "duration_zero": 0,
+    "embedding_dimensions": 64,
+    "embedding_dtype": "float16",
+    "embedding_join": "item_id",
+    "embedding_matched": 120415,
+    "embedding_missing": 0,
+    "embedding_nonfinite": 0,
+    "embedding_zero_norm": 0,
+    "metadata_matched": 120415,
+    "metadata_missing": 0,
+    "mode": "rehash file; reuse prior complete ID join/finite/norm audit"
+  },
+  "helper_script_sha256": "7d7335a55c70f76b039c1abb0345b347ed5733b98be73b389b5ca9692f1fb669",
+  "input_files": [
+    {
+      "bytes": 2362338243,
+      "path": "metadata/item_embeddings.npz",
+      "sha256": "6a4024ad7623f5d8150e59c5faaaf42fb7d7f48e2beec44c6917e5e57debea7c"
+    },
+    {
+      "bytes": 155747843,
+      "path": "metadata/items_metadata.parquet",
+      "sha256": "607ffd09d3fb6627f7eec07ed53583d45c47263a2e6538e4deee66cd8a22e51e"
+    },
+    {
+      "bytes": 72526148,
+      "path": "metadata/users_metadata.parquet",
+      "sha256": "51fa9528f71bb0da947311d7baa4727d325285a3e748b54816477b82492aff20"
+    },
+    {
+      "bytes": 642528,
+      "path": "subsamples/ur0.01_ir0.01/train/week_00.parquet",
+      "sha256": "c4a8dae41596b357872ee9dc0297c8abb2b43d3bb936823fc8b7127453ff7741"
+    },
+    {
+      "bytes": 922739,
+      "path": "subsamples/ur0.01_ir0.01/train/week_01.parquet",
+      "sha256": "f19dd3ea9e992c1f10aea85702afd0b328e10888b8a37105d341e27aeda97467"
+    },
+    {
+      "bytes": 942380,
+      "path": "subsamples/ur0.01_ir0.01/train/week_02.parquet",
+      "sha256": "2875cbccc3753b657beeeaccf3e9f08ab13276984cdfa01c046822156cc0cdb5"
+    },
+    {
+      "bytes": 873211,
+      "path": "subsamples/ur0.01_ir0.01/train/week_03.parquet",
+      "sha256": "bcc1e2fc1074f79c581560cbb16e0b55de8772046c98df2b47e39811dbfd58a4"
+    },
+    {
+      "bytes": 937393,
+      "path": "subsamples/ur0.01_ir0.01/train/week_04.parquet",
+      "sha256": "766d617cbc467b8e538a86dfeae6640c1c6ce664202c9114838865582cc23a4c"
+    },
+    {
+      "bytes": 632565,
+      "path": "subsamples/ur0.01_ir0.01/train/week_05.parquet",
+      "sha256": "c00228268b91c94458a19a5c003d84dbdf0c5779690cbf73157ee87d8ab2fb8a"
+    },
+    {
+      "bytes": 799185,
+      "path": "subsamples/ur0.01_ir0.01/train/week_06.parquet",
+      "sha256": "67ac9fefb171f700cc26aebea50ac71b00aef9da8aa938297b7985565578c237"
+    },
+    {
+      "bytes": 983655,
+      "path": "subsamples/ur0.01_ir0.01/train/week_07.parquet",
+      "sha256": "8507384d295c7b284476775662d62d8efa7ab6a4de537174e8ac137d931e9a9f"
+    },
+    {
+      "bytes": 1026089,
+      "path": "subsamples/ur0.01_ir0.01/train/week_08.parquet",
+      "sha256": "2d7f64545ec8cb7b8ebbbe3fcb7f720b47297446031b6a6d74f7a11b700bc26a"
+    },
+    {
+      "bytes": 994597,
+      "path": "subsamples/ur0.01_ir0.01/train/week_09.parquet",
+      "sha256": "6bed90de8472d792ff82bed80c5d7227c06c1e76c781b603c2d18fafed62533c"
+    },
+    {
+      "bytes": 955811,
+      "path": "subsamples/ur0.01_ir0.01/train/week_10.parquet",
+      "sha256": "8ac871a9561686cb0073389b2f006e1a31246040678ea00e229fb368bf72263c"
+    },
+    {
+      "bytes": 947285,
+      "path": "subsamples/ur0.01_ir0.01/train/week_11.parquet",
+      "sha256": "b65b0c1ea3d943bd7d9bb1865f886226159116ede0438d0681df43cdded592ef"
+    },
+    {
+      "bytes": 976913,
+      "path": "subsamples/ur0.01_ir0.01/train/week_12.parquet",
+      "sha256": "274f44b9caf07f8c3b5ebb4f910e77d387021bffc6009fd7b4a064907b0e410a"
+    },
+    {
+      "bytes": 1082104,
+      "path": "subsamples/ur0.01_ir0.01/train/week_13.parquet",
+      "sha256": "751d066a4b85e70676ff4254065cd5deaee903a98198c4eebab12fcd35632949"
+    },
+    {
+      "bytes": 1025175,
+      "path": "subsamples/ur0.01_ir0.01/train/week_14.parquet",
+      "sha256": "47ed124a1ea4ac77391d22ee13ff5d4a00ab6de62b9be4f8ba02af3a2b4597cd"
+    },
+    {
+      "bytes": 1034010,
+      "path": "subsamples/ur0.01_ir0.01/train/week_15.parquet",
+      "sha256": "8a5e82d603e53e39b7c6a98af1091a24b806c961fd1f74d5a733749f8a12b75d"
+    },
+    {
+      "bytes": 1009990,
+      "path": "subsamples/ur0.01_ir0.01/train/week_16.parquet",
+      "sha256": "48bed166e1d9fe2d2467fd1c528cf933a18e5008fe3d3d6a3935b685aec12608"
+    },
+    {
+      "bytes": 974139,
+      "path": "subsamples/ur0.01_ir0.01/train/week_17.parquet",
+      "sha256": "9e63b92aeb3e16b4f8daeefe91bd89a106802e68b086bc74ef0e76a86d8ed415"
+    },
+    {
+      "bytes": 971015,
+      "path": "subsamples/ur0.01_ir0.01/train/week_18.parquet",
+      "sha256": "efd0e5ff6ffc02e4ec603496f4d241937434dbdfb670bf6df42bc7670329620b"
+    },
+    {
+      "bytes": 977046,
+      "path": "subsamples/ur0.01_ir0.01/train/week_19.parquet",
+      "sha256": "a44e9f4cfc69c1662e563b6f9000dbec3a6674af1c641a43bd9b2af523ce60f7"
+    },
+    {
+      "bytes": 936557,
+      "path": "subsamples/ur0.01_ir0.01/train/week_20.parquet",
+      "sha256": "b35b54f7aa35a6ee1a4fa8b5a184a8237836810c52efddaf063d90ae0ef4a6d0"
+    },
+    {
+      "bytes": 1011466,
+      "path": "subsamples/ur0.01_ir0.01/train/week_21.parquet",
+      "sha256": "d50be2f1a7772a34c1046c656524885526507878a43b1ceb4c46c47d9709cdff"
+    },
+    {
+      "bytes": 998624,
+      "path": "subsamples/ur0.01_ir0.01/train/week_22.parquet",
+      "sha256": "479721322e6d497794d7adf43ba71b01815080680b6c1e63edd9289de1a316a5"
+    },
+    {
+      "bytes": 1104283,
+      "path": "subsamples/ur0.01_ir0.01/train/week_23.parquet",
+      "sha256": "8cb680ca0427cdbe30af90b575fb19dae63ecc961e25317583db025e7e86c63c"
+    },
+    {
+      "bytes": 1032816,
+      "path": "subsamples/ur0.01_ir0.01/train/week_24.parquet",
+      "sha256": "b103a275faf89cd90b000501db11b12b97817a334bf83bd473a4b21d477592b6"
+    }
+  ],
+  "interaction_nulls": {
+    "agent": 0,
+    "bookmark": 0,
+    "click_on_author": 0,
+    "dislike": 0,
+    "item_id": 0,
+    "like": 0,
+    "open_comments": 0,
+    "place": 0,
+    "platform": 0,
+    "share": 0,
+    "timespent": 0,
+    "user_id": 0
+  },
+  "item_support": {
+    "exposures": {
+      "bins": {
+        "0": {
+          "entities": 0,
+          "total": 0
+        },
+        "1": {
+          "entities": 34288,
+          "total": 34288
+        },
+        "101+": {
+          "entities": 6835,
+          "total": 2638025
+        },
+        "11-50": {
+          "entities": 18666,
+          "total": 438883
+        },
+        "2-5": {
+          "entities": 41333,
+          "total": 124596
+        },
+        "51-100": {
+          "entities": 5324,
+          "total": 378415
+        },
+        "6-10": {
+          "entities": 13969,
+          "total": 106121
+        }
+      },
+      "entities": 120415,
+      "max": 22610,
+      "min": 1,
+      "p50": 3,
+      "p90": 51,
+      "p95": 116,
+      "p99": 496,
+      "top_10pct_share": 0.809195587055765,
+      "top_1pct_share": 0.39446280005418877,
+      "total": 3720328,
+      "zero_entities": 0
+    },
+    "likes": {
+      "bins": {
+        "0": {
+          "entities": 98919,
+          "total": 0
+        },
+        "1": {
+          "entities": 11448,
+          "total": 11448
+        },
+        "101+": {
+          "entities": 58,
+          "total": 8656
+        },
+        "11-50": {
+          "entities": 2012,
+          "total": 42419
+        },
+        "2-5": {
+          "entities": 6111,
+          "total": 17498
+        },
+        "51-100": {
+          "entities": 186,
+          "total": 12845
+        },
+        "6-10": {
+          "entities": 1681,
+          "total": 12834
+        }
+      },
+      "entities": 120415,
+      "max": 431,
+      "min": 0,
+      "p50": 0,
+      "p90": 1,
+      "p95": 3,
+      "p99": 19,
+      "top_10pct_share": 0.910558183538316,
+      "top_1pct_share": 0.4651844843897824,
+      "total": 105700,
+      "zero_entities": 98919
+    }
+  },
+  "metadata": {
+    "items_metadata.parquet": {
+      "matched": 120415,
+      "schema": {
+        "author_id": "uint32",
+        "duration": "uint8",
+        "item_id": "uint32",
+        "train_interactions_rank": "uint32"
+      },
+      "selected_entities": 120415,
+      "selected_nulls": {
+        "author_id": 0,
+        "duration": 0,
+        "item_id": 0,
+        "train_interactions_rank": 0
+      },
+      "source_rows": 19627601
+    },
+    "users_metadata.parquet": {
+      "matched": 89371,
+      "schema": {
+        "age": "uint8",
+        "gender": "uint8",
+        "geo": "uint8",
+        "train_interactions_rank": "uint32",
+        "user_id": "uint32"
+      },
+      "selected_entities": 89371,
+      "selected_nulls": {
+        "age": 0,
+        "gender": 0,
+        "geo": 0,
+        "train_interactions_rank": 0,
+        "user_id": 0
+      },
+      "source_rows": 10000000
+    }
+  },
+  "ordering_evidence": {
+    "assumption": "official week/physical ordinal order",
+    "mode": "rehash same parquet bytes; reuse prior two-pass physical sequence digest",
+    "physical_row_sequence_sha256": "c035211d78c3f066cf2f5bf7ed30d63459e4b537eab655f8eaaae60a41d4c45e",
+    "reread_sequence_match": true,
+    "session_available": false,
+    "timestamp_available": false
+  },
+  "prior_eda_sha256": "3ec3a384e3fa3fb8f0444a8ecb792225b2c9b60d51457e0773e7d4c9c8282239",
+  "prior_train_audit_sha256": "3cc2d3ffb9812d7e83709f53d85463876f9be13daf4173829b748dbe1ee1c3fe",
+  "reconciliation": {
+    "catalog": true,
+    "duration_hist": true,
+    "exposure_user_hist": true,
+    "like_items": true,
+    "likes": true,
+    "positive_user_hist": true,
+    "prefixes": true,
+    "ratio_gt_1": true,
+    "rows": true,
+    "timespent_255": true,
+    "users": true,
+    "weeks": true
+  },
+  "resource": {
+    "checks": 554,
+    "effective_ram_bytes_min": 211900432384,
+    "elapsed_seconds": 4.819093585945666,
+    "minimum_disk_headroom_fraction": 0.9731113586425781,
+    "minimum_ram_headroom_fraction": 0.9592187105671404,
+    "mode": "CPU; visible host/cgroup, not hidden quota guarantee",
+    "peak_rss_kib": 114528
+  },
+  "schema_partition_rows": [
+    {
+      "rows": 95257,
+      "schema_matches": true,
+      "week": 0
+    },
+    {
+      "rows": 143466,
+      "schema_matches": true,
+      "week": 1
+    },
+    {
+      "rows": 145107,
+      "schema_matches": true,
+      "week": 2
+    },
+    {
+      "rows": 134545,
+      "schema_matches": true,
+      "week": 3
+    },
+    {
+      "rows": 145908,
+      "schema_matches": true,
+      "week": 4
+    },
+    {
+      "rows": 93543,
+      "schema_matches": true,
+      "week": 5
+    },
+    {
+      "rows": 122732,
+      "schema_matches": true,
+      "week": 6
+    },
+    {
+      "rows": 152958,
+      "schema_matches": true,
+      "week": 7
+    },
+    {
+      "rows": 160833,
+      "schema_matches": true,
+      "week": 8
+    },
+    {
+      "rows": 155904,
+      "schema_matches": true,
+      "week": 9
+    },
+    {
+      "rows": 148625,
+      "schema_matches": true,
+      "week": 10
+    },
+    {
+      "rows": 147661,
+      "schema_matches": true,
+      "week": 11
+    },
+    {
+      "rows": 153670,
+      "schema_matches": true,
+      "week": 12
+    },
+    {
+      "rows": 171896,
+      "schema_matches": true,
+      "week": 13
+    },
+    {
+      "rows": 162958,
+      "schema_matches": true,
+      "week": 14
+    },
+    {
+      "rows": 164685,
+      "schema_matches": true,
+      "week": 15
+    },
+    {
+      "rows": 159286,
+      "schema_matches": true,
+      "week": 16
+    },
+    {
+      "rows": 152913,
+      "schema_matches": true,
+      "week": 17
+    },
+    {
+      "rows": 153907,
+      "schema_matches": true,
+      "week": 18
+    },
+    {
+      "rows": 152838,
+      "schema_matches": true,
+      "week": 19
+    },
+    {
+      "rows": 144520,
+      "schema_matches": true,
+      "week": 20
+    },
+    {
+      "rows": 159564,
+      "schema_matches": true,
+      "week": 21
+    },
+    {
+      "rows": 156610,
+      "schema_matches": true,
+      "week": 22
+    },
+    {
+      "rows": 176791,
+      "schema_matches": true,
+      "week": 23
+    },
+    {
+      "rows": 164151,
+      "schema_matches": true,
+      "week": 24
+    }
+  ],
+  "scope": "train-only; no deletion/label change/training/holdout read",
+  "script_sha256": "497f24389ee9aec948ae0d1d406664d5fdbaf7d58d957820ccb00c17c236d9f3",
+  "source_revision": "084a18386e149a454dd6dbe0123478e75c6b09ce",
+  "task_id": "P3-C",
+  "train_schema": {
+    "agent": "uint8",
+    "bookmark": "bool",
+    "click_on_author": "bool",
+    "dislike": "bool",
+    "item_id": "uint32",
+    "like": "bool",
+    "open_comments": "bool",
+    "place": "uint8",
+    "platform": "uint8",
+    "share": "bool",
+    "timespent": "uint8",
+    "user_id": "uint32"
+  },
+  "train_users_sha256": "cbf3d5f0e42a0d0d707f10c17ba42f4b08f52af79fd63d80ae6c6557b6055d84",
+  "user_metadata_profile": {
+    "age": {
+      "distinct_codes": 53,
+      "encoding_semantics": "unknown; not interpreted",
+      "max": 70,
+      "min": 18,
+      "zero_count": 0
+    },
+    "gender": {
+      "distinct_codes": 2,
+      "encoding_semantics": "unknown; not interpreted",
+      "max": 2,
+      "min": 1,
+      "zero_count": 0
+    },
+    "geo": {
+      "distinct_codes": 80,
+      "encoding_semantics": "unknown; not interpreted",
+      "max": 79,
+      "min": 0,
+      "zero_count": 65
+    }
+  },
+  "user_support": {
+    "exposures": {
+      "bins": {
+        "0": {
+          "entities": 0,
+          "total": 0
+        },
+        "1": {
+          "entities": 7544,
+          "total": 7544
+        },
+        "101+": {
+          "entities": 10487,
+          "total": 1832911
+        },
+        "11-50": {
+          "entities": 32054,
+          "total": 832158
+        },
+        "2-5": {
+          "entities": 16076,
+          "total": 52185
+        },
+        "51-100": {
+          "entities": 12748,
+          "total": 913630
+        },
+        "6-10": {
+          "entities": 10462,
+          "total": 81900
+        }
+      },
+      "entities": 89371,
+      "max": 664,
+      "min": 1,
+      "p50": 18,
+      "p90": 111,
+      "p95": 162,
+      "p99": 290,
+      "top_10pct_share": 0.44862254080822983,
+      "top_1pct_share": 0.08845456637156723,
+      "total": 3720328,
+      "zero_entities": 0
+    },
+    "like_count_bins": {
+      "0": {
+        "exposures": 2457117,
+        "likes": 0,
+        "prefixes": 0,
+        "ratio_gt_1_events": 403149,
+        "timespent_255_events": 1867,
+        "users": 70456
+      },
+      "1": {
+        "exposures": 459709,
+        "likes": 8052,
+        "prefixes": 0,
+        "ratio_gt_1_events": 84635,
+        "timespent_255_events": 465,
+        "users": 8052
+      },
+      "101+": {
+        "exposures": 11398,
+        "likes": 5593,
+        "prefixes": 5548,
+        "ratio_gt_1_events": 3050,
+        "timespent_255_events": 9,
+        "users": 45
+      },
+      "11-50": {
+        "exposures": 220153,
+        "likes": 44318,
+        "prefixes": 42191,
+        "ratio_gt_1_events": 49758,
+        "timespent_255_events": 213,
+        "users": 2127
+      },
+      "2-5": {
+        "exposures": 391682,
+        "likes": 19072,
+        "prefixes": 12572,
+        "ratio_gt_1_events": 75605,
+        "timespent_255_events": 360,
+        "users": 6500
+      },
+      "51-100": {
+        "exposures": 37638,
+        "likes": 13470,
+        "prefixes": 13276,
+        "ratio_gt_1_events": 9278,
+        "timespent_255_events": 35,
+        "users": 194
+      },
+      "6-10": {
+        "exposures": 142631,
+        "likes": 15195,
+        "prefixes": 13198,
+        "ratio_gt_1_events": 29009,
+        "timespent_255_events": 129,
+        "users": 1997
+      }
+    },
+    "likes": {
+      "bins": {
+        "0": {
+          "entities": 70456,
+          "total": 0
+        },
+        "1": {
+          "entities": 8052,
+          "total": 8052
+        },
+        "101+": {
+          "entities": 45,
+          "total": 5593
+        },
+        "11-50": {
+          "entities": 2127,
+          "total": 44318
+        },
+        "2-5": {
+          "entities": 6500,
+          "total": 19072
+        },
+        "51-100": {
+          "entities": 194,
+          "total": 13470
+        },
+        "6-10": {
+          "entities": 1997,
+          "total": 15195
+        }
+      },
+      "entities": 89371,
+      "max": 186,
+      "min": 0,
+      "p50": 0,
+      "p90": 2,
+      "p95": 5,
+      "p99": 24,
+      "top_10pct_share": 0.8873982970671712,
+      "top_1pct_share": 0.38424787133396404,
+      "total": 105700,
+      "zero_entities": 70456
+    },
+    "prefix_contribution": {
+      "bins": {
+        "0": {
+          "entities": 78508,
+          "total": 0
+        },
+        "1": {
+          "entities": 3023,
+          "total": 3023
+        },
+        "101+": {
+          "entities": 44,
+          "total": 5448
+        },
+        "11-50": {
+          "entities": 1918,
+          "total": 40421
+        },
+        "2-5": {
+          "entities": 4072,
+          "total": 12524
+        },
+        "51-100": {
+          "entities": 187,
+          "total": 12976
+        },
+        "6-10": {
+          "entities": 1619,
+          "total": 12393
+        }
+      },
+      "entities": 89371,
+      "max": 185,
+      "min": 0,
+      "p50": 0,
+      "p90": 1,
+      "p95": 4,
+      "p99": 23,
+      "top_10pct_share": 0.9778187474794031,
+      "top_1pct_share": 0.45769430201071615,
+      "total": 86785,
+      "zero_entities": 78508
+    },
+    "prefix_total": 86785,
+    "users_with_ratio_gt_1": 65966,
+    "users_with_timespent_255": 2749
+  },
+  "utc": "2026-10-07T01:46:37.269991+00:00"
+}
