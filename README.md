@@ -62,7 +62,7 @@ Planned范围：
 
 ## 服务器与预算
 
-- Planned GPU：Thunder Compute RTX A6000 48GB
+- GPU平台选择：见`docs/decision_log.md` D-049；SSH方法与待执行验收见`docs/server_runbook.md`
 - Acceptance probe：不超过1小时，需用户批准计费操作
 - 总预算：不超过100 AUD
 - GPU目标：不超过30小时；hard ceiling 48小时

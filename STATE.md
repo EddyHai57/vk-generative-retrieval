@@ -1,46 +1,30 @@
-# STATE
+# STATE — VK 当前执行快照（2026-10-13 17:24+08）
 
-密级: 公开
+管理owner：**Kiro（新对话）**，ACK=cache/session-handoff-20261013-kiro-opus55-v1/kiro-acceptance-b.json（1d120d18…）。模型按session_context为Claude Opus 5.5（选择器未独立核验）；context计数UNKNOWN。automations全部PAUSED，不恢复、不新建timer。
+**P/G两线真并行均已启动**（decision_log 2026-10-13）。P运行期间**禁止新建认证SSH**；只复用formal06 mux做readonly观察。
 
-> 当前状态唯一事实源。历史证据见`handoff.md`，路线定义见`tasks.md`。
+## 连接
+- formal06 mux：16:22建立，**≈17:53断开**（exit255，5436s）；根因=Mac 17:52:43 Idle Sleep（pmset），服务器sshd ClientAlive 10s×2。当前**无可用连接**；最后观察17:23两线正常，之后UNKNOWN（失联≠作业停止）。P收口前不新建认证；重连时间待Eddy定（推荐22:10，零风险02:20）。重连时须caffeinate -dims。
+- formal07脚本已备（仅P未运行时可用）。
 
-## 当前阶段
+## G线 — G3补seed selected-seed2024 / RUNNING（19:20只读：owner live、train阶段、elapsed 7226s、无terminal/failure）
+- 迁移：Eddy已确认工业流程规划；A6000做最后收尾（G 2024/2025同机跑完），回家后开新3090机（计划artifact dc6fa67d）。
+- **seed2025 RUNNING**：19:46:37提交（review seed2025-review.md APPROVED，2 LOW）。start b189cd1b…，owner pid2720403/birth170115267，deadline_utc 1791999997（≈10-15 03:46+08）。G包 runs/selected-seed2025/。19:47两run均owner live、train阶段。
+- 连接：formal07 19:45断（Broken pipe，热点切换），formal08 19:46建立（P已结束，fresh auth无风险）。
+- 实测瓶颈：train进程单核98.5% CPU，GPU 0–1%（main05/kiro-b-gprof-02.stdout）。
+- select（G3-R3）：detached /workspace/vkgr-g3-select-run-v1，1513.7s，SELECTION_FROZEN_WINNER3，manifest 168b1335…（/workspace/vkgr-g3-core-seed42-selection-v1/manifest.json）。
+- preflight PASS 17:20:02（main05/g-seed2024-preflight-01.*）；submit 17:20:14 SUBMITTED（G cache/g3-seed-supplement-candidate-v1/runs/selected-seed2024/）。
+- start ff283d9c…、approval 3b04f467…、controller 7e6e2808…、input bb39702b…；owner pid2707820/birth169236958；deadline_utc 1791991214（≈10-14 23:20+08，30h cap）。
+- 17:23观察：owner live、train阶段、无terminal/failure。seed2025待2024终态且P收口后。
 
-- Phase：P1 — 基础代码与可审计运行框架
-- Status：Complete — coordinator fresh review passed；已commit并本地合并main
-- P0：Complete，已批准bootstrap基点经fresh核对
-- Next gate：GitHub公开操作及P2 scope/费用确认；P2尚未开始
-- Scope：用户已批准P1、独立worktree与首次必要依赖联网准备；不得进入P2
+## P线 — P4H-05 recovery01 / **COMPLETE_CLOSED**（19:21只读确认，main05/p-recovery01-final-01.*）
+- driver-result `S02_recovered+verified_S06_completed+verified+CLOSED`，test_read=false；S02 train-recovery completed+unverified→verify completed+verified；S06 train completed+unverified（stop_reason patience）→verify completed+verified；全部driver-closure actual_worker_exit0。质量指标未读，待写experiment_log。
+- 19:20 Eddy授权fresh SSH（main05/direct-human-reconnect-20261013.json），formal07 mux；此时P已结束，无影响。
+- 以下为启动时记录：
+- deploy 17:21:46 recovery01_deployed+unsubmitted（main05/recovery01-deploy-01.*）；fresh gate：seed2024 RUNNING，free disk0.468/RAM0.545/VRAM0.988；queue剩32265s。
+- launch 17:22:03（main05/recovery01-launch-01.*）：driver pid2708016/birth169247741 detached；Linux checks通过。17:23：driver live，prepare阶段，publisher feed正常写入。
+- 预算：forecast 15232s+1800s → 预计约21:36+08完成，queue硬截止2026-10-14 02:19:32+08。原S02 failed+spent/原queue不改。
+- 风险：G若中途非complete终止，P当前stage会连带STOP（已知取舍）。
 
-## 当前仓库
-
-- Worktree：当前为项目主工作区；P1隔离worktree保留本地运行证据
-- Branch：`main`
-- P1实现commit：`9f8f6555f41931019c968477920a69d36699fb55`；最新HEAD以fresh Git为准
-- Remote：0，未配置GitHub remote
-- Git：P1已按用户授权commit并fast-forward合并；本次仅追加收口文档提交，无push/Git配置修改
-- Production code：仅P1 config/runtime/manifest/CLI
-- Dependencies：main已用uv offline/locked从本地缓存创建独立`.venv`，Python3.11.17、PyYAML6.0.2；未借用其他worktree环境
-- Data：只有明确人工synthetic fixture；未下载真实数据
-- Server / GPU：未连接、未使用
-- Experiments / model metrics：无
-
-## 当前证据与阻塞
-
-- 执行Agent的RED/GREEN与主协调Agent的fresh测试、两次新smoke/verify、独立hash/稳定字段及公开边界检查详见`docs/p1_validation.md`
-- 主协调Agent作为未参与实现的reviewer已完成源码、测试、diff与证据复核；在批准的P1范围内无阻塞发现
-- 已发现环境/边界/测试问题与处理tradeoff见`docs/issue_log.md` I-017～I-021
-- main合并后fresh unittest 31项通过；收口仅修改治理文档，生产源码无变化
-- 四份运行manifest/result仍在原P1 worktree本地保留，未纳入Git提交；hash证据在验证文档，无未解释文件
-
-## 下一任务
-
-Task：P1已完成本地整合；下一task为P2，尚未获准启动完整执行。
-
-Owner：主协调Astra。
-
-读取`handoff.md`最新本地整合记录与`docs/p1_validation.md`。Eddy计划自行创建GitHub仓库并租用服务器；该计划不等同于Agent已配置remote、push、连接服务器或完成验收。下一轮先对齐P2输入、验收、预算和stop gates，不自动下载数据、训练或创建计费资源。每个part按docs/codex_handoff.md规定汇报过程、成果、问题处理与下一步。
-
-## Housekeeping
-
-旧`AGENTS.draft.md`只在原目录忽略保留；本worktree未复制、删除或修改它。受保护AGENTS与tasks/data_contract/architecture/后续configs未修改。
+## review
+- 合并review b（main05/recovery01-review-b/review.md，a995e68c…）CHANGES_REQUIRED：H1 select env、M1 submit绑定固定preflight、M2 deploy G校验前置——均已修，按Eddy要求小修不复审。

@@ -127,3 +127,13 @@ cmake-build-*/
 # Local governance drafts superseded by protected AGENTS.md
 AGENTS.draft.md
 AGENTS.thin.proposed.md
+# Local-only process records / local paths (public option B, 2026-10-13)
+.agents/
+docs/history/
+docs/reviews/
+docs/learning/
+vk-generative-retrieval-learning/
+provenance/
+docs/*takeover*.md
+docs/astra_restart_prompt.md
+docs/local_paths.md

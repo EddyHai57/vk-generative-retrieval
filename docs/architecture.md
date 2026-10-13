@@ -8,7 +8,7 @@
 
 本文件只定义接口、数据流和artifact boundary，不包含实现代码。
 
-当前未下载数据、未安装依赖、未训练模型、未产生指标。
+P2已完成MVP下载和隔离环境验收；P3进行中，尚未训练模型或产生模型质量指标。当前状态以STATE.md为准，阶段证据见对应执行worktree。
 
 ## 总体数据流
 
@@ -52,9 +52,9 @@ Gate：synthetic dry-run可复现；manifest能定位config、输入指纹、see
 
 输入：P1可复现框架、官方VK-LSVD source manifest，以及用户对计费实例的明确批准。
 
-输出：Thunder A6000不超过1小时的acceptance probe报告、服务器本地raw partitions、checksum inventory、许可快照和失败恢复记录。
+输出：当前已确认平台A6000不超过1小时的acceptance probe报告、服务器本地raw partitions、checksum inventory、许可快照和失败恢复记录。
 
-Gate：按`docs/server_runbook.md`验证SSH reconnect、CUDA/PyTorch、FAISS、RAM/disk、Hugging Face吞吐、disk I/O与snapshot restore；只取得批准的subset；原始数据不进入Git；磁盘余量满足runbook。
+Gate：按`docs/server_runbook.md`验证SSH reconnect、CUDA/PyTorch、FAISS、RAM/disk、Hugging Face吞吐、disk I/O与经批准的平台持久化/恢复验证；只取得批准的subset；原始数据不进入Git；磁盘余量满足runbook。
 
 ## P3｜数据探查与合同冻结
 
