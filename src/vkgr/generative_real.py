@@ -194,6 +194,15 @@ def _guard(context,limits,output,pool):
         from .generative_pilot import observe_resources
         observe_resources(output,limits['runtime']['device'])
 
+def _query_guard(context,limits,output,pool):
+    """Sharded per-query hook: budget/clock/resource checks only (fail-closed as _guard).
+    Invariant identity (runtime environment, context queries/catalog digests) is
+    re-verified by the full _guard once before every shard dispatch."""
+    pool.check()
+    if context.binding['synthetic'] is False:
+        from .generative_pilot import observe_resources
+        observe_resources(output,limits['runtime']['device'])
+
 def _progress(event,phase,config,epoch):
     import sys
     row={'task_id':'G3','event':event,'phase':phase,'seed':config['seed'],'d_model':config['d_model'],'learning_rate':config['learning_rate'],'epoch':epoch}
@@ -270,7 +279,7 @@ def _train_trajectory(context,config,limits,output,pool,phase,*,parent=None,stop
                 if hook_calls>0 and hook_calls%2==1:pool.reserve(phase,'decode')
                 hook_calls+=1
             def before_decode():
-                _guard(context,limits,output,pool);pool.reserve(phase,'decode')
+                _query_guard(context,limits,output,pool);pool.reserve(phase,'decode')
             def on_shard(completed,total):
                 _progress_file(progress,'evaluate',phase,cursor.epoch,limits['max_epochs'],completed,total)
             try:
@@ -282,8 +291,8 @@ def _train_trajectory(context,config,limits,output,pool,phase,*,parent=None,stop
                     evaluation=gs.evaluate_queries_sharded(model,context,output=eval_output,checkpoint_sha256=candidate['sha256'],workers=eval_workers,
                         config=config,runtime=limits['runtime'],shard_size=64,
                         resume_manifest=Path(pending['manifest_path']) if pending else None,resume_sha256=pending['manifest_sha256'] if pending else None,
-                        should_stop=should_stop,guard=lambda:_guard(context,limits,output,pool),before_decode=before_decode,
-                        after_decode=lambda:_guard(context,limits,output,pool),on_shard=on_shard)
+                        should_stop=should_stop,guard=lambda:_guard(context,limits,output,pool),before_shard=lambda:_guard(context,limits,output,pool),
+                        before_decode=before_decode,after_decode=lambda:_query_guard(context,limits,output,pool),on_shard=on_shard)
             except (KeyboardInterrupt,InterruptedError):
                 evaluation=ge._recover_evaluation(eval_output,model,context,candidate['sha256'],64)
                 if evaluation is None:
@@ -501,7 +510,7 @@ def evaluate(context,path,pin,pool_head,output,*,should_stop=None,eval_workers=1
             if hook_calls>0 and hook_calls%2==1:pool.reserve('formal','decode')
             hook_calls+=1
         def before_decode():
-            _guard(context,limits,Path(output).parent,pool);pool.reserve('formal','decode')
+            _query_guard(context,limits,Path(output).parent,pool);pool.reserve('formal','decode')
         def on_shard(completed,total):_progress_file(progress,'evaluate-best','formal',None,None,completed,total)
         try:
             if eval_workers==1:
@@ -510,7 +519,8 @@ def evaluate(context,path,pin,pool_head,output,*,should_stop=None,eval_workers=1
             else:
                 on_shard(0,len(context.queries))
                 result=gs.evaluate_queries_sharded(model,context,output=output,checkpoint_sha256=best['sha256'],workers=eval_workers,config=cfg,runtime=limits['runtime'],shard_size=64,should_stop=should_stop,
-                    guard=lambda:_guard(context,limits,Path(output).parent,pool),before_decode=before_decode,after_decode=lambda:_guard(context,limits,Path(output).parent,pool),on_shard=on_shard)
+                    guard=lambda:_guard(context,limits,Path(output).parent,pool),before_shard=lambda:_guard(context,limits,Path(output).parent,pool),
+                    before_decode=before_decode,after_decode=lambda:_query_guard(context,limits,Path(output).parent,pool),on_shard=on_shard)
         finally:pool.charge_wall('formal',time.perf_counter()-begin)
         _progress_file(progress,'complete' if result['manifest']['complete'] else 'interrupted','formal',None,None,result['manifest']['completed_queries'],len(context.queries))
         return {**result,'pool_head':pool.head,'pool_state':copy.deepcopy(pool.state)}

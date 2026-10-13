@@ -172,7 +172,7 @@ def _cleanup(processes,connections):
 
 def evaluate_queries_sharded(model,context,*,output,checkpoint_sha256,workers,config,runtime,
         beam=100,shard_size=64,resume_manifest=None,resume_sha256=None,
-        stop_after_shards=None,should_stop=None,guard=None,before_decode=None,after_decode=None,on_shard=None):
+        stop_after_shards=None,should_stop=None,guard=None,before_shard=None,before_decode=None,after_decode=None,on_shard=None):
     """Parallel twin of ev.evaluate_queries; same artifacts except wall-clock observations."""
     if type(workers) is not int or not 2<=workers<=MAX_WORKERS:raise ValueError('sharded workers 2..32')
     if type(config) is not dict or type(runtime) is not dict:raise ValueError('explicit worker config/runtime')
@@ -232,6 +232,7 @@ def evaluate_queries_sharded(model,context,*,output,checkpoint_sha256,workers,co
             while not stopping and dispatched<limit and inflight[dispatched%count]<_WINDOW:
                 if should_stop is not None and should_stop():stopping=True;break
                 start=starts[dispatched];end=min(start+shard_size,len(queries))
+                timed('hooks',before_shard)
                 for _ in range(start,end):timed('hooks',before_decode)
                 w=dispatched%count
                 if not _send(connections[w],('shard',start,end)):raise ValueError('sharded evaluation worker died')

@@ -300,6 +300,22 @@ class EndToEndTests(unittest.TestCase):
             for tag,trajectory in (('w1-formal',m1),('w4-formal',m4),('w1-replay',replay1),('w4-replay',replay4)):checked+=projection_after_reproduce(self,context,trajectory,base,tag)
             self.assertEqual(checked,8);self.assertEqual(leftovers(),[])
             sys.stderr.write(f'INFRA01-SPEED eval workers=1 {t1:.2f}s workers=4 {t4:.2f}s\n')
+    def test_sharded_identity_guard_once_per_shard_budget_guard_per_query(self):
+        with tempfile.TemporaryDirectory(dir='/private/tmp') as d:
+            base=Path(d);context=synthetic(base);model=tiny(context);shards=[]
+            sharded(model,context,base/'x',2,shard_size=3,before_shard=lambda:shards.append(1))
+            self.assertEqual(len(shards),3)
+            context,prepared=gr.prepare_engineering(ROOT,base/'prepared-e')
+            run=gr.run(context,config(),gr.engineering_limits(context,prepared),base/'run')
+            with patch.object(gr,'_guard',wraps=gr._guard) as full,patch.object(gr,'_query_guard',wraps=gr._query_guard) as cheap:
+                result=gr.evaluate(context,run['manifest_path'],run['manifest_sha256'],run['pool_head'],base/'eval',eval_workers=4)
+            self.assertEqual(full.call_count,2);self.assertEqual(cheap.call_count,14)
+            self.assertEqual(result['pool_state']['decode'],21)
+            with patch.object(gr,'_guard',wraps=gr._guard) as full,patch.object(gr,'_query_guard',wraps=gr._query_guard) as cheap:
+                gr.evaluate(context,run['manifest_path'],run['manifest_sha256'],result['pool_head'],base/'eval-serial')
+            self.assertEqual(full.call_count,15);self.assertEqual(cheap.call_count,0)
+            self.assertEqual(json.loads((base/'eval/manifest.json').read_bytes())['computation_sha256'],json.loads((base/'eval-serial/manifest.json').read_bytes())['computation_sha256'])
+            self.assertEqual(leftovers(),[])
     def test_progress_file_written_and_charged_tree_rejected(self):
         with tempfile.TemporaryDirectory(dir='/private/tmp') as d:
             base=Path(d).resolve();context,prepared=gr.prepare_engineering(ROOT,base/'prepared')
