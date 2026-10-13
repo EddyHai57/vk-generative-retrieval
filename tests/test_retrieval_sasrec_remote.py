@@ -1708,3 +1708,318 @@ class S02RecoveryBranchTests(unittest.TestCase):
         plain={k:v for k,v in auth.items() if k!='acceptance_recovery'}
         with patch.object(remote,'_read_json',side_effect=read_json),patch.object(remote,'read_bound'),self.assertRaisesRegex(ValueError,'consumer'):
             remote.verify_input_origin(value,plain)
+
+
+# INFRA-01 sub-task B: job-scoped P gate (design §3, review v3 M1/M2/N10).
+def job_payload(observed_at=100.,**fractions):
+    values={'ram':.5,'vram':.5,'disk':.5,'cpu':.05};values.update(fractions)
+    return {'observed_at':observed_at,'runs':[],'free_fractions':values,'gpu_pids':[],'allowed_gpu_pids':[],'protected_pgids':[],'p_writer_count':0,'gate_mode':'job-scoped'}
+
+
+@unittest.skipIf(remote is None,'real adapter missing')
+class JobScopedManifestTests(unittest.TestCase):
+    def test_gate_field_selects_mode_and_rejects_bad_envelope(self):
+        value=real_manifest_fixture(Path('/private/tmp/real-operation'))
+        self.assertEqual(remote.validate_remote_manifest(value)['gate_mode'],'legacy')
+        self.assertEqual(remote.validate_remote_manifest({**value,'gate':{'mode':'legacy'}})['gate_mode'],'legacy')
+        self.assertEqual(remote.validate_remote_manifest({**value,'gate':copy.deepcopy(remote.NEW_RUN_GATE)})['gate_mode'],'job-scoped')
+        self.assertEqual(remote.NEW_RUN_GATE,{'mode':'job-scoped'})
+        for bad in ({'mode':'shared'},{'mode':'job-scoped','extra':1},'job-scoped',None,{}):
+            with self.subTest(bad=bad),self.assertRaisesRegex(ValueError,'gate mode envelope'):remote.validate_remote_manifest({**value,'gate':bad})
+
+
+@unittest.skipIf(remote is None,'real adapter missing')
+class JobScopedPayloadTests(unittest.TestCase):
+    def test_job_scoped_payload_keeps_only_resource_stop(self):
+        self.assertTrue(remote.validate_safety_payload(job_payload(),[],now=101,max_age=30,mode='job-scoped'))
+        self.assertTrue(remote.validate_safety_payload(job_payload(cpu=None),[],now=101,max_age=30,mode='job-scoped'))
+        with self.assertRaisesRegex(ValueError,'shared resource STOP'):remote.validate_safety_payload(job_payload(ram=.19),[],now=101,max_age=30,mode='job-scoped')
+        mismatches={'gpu':{**job_payload(),'gpu_pids':[123]},'writers':{**job_payload(),'p_writer_count':3},'allowed':{**job_payload(),'allowed_gpu_pids':[5]},'protected':{**job_payload(),'protected_pgids':[5]},'runs':{**job_payload(),'runs':[{'run_id':'x'}]},'mode':{**job_payload(),'gate_mode':'legacy'},'cpu_range':job_payload(cpu=1.5),'cpu_bool':job_payload(cpu=True)}
+        missing_cpu=job_payload();del missing_cpu['free_fractions']['cpu'];mismatches['missing_cpu']=missing_cpu
+        missing_mode=job_payload();del missing_mode['gate_mode'];mismatches['missing_mode']=missing_mode
+        for name,payload in mismatches.items():
+            with self.subTest(name=name),self.assertRaisesRegex(ValueError,'gate mode/payload mismatch'):remote.validate_safety_payload(payload,[],now=101,max_age=30,mode='job-scoped')
+        with self.assertRaisesRegex(ValueError,'gate mode/payload mismatch'):remote.validate_safety_payload(job_payload(),[{'run_id':'core-02','start_sha256':'a'*64}],now=101,max_age=30,mode='job-scoped')
+        with self.assertRaises(ValueError):remote.validate_safety_payload(job_payload(observed_at=60.),[],now=101,max_age=30,mode='job-scoped')
+        runs,legacy=SafetyFeedTests().fixture()
+        with self.assertRaises(ValueError):remote.validate_safety_payload(legacy,[],now=101,max_age=30,mode='job-scoped')
+        with self.assertRaises(ValueError):remote.validate_safety_payload(job_payload(),runs,now=101,max_age=30)
+        self.assertTrue(remote.validate_safety_payload(legacy,runs,now=101,max_age=30,mode='legacy'))
+        self.assertFalse(remote.JOB_SCOPED_CPU_ENFORCED)
+
+
+@unittest.skipIf(remote is None,'real adapter missing')
+class ObserveJobTests(unittest.TestCase):
+    def test_observe_job_reads_no_g_files_and_never_lists_compute_apps(self):
+        import subprocess
+        from unittest.mock import patch
+        calls=[]
+        def run(argv,*a,**k):
+            calls.append(list(argv));return subprocess.CompletedProcess(argv,0,'1000, 500\n','')
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(os.path.realpath(folder));stat_file=root/'stat';stat_file.write_text('cpu  100 0 100 800 0 0 0 0 0 0\n')
+            def advance(_):stat_file.write_text('cpu  150 0 150 900 0 0 0 0 0 0\n')
+            sampler=remote.CpuSampler(path=stat_file,sleep=advance)
+            with patch('subprocess.run',side_effect=run),patch.object(remote,'current_ram_fraction',return_value=.5),patch.object(remote,'observe_g',side_effect=AssertionError('G observation')):
+                payload=remote.observe_job(root,cpu=sampler)
+            self.assertTrue(calls);self.assertFalse(any('--query-compute-apps' in a for argv in calls for a in argv))
+            self.assertTrue(any(a.startswith('--query-gpu=') for argv in calls for a in argv))
+            self.assertEqual(payload['gate_mode'],'job-scoped');self.assertAlmostEqual(payload['free_fractions']['cpu'],.5);self.assertAlmostEqual(payload['free_fractions']['vram'],.5)
+            remote.validate_safety_payload(payload,[],now=payload['observed_at'],max_age=30,mode='job-scoped')
+            stat_file.write_text('garbage\n')
+            with patch('subprocess.run',side_effect=run),patch.object(remote,'current_ram_fraction',return_value=.5):
+                self.assertIsNone(remote.observe_job(root,cpu=remote.CpuSampler(path=stat_file,sleep=lambda _:None))['free_fractions']['cpu'])
+                self.assertIsNone(remote.observe_job(root,cpu=remote.CpuSampler(path=root/'missing',sleep=lambda _:None))['free_fractions']['cpu'])
+
+
+@unittest.skipIf(remote is None,'real adapter missing')
+class JobScopedWriterInventoryTests(unittest.TestCase):
+    def fixture(self,folder):
+        return ProcExitRaceTests.writer_fixture(self,folder)
+
+    def run_inventory(self,folder,*,mode,iterdir_map=None,readlink_map=None,extra_rows=(),drop_writers=(),foreign=None):
+        import pathlib
+        from unittest.mock import patch
+        descriptor,rows,mapped,proc,identity=self.fixture(folder)
+        for pid in drop_writers:os.unlink(proc/str(pid)/'fd'/'3')
+        rows=rows+[{'pid':p,'ppid':1,'pgid':p,'sid':p,'birth':100+p,'state':'S'} for p in extra_rows]
+        real_iterdir=pathlib.Path.iterdir;real_readlink=os.readlink
+        def iterdir(self):
+            for key,value in (iterdir_map or {}).items():
+                if self==proc/key/'fd':
+                    if isinstance(value,BaseException):raise value
+                    return [proc/key/'fd'/str(i) for i in range(value)]
+            return real_iterdir(self)
+        def readlink(path,*a):
+            for key,value in (readlink_map or {}).items():
+                if str(path).startswith(str(proc/key/'fd')+'/'):
+                    if isinstance(value,BaseException):raise value
+                    return value
+            return real_readlink(path,*a)
+        foreign=foreign or patch.object(remote,'foreign_uid_fd_modes',side_effect=AssertionError('foreign UID probe called'))
+        with patch.object(remote,'Path',mapped),patch.object(pathlib.Path,'iterdir',iterdir),patch.object(remote.os,'readlink',readlink),patch.object(remote,'linux_processes',return_value=rows) as table,patch.object(remote,'linux_publisher_identity',side_effect=identity),foreign as probe:
+            value=remote.linux_writer_inventory(descriptor,mode=mode) if mode else remote.linux_writer_inventory(descriptor)
+        return value,probe,table
+
+    def test_job_scoped_skips_permission_denied_processes_without_foreign_probe(self):
+        with tempfile.TemporaryDirectory() as folder:
+            value,probe,table=self.run_inventory(os.path.realpath(folder),mode='job-scoped',iterdir_map={'11':PermissionError(13,'denied')},readlink_map={'12':PermissionError(13,'denied')})
+        self.assertEqual([r['pid'] for r in value['writable_fd_processes']],[10]);self.assertEqual(value['unknown_writer_count'],0)
+        probe.assert_not_called();self.assertEqual(table.call_args.kwargs.get('skip_unparseable'),True)
+
+    def test_legacy_permission_denied_still_uses_foreign_probe_in_both_places(self):
+        from unittest.mock import patch
+        for where in ('iterdir','readlink'):
+            with self.subTest(where=where),tempfile.TemporaryDirectory() as folder:
+                args={'iterdir_map':{'11':PermissionError(13,'denied')}} if where=='iterdir' else {'readlink_map':{'11':PermissionError(13,'denied')}}
+                value,probe,_=self.run_inventory(os.path.realpath(folder),mode=None,drop_writers=(12,),foreign=patch.object(remote,'foreign_uid_fd_modes',return_value=[]),**args)
+                self.assertEqual([c.args[0]['pid'] for c in probe.call_args_list],[11]);self.assertEqual(value['expected_writer_count'],1)
+
+    def test_job_scoped_readable_unknown_writer_still_stops(self):
+        with tempfile.TemporaryDirectory() as folder,self.assertRaisesRegex(ValueError,'writer inventory'):
+            self.run_inventory(os.path.realpath(folder),mode='job-scoped')
+
+    def test_external_fd_bounds_do_not_stop_job_scoped_but_publisher_bound_does(self):
+        with tempfile.TemporaryDirectory() as folder:
+            value,_,_=self.run_inventory(os.path.realpath(folder),mode='job-scoped',drop_writers=(11,12),iterdir_map={'11':5000})
+            self.assertEqual(value['expected_writer_count'],1)
+        with tempfile.TemporaryDirectory() as folder,self.assertRaisesRegex(ValueError,'per-process fd bound'):
+            self.run_inventory(os.path.realpath(folder),mode=None,drop_writers=(11,12),iterdir_map={'11':5000})
+        many={str(p):4000 for p in range(20,30)};elsewhere={str(p):'/dev/null' for p in range(20,30)}
+        with tempfile.TemporaryDirectory() as folder:
+            value,_,_=self.run_inventory(os.path.realpath(folder),mode='job-scoped',drop_writers=(11,12),extra_rows=range(20,30),iterdir_map=many,readlink_map=elsewhere)
+            self.assertEqual(value['expected_writer_count'],1)
+        with tempfile.TemporaryDirectory() as folder,self.assertRaisesRegex(ValueError,'total FD inventory bound'):
+            self.run_inventory(os.path.realpath(folder),mode=None,drop_writers=(11,12),extra_rows=range(20,30),iterdir_map=many,readlink_map=elsewhere)
+        with tempfile.TemporaryDirectory() as folder,self.assertRaisesRegex(ValueError,'per-process fd bound'):
+            self.run_inventory(os.path.realpath(folder),mode='job-scoped',drop_writers=(11,12),iterdir_map={'10':5000})
+
+    def test_process_table_skips_unparseable_foreign_rows_only_on_request(self):
+        from pathlib import Path as Real
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            proc=Real(os.path.realpath(folder))
+            for pid,text in (('10','garbage'),('11',ProcExitRaceTests.STAT.format(pid=11,birth=111)),('12','x'*5000)):
+                (proc/pid).mkdir();(proc/pid/'stat').write_text(text)
+            (proc/'self').mkdir()
+            mapped=lambda value='',*a:proc if value=='/proc' else Real(value,*a)
+            with patch.object(remote,'Path',mapped):
+                self.assertEqual([r['pid'] for r in remote.linux_processes(skip_unparseable=True)],[11])
+                with self.assertRaises(ValueError):remote.linux_processes()
+                with self.assertRaises(ValueError):remote.linux_processes(skip_unparseable=True,owned={10})
+                with self.assertRaises(ValueError):remote.linux_processes(skip_unparseable=True,owned={12})
+
+    def test_job_scoped_kernel_table_skips_foreign_but_keeps_owned_fail_closed(self):
+        from unittest.mock import patch
+        kernel=object.__new__(remote.LinuxKernel);kernel.mode='job-scoped';kernel.owned_pids={41}
+        with patch.object(remote,'linux_processes',return_value=[]) as table:kernel.processes()
+        self.assertEqual(table.call_args.kwargs['skip_unparseable'],True);self.assertIn(41,table.call_args.kwargs['owned']);self.assertIn(os.getpid(),table.call_args.kwargs['owned'])
+        legacy=object.__new__(remote.LinuxKernel)
+        with patch.object(remote,'linux_processes',return_value=[]) as table:legacy.processes()
+        self.assertEqual(table.call_args.kwargs,{})
+
+
+@unittest.skipIf(remote is None,'real adapter missing')
+class JobOwnerTests(unittest.TestCase):
+    def test_owner_identity_zombie_absent_or_reparent_stops(self):
+        from unittest.mock import patch
+        owner={'pid':70,'ppid':1,'pgid':70,'sid':70,'birth':500,'state':'S'}
+        with patch.object(remote,'linux_identity',return_value=dict(owner)),patch.object(remote.os,'getppid',return_value=70):
+            self.assertTrue(remote.check_job_owner(owner))
+        cases={'birth':({**owner,'birth':501},70),'zombie':({**owner,'state':'Z'},70),'ppid':(dict(owner),1),'absent':(FileNotFoundError(2,'gone'),70),'esrch':(ProcessLookupError(3,'gone'),70)}
+        for name,(row,ppid) in cases.items():
+            effect={'side_effect':row} if isinstance(row,BaseException) else {'return_value':row}
+            with self.subTest(name=name),patch.object(remote,'linux_identity',**effect),patch.object(remote.os,'getppid',return_value=ppid),self.assertRaisesRegex(ValueError,'job owner lost'):
+                remote.check_job_owner(owner)
+
+
+@unittest.skipIf(remote is None,'real adapter missing')
+class JobScopedPublisherTests(unittest.TestCase):
+    identity={'pid':40,'start_ticks':100,'executable_sha256':'a'*64,'start_receipt_sha256':'b'*64}
+
+    def test_job_scoped_envelope_requires_empty_runs_and_allowed_p(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(os.path.realpath(folder))/'feed'
+            for runs,allowed,mode in (([{'run_id':'x'}],[],'job-scoped'),([],[self.identity],'job-scoped'),([],[],'shared')):
+                with self.subTest(mode=mode,runs=runs,allowed=allowed),self.assertRaisesRegex(ValueError,'publisher pinned envelope'):
+                    remote.serve_publisher(root,runs,deadline=time.time()+1,interval=.01,allowed_p=allowed,gate_mode=mode)
+                self.assertFalse(root.exists())
+            envelope=Path(os.path.realpath(folder))/'publisher.json';envelope.write_bytes(remote.canonical({'root':str(root),'runs':[],'deadline':time.time()+1,'interval':.01,'allowed_p':[],'gate_mode':'shared'}))
+            with self.assertRaisesRegex(ValueError,'publisher pinned envelope'):
+                remote.main(['serve-publisher','--manifest',str(envelope),'--sha256',hashlib.sha256(envelope.read_bytes()).hexdigest()])
+            self.assertFalse(root.exists())
+
+    def test_job_scoped_publisher_self_feeds_valid_receipt_chain(self):
+        from unittest.mock import patch
+        from vkgr import retrieval_sasrec_plan as plan
+        modes=[]
+        def inventory(descriptor,mode='legacy'):modes.append(mode);return {'inventory_sha256':'c'*64}
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(os.path.realpath(folder))/'feed'
+            with patch.object(remote,'linux_publisher_identity',return_value=self.identity),patch.object(remote,'linux_writer_inventory',side_effect=inventory),patch.object(remote,'observe_job',side_effect=lambda disk_root,**k:job_payload(time.time())) as observe,patch.object(remote,'observe_g',side_effect=AssertionError('observe_g called')):
+                result=remote.serve_publisher(root,[],deadline=time.time()+.08,interval=.02,allowed_p=[],gate_mode='job-scoped')
+            self.assertEqual(result['status'],'CLOSED',result);self.assertEqual(modes,['job-scoped'])
+            self.assertEqual(observe.call_args.args[0],root)
+            descriptor=json.loads((root/'descriptor.json').read_bytes());plan.validate_feed_descriptor(descriptor)
+            self.assertEqual(descriptor['g_job_identity']['job_id_hash'],remote.sha(remote.canonical([])))
+            self.assertEqual(json.loads((root/'runs.json').read_bytes()),[])
+            receipts=sorted(root.glob('receipt-*.json'));self.assertGreater(len(receipts),1)
+            for path in receipts:
+                receipt=json.loads(path.read_bytes());payload=json.loads((root/('payload-'+receipt['payload_sha256']+'.json')).read_bytes())
+                remote.validate_safety_payload(payload,[],now=payload['observed_at'],max_age=30,mode='job-scoped')
+
+    def test_job_scoped_publisher_start_survives_unreadable_foreign_fd_set(self):
+        import pathlib
+        from pathlib import Path as Real
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            base=Real(os.path.realpath(folder));proc=base/'proc';root=base/'feed';me=str(os.getpid())
+            for pid in (me,'11'):(proc/pid/'fd').mkdir(parents=True);(proc/pid/'fdinfo').mkdir()
+            os.symlink(str(root/'publisher.lock'),proc/me/'fd'/'3');(proc/me/'fdinfo'/'3').write_text('pos:\t0\nflags:\t0100001\n')
+            rows=[{'pid':os.getpid(),'ppid':1,'pgid':1,'sid':1,'birth':100,'state':'S'},{'pid':11,'ppid':1,'pgid':11,'sid':11,'birth':111,'state':'S'}]
+            mapped=lambda value='',*a:proc if value=='/proc' else Real(value,*a)
+            real_iterdir=pathlib.Path.iterdir
+            def iterdir(self):
+                if self==proc/'11'/'fd':raise PermissionError(13,'denied')
+                return real_iterdir(self)
+            identity={'pid':os.getpid(),'start_ticks':100,'executable_sha256':'a'*64,'start_receipt_sha256':'b'*64}
+            with patch.object(remote,'Path',mapped),patch.object(pathlib.Path,'iterdir',iterdir),patch.object(remote,'linux_processes',return_value=rows),patch.object(remote,'linux_publisher_identity',return_value=identity),patch.object(remote,'foreign_uid_fd_modes',side_effect=AssertionError('foreign UID probe called')),patch.object(remote,'observe_job',side_effect=lambda disk_root,**k:job_payload(time.time())):
+                result=remote.serve_publisher(root,[],deadline=time.time()+.05,interval=.02,allowed_p=[],gate_mode='job-scoped')
+            self.assertIsNone(result['failure']);self.assertTrue((root/'initial-writer-inventory.json').exists())
+            first=json.loads(next(root.glob('receipt-000000-*.json')).read_bytes());self.assertEqual(first['status'],'OPEN')
+
+
+@unittest.skipIf(remote is None,'real adapter missing')
+class JobScopedRuntimeGateTests(unittest.TestCase):
+    def gate(self,root,payload,now,owner=None):
+        identity={'pid':40,'start_ticks':100,'executable_sha256':'a'*64,'start_receipt_sha256':'b'*64};jobs={'job_id_hash':'c'*64,'start_identity_hash':'d'*64}
+        journal=remote.FeedJournal(root/'feed',identity,jobs)
+        journal.publish(payload,now=100,status='OPEN');journal.descriptor['initial_no_other_writer_inventory_sha256']='e'*64
+        desc=root/'descriptor.json';pin=remote.write_once(desc,journal.descriptor);reader=remote.SafetyFeedReader(desc,pin,[],mode='job-scoped')
+        budget=remote.MonotonicBudget({'kind':'pilot','started_at':100.,'deadline':14500.,'disk_cap':20*1024**3,'attempts':1,'started_monotonic':1000.,'deadline_monotonic':15400.,'host_boot_id':'boot'},monotonic=lambda:now[0]+900,boot_id='boot')
+        limits={'stage_seconds':60,'finish_seconds':120,'next_atomic_bytes':1048576,'stop_reserve_bytes':1048576,'sample_seconds':5}
+        return journal,remote.RuntimeGate(root,root/'control'/'stop.json',budget,reader,limits,clock=lambda:now[0],mode='job-scoped',owner=owner)
+
+    def test_cached_and_fresh_branches_never_stop_on_cpu(self):
+        from unittest.mock import patch
+        for cpu in (.05,None):
+            with self.subTest(cpu=cpu),tempfile.TemporaryDirectory() as folder:
+                root=Path(os.path.realpath(folder));(root/'control').mkdir();now=[101.]
+                journal,gate=self.gate(root,job_payload(cpu=cpu),now)
+                try:
+                    with patch.object(remote,'prove_publisher_runtime',return_value=True):
+                        gate.check();now[0]=102.;gate.check()
+                    self.assertEqual(len(gate.samples),1)
+                    sample=gate.samples[-1];self.assertIn('cpu',sample['free_fractions']);self.assertEqual(sample['free_fractions']['cpu'],cpu)
+                    self.assertEqual(set(sample['stage_fractions']),{'ram','vram','disk'})
+                finally:journal.close()
+
+    def test_low_vram_stops_and_owner_is_checked_on_fresh_sample(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(os.path.realpath(folder));(root/'control').mkdir();now=[101.]
+            journal,gate=self.gate(root,job_payload(vram=.1),now)
+            try:
+                with patch.object(remote,'prove_publisher_runtime',return_value=True),self.assertRaisesRegex(ValueError,'shared resource STOP'):gate.check()
+            finally:journal.close()
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(os.path.realpath(folder));(root/'control').mkdir();now=[101.];owner={'pid':70,'ppid':1,'pgid':70,'sid':70,'birth':500,'state':'S'}
+            journal,gate=self.gate(root,job_payload(),now,owner=owner)
+            try:
+                with patch.object(remote,'prove_publisher_runtime',return_value=True),patch.object(remote,'check_job_owner',return_value=True) as check:
+                    gate.check();now[0]=102.;gate.check()
+                check.assert_called_once_with(owner)
+                now[0]=110.
+                with patch.object(remote,'prove_publisher_runtime',return_value=True),patch.object(remote,'check_job_owner',side_effect=ValueError('job owner lost')),self.assertRaisesRegex(ValueError,'job owner lost'):gate.check()
+            finally:journal.close()
+
+    def test_job_scoped_reader_rejects_legacy_payload_feed(self):
+        from unittest.mock import patch
+        runs,legacy=SafetyFeedTests().fixture()
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(os.path.realpath(folder));(root/'control').mkdir();now=[101.]
+            journal,gate=self.gate(root,legacy,now)
+            try:
+                with patch.object(remote,'prove_publisher_runtime',return_value=True) as prove,self.assertRaisesRegex(ValueError,'gate mode/payload mismatch'):gate.check()
+                self.assertEqual(prove.call_args.kwargs,{'mode':'job-scoped'})
+            finally:journal.close()
+
+
+@unittest.skipIf(remote is None,'real adapter missing')
+class PProgressTests(unittest.TestCase):
+    def run_stub(self,root,progress_path):
+        from unittest.mock import MagicMock,patch
+        value=real_manifest_fixture(root);value['stage']='formal-train'
+        (root/'output').mkdir();(root/'control').mkdir();(root/'control'/'admission.json').write_text('{}')
+        gate=MagicMock();gate.check.return_value={'receipt_sha256':'f'*64,'payload':{'protected_pgids':[]}};gate.samples=[]
+        prepared={'gate':gate,'kernel':MagicMock(),'budget':MagicMock(),'reader':MagicMock(),'start':{'output_identity':{'device':1,'inode':2},'control_identity':{'device':1,'inode':3},'controller':{}},'start_sha256':'a'*64,'baseline':set()}
+        env={'VKGR_RUN_ID':'p-run-01','VKGR_PROGRESS_PATH':str(progress_path)}
+        with patch.dict(os.environ,env),patch.object(remote,'prepare_controller',return_value=prepared),patch.object(remote,'_read_json',return_value={'g_receipt_sha256':'f'*64}),patch.object(remote,'validate_admission',return_value=True),patch.object(remote,'start_latched_child',side_effect=ValueError('stub stop')):
+            return remote.run_controller(value,str(root/'manifest.json'),'b'*64,[])
+
+    def test_controller_writes_progress_outside_charged_tree(self):
+        with tempfile.TemporaryDirectory() as folder,tempfile.TemporaryDirectory() as other:
+            root=Path(os.path.realpath(folder));target=Path(os.path.realpath(other))/'progress.json'
+            terminal=self.run_stub(root,target)
+            self.assertEqual(terminal['status'],'failed+spent')
+            data=target.read_bytes();self.assertLessEqual(len(data),4096);record=json.loads(data)
+            self.assertEqual(set(record),{'schema','run_id','line','stage','phase','epoch','max_epochs','completed','total','message','updated_at','pid'})
+            self.assertEqual((record['schema'],record['run_id'],record['line'],record['stage'],record['phase']),('vkgr-progress-v1','p-run-01','P','formal-train','sealing'))
+            self.assertEqual([record[k] for k in ('epoch','max_epochs','completed','total')],[None]*4);self.assertEqual(record['pid'],os.getpid())
+
+    def test_progress_inside_charged_tree_or_unwritable_never_stops(self):
+        import contextlib,io
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(os.path.realpath(folder));target=root/'progress.json';err=io.StringIO()
+            with contextlib.redirect_stderr(err):terminal=self.run_stub(root,target)
+            self.assertEqual(terminal['status'],'failed+spent');self.assertFalse(target.exists());self.assertIn('progress write disabled',err.getvalue())
+        with tempfile.TemporaryDirectory() as folder:
+            target=Path(os.path.realpath(folder))/'p.json';err=io.StringIO()
+            writer=remote.ProgressWriter(Path('/private/tmp/charged-elsewhere'),'pilot',environ={'VKGR_RUN_ID':'r','VKGR_PROGRESS_PATH':str(target)})
+            with contextlib.redirect_stderr(err),patch.object(remote.os,'replace',side_effect=OSError(28,'full')):writer.write('worker-running')
+            writer.write('worker-running');self.assertFalse(target.exists());self.assertIn('progress write disabled',err.getvalue())
+            self.assertEqual(list(Path(folder).iterdir()),[])
+        for environ in ({'VKGR_RUN_ID':'r'},{'VKGR_PROGRESS_PATH':'/private/tmp/x.json'},{'VKGR_RUN_ID':'r','VKGR_PROGRESS_PATH':'relative.json'},{}):
+            with self.subTest(environ=environ),contextlib.redirect_stderr(io.StringIO()):
+                writer=remote.ProgressWriter(Path('/private/tmp/charged-elsewhere'),'pilot',environ=environ);writer.write('awaiting-admission');self.assertIsNone(writer.path)

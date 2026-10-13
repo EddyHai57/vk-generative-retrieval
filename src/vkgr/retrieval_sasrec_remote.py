@@ -262,11 +262,26 @@ def _absolute(path):
     return isinstance(path,str) and path.startswith('/') and '..' not in path.split('/') and not any(part.startswith('synthetic') or part=='server-only' for part in path.split('/'))
 
 
+GATE_MODES = ('legacy','job-scoped')
+# New P manifest builders must write this top-level field (absent = legacy).
+NEW_RUN_GATE = {'mode':'job-scoped'}
+# Job-scoped CPU headroom is recorded only; admission checks CPU (design D-B5).
+JOB_SCOPED_CPU_ENFORCED = False
+
+
+def manifest_gate_mode(value):
+    if 'gate' not in value:return 'legacy'
+    gate=value['gate']
+    if not isinstance(gate,dict) or set(gate)!={'mode'} or gate['mode'] not in GATE_MODES:raise ValueError('gate mode envelope')
+    return gate['mode']
+
+
 def validate_remote_manifest(value):
     """Pure metadata gate. No stat, resolve, hash or read is allowed here."""
     fields={'schema_id','operation_id','stage','roles','code_root','python','source_pins','python_sha256','output_root','control_root','authorization','queue','limits','g_feed','slot','predecessor'}
-    if not isinstance(value,dict) or set(value)!=fields or value['schema_id']!='p4h-real-operation-v1' or not isinstance(value['operation_id'],str) or not value['operation_id'].startswith('p4h-'):
+    if not isinstance(value,dict) or set(value) not in (fields,fields|{'gate'}) or value['schema_id']!='p4h-real-operation-v1' or not isinstance(value['operation_id'],str) or not value['operation_id'].startswith('p4h-'):
         raise ValueError('real operation envelope required')
+    gate_mode=manifest_gate_mode(value)
     stage=value['stage']
     if stage not in ('pilot','pilot-verify','formal-train','formal-verify'):raise ValueError('unimplemented or unauthorized remote stage')
     if stage=='pilot':
@@ -303,7 +318,7 @@ def validate_remote_manifest(value):
         if not charged.startswith(queue_root.rstrip('/')+'/'):raise ValueError('charged path outside original queue tree')
     minimum_finish=limits['sample_seconds']+limits['seal_seconds']+3*limits['signal_grace_seconds']+90
     if limits['finish_seconds']<minimum_finish:raise ValueError('cleanup probe/seal/grace/final reserve insufficient')
-    return {'stage':stage,'operation_id':value['operation_id'],'static_verified_before_path':True}
+    return {'stage':stage,'operation_id':value['operation_id'],'static_verified_before_path':True,'gate_mode':gate_mode}
 
 
 def make_admission(value,*,manifest_sha256,start_sha256,g_receipt_sha256,now):
@@ -414,7 +429,9 @@ def authorize_group_signal(leader,observed,registered,*,controller_pgid,protecte
     return pgid
 
 
-def linux_processes():
+def linux_processes(skip_unparseable=False,owned=()):
+    """skip_unparseable (job-scoped only): an oversized/unparseable stat row of a
+    process outside `owned` is skipped instead of STOP; the 8192 bound stays."""
     root=Path('/proc');entries=list(root.iterdir())
     if len(entries)>8192:raise ValueError('process inventory bound')
     rows=[]
@@ -426,6 +443,8 @@ def linux_processes():
             rows.append(parse_proc_stat(data.decode()))
         # ENOENT/ESRCH both mean the process exited after listdir; any other error stays fail-closed.
         except (FileNotFoundError,ProcessLookupError):continue
+        except ValueError:
+            if not skip_unparseable or int(p.name) in owned:raise
     return rows
 
 
@@ -433,7 +452,33 @@ def linux_identity(pid):
     return parse_proc_stat((Path('/proc')/str(pid)/'stat').read_text())
 
 
-def validate_safety_payload(payload,runs,*,now,max_age):
+def check_job_owner(owner):
+    """Job-scoped worker: the exact controller that started us must still own us."""
+    try:row=linux_identity(owner['pid'])
+    except (FileNotFoundError,ProcessLookupError) as error:raise ValueError('job owner lost') from error
+    if row['state']=='Z' or _identity(row)!=_identity(owner) or os.getppid()!=owner['pid']:raise ValueError('job owner lost')
+    return True
+
+
+JOB_PAYLOAD_FIELDS = {'observed_at','runs','free_fractions','gpu_pids','allowed_gpu_pids','protected_pgids','p_writer_count','gate_mode'}
+
+
+def _validate_job_payload(payload,runs,*,now,max_age):
+    if not isinstance(payload,dict) or set(payload)!=JOB_PAYLOAD_FIELDS or payload['gate_mode']!='job-scoped' or runs!=[]:raise ValueError('gate mode/payload mismatch')
+    if not _finite(now) or not _finite(max_age) or not 0<max_age<=30 or not _finite(payload['observed_at']) or not 0<=now-payload['observed_at']<=max_age:raise ValueError('stale or invalid safety observation')
+    if any(payload[k]!=[] for k in ('runs','gpu_pids','allowed_gpu_pids','protected_pgids')) or type(payload['p_writer_count']) is not int or payload['p_writer_count']!=0:raise ValueError('gate mode/payload mismatch')
+    fractions=payload['free_fractions']
+    if not isinstance(fractions,dict) or set(fractions)!={'ram','vram','disk','cpu'}:raise ValueError('gate mode/payload mismatch')
+    cpu=fractions['cpu']
+    if cpu is not None and (not _finite(cpu) or not 0<=cpu<=1):raise ValueError('gate mode/payload mismatch')
+    if any(not _finite(fractions[k]) or not .2<=fractions[k]<=1 for k in ('ram','vram','disk')):raise ValueError('shared resource STOP')
+    if JOB_SCOPED_CPU_ENFORCED and cpu is not None and cpu<.2:raise ValueError('shared resource STOP')
+    return True
+
+
+def validate_safety_payload(payload,runs,*,now,max_age,mode='legacy'):
+    if mode=='job-scoped':return _validate_job_payload(payload,runs,now=now,max_age=max_age)
+    if mode!='legacy' or isinstance(payload,dict) and 'gate_mode' in payload:raise ValueError('gate mode/payload mismatch')
     if not isinstance(payload,dict) or set(payload)!={'observed_at','runs','free_fractions','gpu_pids','allowed_gpu_pids','protected_pgids','p_writer_count'} or not _finite(now) or not _finite(max_age) or not 0<max_age<=30 or not _finite(payload['observed_at']) or not 0<=now-payload['observed_at']<=max_age:raise ValueError('stale or invalid safety observation')
     expected={r['run_id']:r for r in runs};observed=payload['runs']
     if not isinstance(observed,list) or len(observed)!=len(expected) or {r.get('run_id') for r in observed}!=set(expected):raise ValueError('G identity set drift')
@@ -473,6 +518,47 @@ def linux_resources():
         if key in ('MemTotal','MemAvailable'):mem[key]=int(val.split()[0])*1024
     fs=os.statvfs('/workspace')
     return {'vram':free/total,'ram':current_ram_fraction(),'disk':fs.f_bavail/fs.f_blocks},pids
+
+
+def job_resources(disk_root):
+    """Job-scoped: total/free GPU memory only (never --query-compute-apps)."""
+    import subprocess
+    gpu=subprocess.run(['nvidia-smi','--query-gpu=memory.total,memory.free','--format=csv,noheader,nounits'],capture_output=True,text=True,timeout=5,check=True)
+    lines=gpu.stdout.strip().splitlines()
+    if len(lines)!=1:raise ValueError('single authorized GPU required')
+    total,free=map(float,lines[0].split(','))
+    if not math.isfinite(total) or not math.isfinite(free) or total<=0:raise ValueError('GPU resource unknown')
+    fs=os.statvfs(disk_root)
+    return {'vram':free/total,'ram':current_ram_fraction(),'disk':fs.f_bavail/fs.f_blocks}
+
+
+def read_proc_stat_cpu(path):
+    fields=Path(path).read_text().splitlines()[0].split()
+    if fields[0]!='cpu' or len(fields)<5:raise ValueError('proc stat cpu schema')
+    values=[int(v) for v in fields[1:]]
+    return values[3]+values[4],sum(values)
+
+
+class CpuSampler:
+    """Idle+iowait fraction from /proc/stat deltas; unreadable -> None (never STOP)."""
+    def __init__(self,path='/proc/stat',*,first_interval=.2,sleep=time.sleep):
+        self.path=path;self.first_interval=first_interval;self.sleep=sleep;self.previous=None
+
+    def sample(self):
+        try:
+            if self.previous is None:self.previous=read_proc_stat_cpu(self.path);self.sleep(self.first_interval)
+            current=read_proc_stat_cpu(self.path);idle=current[0]-self.previous[0];total=current[1]-self.previous[1];self.previous=current
+        except (OSError,ValueError,IndexError):self.previous=None;return None
+        if total<=0 or not 0<=idle<=total:return None
+        return idle/total
+
+
+def observe_job(disk_root,*,cpu=None):
+    """Job-scoped self-feed: no G files, no cmdline scan, no GPU process list."""
+    fractions=job_resources(disk_root);fractions['cpu']=(cpu or CpuSampler()).sample()
+    payload={'observed_at':time.time(),'runs':[],'free_fractions':fractions,'gpu_pids':[],'allowed_gpu_pids':[],'protected_pgids':[],'p_writer_count':0,'gate_mode':'job-scoped'}
+    validate_safety_payload(payload,[],now=time.time(),max_age=30,mode='job-scoped')
+    return payload
 
 
 def _read_json(path,cap=65536,pin=None):
@@ -563,30 +649,42 @@ def linux_publisher_identity(pid):
     return {**base,'start_receipt_sha256':operation.digest(base)}
 
 
-def linux_writer_inventory(descriptor):
+def linux_writer_inventory(descriptor,mode='legacy'):
+    """Job-scoped differs only for processes we cannot or need not inspect:
+    PermissionError -> skip (no foreign-UID probe); a non-publisher with >4096 fds
+    -> skip; the 32768 total counts only fds that resolve into the feed root."""
+    if mode not in GATE_MODES:raise ValueError('gate mode envelope')
+    job=mode=='job-scoped'
     root=Path(descriptor['feed_root']);expected=descriptor['publisher_process'];writers=[];fd_count=0
-    for proc in linux_processes():
+    for proc in (linux_processes(skip_unparseable=True,owned={expected['pid']}) if job else linux_processes()):
         directory=Path('/proc')/str(proc['pid'])/'fd'
         try:entries=list(directory.iterdir())
         except (FileNotFoundError,ProcessLookupError):continue
         except PermissionError:
+            if job:continue
             foreign_uid_fd_modes(proc,descriptor)
             continue
-        if len(entries)>4096:raise ValueError('per-process fd bound')
+        if len(entries)>4096:
+            if job and proc['pid']!=expected['pid']:continue
+            raise ValueError('per-process fd bound')
         modes=set()
         for fd in entries:
-            fd_count+=1
-            if fd_count>32768:raise ValueError('total FD inventory bound')
+            if not job:
+                fd_count+=1
+                if fd_count>32768:raise ValueError('total FD inventory bound')
             try:
                 target=os.readlink(fd)
                 if target!=str(root) and not target.startswith(str(root)+'/'):continue
+                if job:
+                    fd_count+=1
+                    if fd_count>32768:raise ValueError('total FD inventory bound')
                 info=(directory.parent/'fdinfo'/fd.name).read_text()
                 flags=next(int(line.split()[1],8) for line in info.splitlines() if line.startswith('flags:'))&os.O_ACCMODE
                 if flags==os.O_WRONLY:modes.add('w')
                 elif flags==os.O_RDWR:modes.add('u')
             except (FileNotFoundError,ProcessLookupError):continue
             except PermissionError:
-                foreign_uid_fd_modes(proc,descriptor)
+                if not job:foreign_uid_fd_modes(proc,descriptor)
                 break
             except (StopIteration,ValueError) as error:raise ValueError('FD access mode unavailable') from error
         if modes:
@@ -597,7 +695,7 @@ def linux_writer_inventory(descriptor):
     return value
 
 
-def prove_publisher_runtime(descriptor):
+def prove_publisher_runtime(descriptor,mode='legacy'):
     operation.validate_feed_directory(descriptor)
     lock=Path(descriptor['feed_root'])/descriptor['publisher_lock']['name'];info=lock.lstat();expected=descriptor['publisher_lock']
     if stat.S_ISLNK(info.st_mode) or {k:expected[k] for k in ('device','inode','birth_ctime_ns','owner_uid')}!={'device':info.st_dev,'inode':info.st_ino,'birth_ctime_ns':info.st_ctime_ns,'owner_uid':info.st_uid}:raise ValueError('publisher lock drift')
@@ -613,7 +711,9 @@ def prove_publisher_runtime(descriptor):
         except FileNotFoundError:continue
     if not held:raise ValueError('publisher lock FD not held')
     initial=_read_json(Path(descriptor['feed_root'])/'initial-writer-inventory.json',pin=descriptor['initial_no_other_writer_inventory_sha256']);operation.validate_writer_inventory(descriptor,initial)
-    linux_writer_inventory(descriptor);return True
+    if mode=='legacy':linux_writer_inventory(descriptor)
+    else:linux_writer_inventory(descriptor,mode=mode)
+    return True
 
 
 def read_head_snapshot(path):
@@ -638,8 +738,9 @@ def read_head_snapshot(path):
 
 
 class SafetyFeedReader:
-    def __init__(self,descriptor_path,descriptor_sha256,runs):
-        self.path=Path(descriptor_path);self.pin=descriptor_sha256;self.runs=runs;self.last_seq=-1;self.last_sha=None;self.cache={}
+    def __init__(self,descriptor_path,descriptor_sha256,runs,mode='legacy'):
+        if mode not in GATE_MODES:raise ValueError('gate mode envelope')
+        self.path=Path(descriptor_path);self.pin=descriptor_sha256;self.runs=runs;self.mode=mode;self.last_seq=-1;self.last_sha=None;self.cache={}
         self.descriptor=_read_json(self.path,pin=self.pin);plan.validate_feed_descriptor(self.descriptor)
 
     def observe(self,*,now):
@@ -647,7 +748,9 @@ class SafetyFeedReader:
         began=now;started=time.monotonic()
         if not _finite(began):raise ValueError('finite observation clock required')
         if _read_json(self.path,pin=self.pin)!=self.descriptor:raise ValueError('descriptor changed')
-        prove_publisher_runtime(self.descriptor);root=Path(self.descriptor['feed_root']);head=read_head_snapshot(root/'HEAD.json')
+        if self.mode=='legacy':prove_publisher_runtime(self.descriptor)
+        else:prove_publisher_runtime(self.descriptor,mode=self.mode)
+        root=Path(self.descriptor['feed_root']);head=read_head_snapshot(root/'HEAD.json')
         if set(head)!={'seq','receipt_name','receipt_sha256'} or type(head['seq']) is not int or head['seq']<self.last_seq or head['seq']>11999:raise ValueError('feed rollback/bound')
         names={};entries=list(root.iterdir())
         if len(entries)>24576:raise ValueError('feed namespace bound')
@@ -684,7 +787,7 @@ class SafetyFeedReader:
         payload=_read_json(root/('payload-'+previous_value['payload_sha256']+'.json'),cap=262144,pin=previous_value['payload_sha256']);check_payload_binding(previous_value,payload)
         now=began+(time.monotonic()-started)
         if not _finite(now) or now<began or now>=previous_value['expires_at']:raise ValueError('G safety feed expired during observation')
-        validate_safety_payload(payload,self.runs,now=now,max_age=30)
+        validate_safety_payload(payload,self.runs,now=now,max_age=30,mode=self.mode)
         self.last_seq=head['seq'];self.last_sha=previous
         return {'receipt_sha256':previous,'head_seq':head['seq'],'payload':payload,'observed_now':now}
 
@@ -857,16 +960,23 @@ class OwnedTree:
 
 
 class LinuxKernel:
-    def __init__(self):
+    def __init__(self,mode='legacy'):
         import ctypes
         import signal
         import sys
+        if mode not in GATE_MODES:raise ValueError('gate mode envelope')
+        self.mode=mode;self.owned_pids=set()
         if sys.platform!='linux' or not hasattr(os,'pidfd_open') or not hasattr(signal,'pidfd_send_signal'):raise ValueError('Linux pidfd runtime required before spawn')
         libc=ctypes.CDLL(None,use_errno=True)
         if libc.prctl(36,1,0,0,0)!=0:raise ValueError('dedicated subreaper unavailable')
 
-    def processes(self):return linux_processes()
+    def processes(self):
+        # Job-scoped: a foreign unparseable /proc row is skipped; our own pids stay fail-closed.
+        if getattr(self,'mode','legacy')=='job-scoped':return linux_processes(skip_unparseable=True,owned=self.owned_pids|{os.getpid()})
+        return linux_processes()
     def identity(self,pid):
+        # Only owned pids are probed here (controller, latched worker, owned tree rows).
+        if getattr(self,'mode','legacy')=='job-scoped':self.owned_pids.add(pid)
         try:return linux_identity(pid)
         except (FileNotFoundError,ProcessLookupError):return None
     def open_pidfd(self,row):
@@ -990,9 +1100,10 @@ def queue_tree_usage(root,*,max_nodes=32768):
 
 
 class RuntimeGate:
-    def __init__(self,queue_root,stop_path,budget,reader,limits,*,clock=time.time):
+    def __init__(self,queue_root,stop_path,budget,reader,limits,*,clock=time.time,mode='legacy',owner=None):
         if not isinstance(budget,MonotonicBudget) or not isinstance(reader,SafetyFeedReader):raise ValueError('real clock and safety feed required')
-        self.root=Path(queue_root);self.stop=Path(stop_path);self.budget=budget;self.reader=reader;self.limits=dict(limits);self.clock=clock;self.samples=[];self.last_feed=None
+        if mode not in GATE_MODES or reader.mode!=mode or owner is not None and mode!='job-scoped':raise ValueError('gate mode envelope')
+        self.root=Path(queue_root);self.stop=Path(stop_path);self.budget=budget;self.reader=reader;self.limits=dict(limits);self.clock=clock;self.samples=[];self.last_feed=None;self.mode=mode;self.owner=owner
         s=self.root.lstat();self.root_identity=(s.st_dev,s.st_ino)
 
     def check(self):
@@ -1000,14 +1111,18 @@ class RuntimeGate:
         now=self.clock()
         if self.last_feed is not None and 0<=now-self.samples[-1]['observed_at']<self.limits.get('sample_seconds',0):
             sample=self.samples[-1]
-            self.budget.require_stage(now=now,stage_seconds=self.limits['stage_seconds'],finish_seconds=self.limits['finish_seconds'],used_bytes=sample['queue_bytes'],next_atomic_bytes=self.limits['next_atomic_bytes'],closure_bytes=self.limits['stop_reserve_bytes'],free_fractions=sample['free_fractions'])
+            # require_stage accepts exactly ram/vram/disk; job-scoped samples also record cpu.
+            self.budget.require_stage(now=now,stage_seconds=self.limits['stage_seconds'],finish_seconds=self.limits['finish_seconds'],used_bytes=sample['queue_bytes'],next_atomic_bytes=self.limits['next_atomic_bytes'],closure_bytes=self.limits['stop_reserve_bytes'],free_fractions=sample.get('stage_fractions',sample['free_fractions']))
             return self.last_feed
+        if self.owner is not None:check_job_owner(self.owner)
         feed=self.reader.observe(now=now);now=feed['observed_now'];usage=queue_tree_usage(self.root)
         if self.root_identity!=(usage['root_identity']['device'],usage['root_identity']['inode']):raise ValueError('queue root drift')
         fractions=dict(feed['payload']['free_fractions']);fs=os.statvfs(self.root)
         fractions['disk']-=(self.limits['next_atomic_bytes']+self.limits['stop_reserve_bytes'])/(fs.f_blocks*fs.f_frsize)
-        self.budget.require_stage(now=now,stage_seconds=self.limits['stage_seconds'],finish_seconds=self.limits['finish_seconds'],used_bytes=usage['bytes'],next_atomic_bytes=self.limits['next_atomic_bytes'],closure_bytes=self.limits['stop_reserve_bytes'],free_fractions=fractions)
+        stage=fractions if self.mode=='legacy' else {k:fractions[k] for k in ('ram','vram','disk')}
+        self.budget.require_stage(now=now,stage_seconds=self.limits['stage_seconds'],finish_seconds=self.limits['finish_seconds'],used_bytes=usage['bytes'],next_atomic_bytes=self.limits['next_atomic_bytes'],closure_bytes=self.limits['stop_reserve_bytes'],free_fractions=stage)
         sample={'observed_at':now,'queue_bytes':usage['bytes'],'remaining_seconds':self.budget.remaining_seconds(now),'free_fractions':fractions,'g_receipt_sha256':feed['receipt_sha256']}
+        if self.mode=='job-scoped':sample['stage_fractions']=stage
         self.samples.append(sample);self.last_feed=feed
         if len(self.samples)>20000:raise ValueError('finite resource sample bound')
         return feed
@@ -1109,21 +1224,25 @@ def materialize_training_inputs(examples,catalog,original_idmap,support,partitio
     return {**result,'artifacts':artifacts,'sidecar':prefix['sidecar']}
 
 
-def serve_publisher(root,runs,*,deadline,interval,allowed_p):
+def serve_publisher(root,runs,*,deadline,interval,allowed_p,gate_mode='legacy'):
+    if gate_mode not in GATE_MODES or gate_mode=='job-scoped' and (runs!=[] or allowed_p!=[]):raise ValueError('publisher pinned envelope')
     if not _finite(deadline) or not 0<deadline-time.time()<=64800 or not _finite(interval) or not 0<interval<=5:raise ValueError('bounded publisher lifetime required')
     journal=FeedJournal(root,linux_publisher_identity(os.getpid()),{'job_id_hash':sha(canonical([r['run_id'] for r in runs])),'start_identity_hash':sha(canonical(runs))})
     status='OWNER_LOST';failure=None;last=None;closed_reason='owner_lost'
+    if gate_mode=='legacy':observe=lambda:observe_g(runs,allowed_p=allowed_p)
+    else:
+        cpu=CpuSampler();observe=lambda:observe_job(journal.root,cpu=cpu)
     try:
         write_once(journal.root/'runs.json',runs)
-        inventory=linux_writer_inventory(journal.descriptor)
+        inventory=linux_writer_inventory(journal.descriptor) if gate_mode=='legacy' else linux_writer_inventory(journal.descriptor,mode=gate_mode)
         pin=write_once(journal.root/'initial-writer-inventory.json',inventory);os.chmod(journal.root/'initial-writer-inventory.json',0o400)
         journal.descriptor['initial_no_other_writer_inventory_sha256']=pin
-        last=observe_g(runs,allowed_p=allowed_p);journal.publish(last,now=time.time(),status='OPEN')
+        last=observe();journal.publish(last,now=time.time(),status='OPEN')
         write_once(journal.root/'descriptor.json',journal.descriptor);os.chmod(journal.root/'descriptor.json',0o400)
         while time.time()<deadline:
             if publisher_stop_requested(journal):closed_reason='cooperative_stop';break
             time.sleep(min(interval,max(0,deadline-time.time())))
-            last=observe_g(runs,allowed_p=allowed_p)
+            last=observe()
             journal.publish(last,now=time.time(),status='OPEN')
             if journal.seq>=11998:raise ValueError('publisher finite sequence exhausted')
         status='CLOSED'
@@ -1286,7 +1405,7 @@ def verify_common_bindings(value,contents):
 
 
 def prepare_controller(value,manifest_sha256,runs):
-    validate_remote_manifest(value)
+    mode=validate_remote_manifest(value)['gate_mode']
     verify_clock_extension(value['queue'])
     source=verify_source_tree(value)
     contents,opened=read_roles(value);verify_common_bindings(value,contents)
@@ -1297,7 +1416,7 @@ def prepare_controller(value,manifest_sha256,runs):
     expected_queue={k:v for k,v in queue.items() if k not in ('receipt_path','receipt_sha256','clock_extension')};expected_queue['attempts']=queue['attempts'] if autonomous_extension(queue.get('extension')) else 3 if 'extension' in queue else 1
     if receipt!=expected_queue:raise ValueError('original queue receipt drift')
     budget=MonotonicBudget(queue);budget.remaining_seconds(time.time())
-    reader=SafetyFeedReader(value['g_feed']['path'],value['g_feed']['sha256'],runs)
+    reader=SafetyFeedReader(value['g_feed']['path'],value['g_feed']['sha256'],runs,mode=mode)
     feed=reader.observe(now=time.time())
     expected_g={'job_id_hash':sha(canonical([r['run_id'] for r in runs])),'start_identity_hash':sha(canonical(runs))}
     if reader.descriptor['g_job_identity']!=contents['g-feed-descriptor']['g_job_identity'] or reader.descriptor['g_job_identity']!=expected_g:raise ValueError('G fixed identities drift')
@@ -1309,12 +1428,12 @@ def prepare_controller(value,manifest_sha256,runs):
     if output.exists() or control.exists() or output.is_symlink() or control.is_symlink():raise ValueError('exclusive operation root absence required')
     check_queue_filesystem(value,auth,reader.descriptor)
     reserve_queue_attempt(value,auth,manifest_sha256)
-    kernel=LinuxKernel();owner=kernel.identity(os.getpid());baseline={r['pid'] for r in kernel.processes() if r['ppid']==os.getpid()}
+    kernel=LinuxKernel(mode);owner=kernel.identity(os.getpid());baseline={r['pid'] for r in kernel.processes() if r['ppid']==os.getpid()}
     output.mkdir(mode=0o700);control.mkdir(mode=0o700)
     start={'schema_id':'p4h-real-controller-start-v1','operation_id':value['operation_id'],'manifest_sha256':manifest_sha256,'controller':owner,'output_root':str(output),'control_root':str(control),'output_identity':{'device':output.stat().st_dev,'inode':output.stat().st_ino},'control_identity':{'device':control.stat().st_dev,'inode':control.stat().st_ino},'source':source,'opened_roles':opened,'g_receipt_sha256':feed['receipt_sha256'],'issued_at':time.time()}
     write_once(control/'operation.json',value)
     start_pin=write_once(control/'start.json',start)
-    gate=RuntimeGate(queue_charge_root(queue),control/'stop.json',budget,reader,value['limits'])
+    gate=RuntimeGate(queue_charge_root(queue),control/'stop.json',budget,reader,value['limits'],mode=mode)
     gate.check()
     return {'contents':contents,'opened':opened,'kernel':kernel,'budget':budget,'reader':reader,'gate':gate,'start':start,'start_sha256':start_pin,'baseline':baseline}
 
@@ -1469,10 +1588,11 @@ def worker_entry(value,manifest_sha256,runs):
     from .retrieval_sasrec import SASRecIDTwoTower
     from .training import seed_all
     configure_real_torch()
-    validate_remote_manifest(value);verify_clock_extension(value['queue']);verify_source_tree(value);contents,opened=read_roles(value);verify_common_bindings(value,contents)
+    mode=validate_remote_manifest(value)['gate_mode'];verify_clock_extension(value['queue']);verify_source_tree(value);contents,opened=read_roles(value);verify_common_bindings(value,contents)
     control=Path(value['control_root']);output=Path(value['output_root']);start=_read_json(control/'start.json');permit=_read_json(control/'admission.json')
     validate_admission(value,permit,manifest_sha256=manifest_sha256,start_sha256=sha(canonical(start)),g_receipt_sha256=permit['g_receipt_sha256'],now=time.time())
-    gate=RuntimeGate(queue_charge_root(value['queue']),control/'stop.json',MonotonicBudget(value['queue']),SafetyFeedReader(value['g_feed']['path'],value['g_feed']['sha256'],runs),value['limits'])
+    if mode=='job-scoped':gate=RuntimeGate(queue_charge_root(value['queue']),control/'stop.json',MonotonicBudget(value['queue']),SafetyFeedReader(value['g_feed']['path'],value['g_feed']['sha256'],runs,mode=mode),value['limits'],mode=mode,owner=start['controller'])
+    else:gate=RuntimeGate(queue_charge_root(value['queue']),control/'stop.json',MonotonicBudget(value['queue']),SafetyFeedReader(value['g_feed']['path'],value['g_feed']['sha256'],runs),value['limits'])
     auth=_read_json(value['authorization']['path'],pin=value['authorization']['sha256']);verify_queue_authority(value,auth);verify_input_origin(value,auth)
     gate.check();binding={'input_sha256':{r['role']:r['sha256'] for r in value['roles'] if r['role'] not in plan.COMMON_ROLES and r.get('source') not in ('artifact_hashes','sealed-wrapper')},'source_sha256':sha(canonical(value['source_pins'])),'test_gate':'closed'}
     if 'digest_repair' in auth:
@@ -1526,11 +1646,51 @@ def worker_entry(value,manifest_sha256,runs):
     return result
 
 
+class ProgressWriter:
+    """Optional vkgr-progress-v1 observer file (ops README §4.4). Never STOPs P:
+    invalid env, a path inside the charged tree or any OSError only disables it."""
+    def __init__(self,charged_root,stage,*,environ=None,interval=5.):
+        import re
+        environ=os.environ if environ is None else environ
+        self.path=None;self.run_id=environ.get('VKGR_RUN_ID');self.stage=re.sub(r'[^a-z0-9-]','-',str(stage).lower())[:32];self.interval=interval;self.last=None
+        raw=environ.get('VKGR_PROGRESS_PATH')
+        if not raw:return
+        path=Path(raw)
+        try:
+            if not self.run_id or not path.is_absolute() or path.is_symlink() or not path.parent.is_dir() or path.parent.is_symlink():self._disable('progress env');return
+            charged=Path(charged_root).resolve();parent=path.parent.resolve()
+            if parent==charged or charged in parent.parents:self._disable('progress path inside charged tree');return
+        except OSError as error:self._disable(error.errno);return
+        self.path=path
+
+    def _disable(self,reason):
+        import sys
+        self.path=None;print(f'progress write disabled: {reason}',file=sys.stderr)
+
+    def write(self,phase):
+        if self.path is None:return
+        now=time.time()
+        if self.last is not None and self.last[0]==phase and now-self.last[1]<self.interval:return
+        record={'schema':'vkgr-progress-v1','run_id':self.run_id,'line':'P','stage':self.stage,'phase':phase,'epoch':None,'max_epochs':None,'completed':None,'total':None,'message':None,'updated_at':now,'pid':os.getpid()}
+        data=json.dumps(record,sort_keys=True).encode()
+        if len(data)>4096:self._disable('record bound');return
+        temporary=self.path.with_name('.'+self.path.name+f'.{os.getpid()}.{time.time_ns()}.tmp')
+        try:
+            with temporary.open('xb') as f:f.write(data);f.flush();os.fsync(f.fileno())
+            os.replace(temporary,self.path);self.last=(phase,now)
+        except OSError as error:self._disable(error.errno)
+        finally:
+            try:temporary.unlink()
+            except OSError:pass
+
+
 def run_controller(value,manifest_path,manifest_sha256,runs):
     prepared=prepare_controller(value,manifest_sha256,runs);control=Path(value['control_root']);output=Path(value['output_root']);gate=prepared['gate'];kernel=prepared['kernel'];handle=None;lease=None;failure=None;result=None;started=time.monotonic();permit=None
+    progress=ProgressWriter(queue_charge_root(value['queue']),value['stage'])
     try:
         while not (control/'admission.json').exists():
             if time.time()>=value['authorization']['expires_at']:raise ValueError('approval expired before exact start')
+            progress.write('awaiting-admission')
             gate.check();time.sleep(.1)
         permit=_read_json(control/'admission.json')
         feed=gate.check();validate_admission(value,permit,manifest_sha256=manifest_sha256,start_sha256=prepared['start_sha256'],g_receipt_sha256=permit['g_receipt_sha256'],now=time.time())
@@ -1541,10 +1701,12 @@ def run_controller(value,manifest_path,manifest_sha256,runs):
         write_once(control/'worker-start.json',{'manifest_sha256':manifest_sha256,'worker':handle['identity'],'controller':prepared['start']['controller'],'admission_sha256':sha(canonical(permit))})
         gate.check();handle['process'].stdin.write(b'1');handle['process'].stdin.flush();handle['process'].stdin.close();handle['released']=True
         while handle['process'].poll() is None:
+            progress.write('worker-running')
             lease.refresh(reap=True);gate.check();time.sleep(value['limits']['sample_seconds'])
         if handle['process'].returncode!=0:raise ValueError('actual worker failed')
     except (OSError,ValueError,RuntimeError) as error:failure=type(error).__name__+': '+str(error)
     finally:
+        progress.write('sealing')
         if lease:
             result=lease.close(control/'stop.json',manifest_sha256=manifest_sha256,seal_seconds=value['limits']['seal_seconds'],signal_grace_seconds=value['limits']['signal_grace_seconds'],deadline_monotonic=prepared['budget'].deadline_mono)
         elif handle and not handle['released']:close_unreleased(handle)
@@ -1571,14 +1733,15 @@ def main(argv=None):
     args=parser.parse_args(argv);value=_read_json(args.manifest,pin=args.sha256,cap=1048576)
     if args.command=='prepare-inputs':return prepare_actual_inputs(value)
     if args.command=='serve-publisher':
-        if set(value)!={'root','runs','deadline','interval','allowed_p'}:raise ValueError('publisher pinned envelope')
-        return serve_publisher(value['root'],value['runs'],deadline=value['deadline'],interval=value['interval'],allowed_p=value['allowed_p'])
-    validate_remote_manifest(value)
+        fields={'root','runs','deadline','interval','allowed_p'}
+        if set(value) not in (fields,fields|{'gate_mode'}) or value.get('gate_mode','legacy') not in GATE_MODES:raise ValueError('publisher pinned envelope')
+        return serve_publisher(value['root'],value['runs'],deadline=value['deadline'],interval=value['interval'],allowed_p=value['allowed_p'],gate_mode=value.get('gate_mode','legacy'))
+    mode=validate_remote_manifest(value)['gate_mode']
     descriptor=_read_json(value['g_feed']['path'],pin=value['g_feed']['sha256']);runs=_read_json(Path(descriptor['feed_root'])/'runs.json')
     if args.command=='prepare-controller':return run_controller(value,args.manifest,args.sha256,runs)
     if args.command=='worker':return worker_entry(value,args.sha256,runs)
     if args.command=='admit':
-        start_path=Path(value['control_root'])/'start.json';start=_read_json(start_path);reader=SafetyFeedReader(value['g_feed']['path'],value['g_feed']['sha256'],runs);feed=reader.observe(now=time.time())
+        start_path=Path(value['control_root'])/'start.json';start=_read_json(start_path);reader=SafetyFeedReader(value['g_feed']['path'],value['g_feed']['sha256'],runs,mode=mode);feed=reader.observe(now=time.time())
         if start['manifest_sha256']!=args.sha256:raise ValueError('start manifest drift')
         admission=make_admission(value,manifest_sha256=args.sha256,start_sha256=sha(canonical(start)),g_receipt_sha256=feed['receipt_sha256'],now=time.time());write_once(Path(value['control_root'])/'admission.json',admission);return admission
 
@@ -1598,7 +1761,8 @@ def complete_artifact_digest(artifacts):
 
 def seal_completed_operation(value,manifest_pin,start,start_pin,permit,closure,resources,wall_seconds,final_g_pin):
     if closure.get('state')!='CLOSED' or closure.get('actual_worker_exit')!=0 or not closure.get('owned_sessions') or not resources or not operation._pin(final_g_pin):raise ValueError('actual successful owned closure required')
-    if any(r['sid'] in closure['owned_sessions'] for r in linux_processes()):raise ValueError('descendant remains: no sealed success')
+    table=linux_processes(skip_unparseable=True,owned={r['pid'] for r in closure['owned_identities']}|{os.getpid()}) if manifest_gate_mode(value)=='job-scoped' else linux_processes()
+    if any(r['sid'] in closure['owned_sessions'] for r in table):raise ValueError('descendant remains: no sealed success')
     output=Path(value['output_root']);stage=value['stage'];operation_id=value['operation_id']
     closure_path=output/'closure.json'
     if closure_path.exists():
