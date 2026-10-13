@@ -40,7 +40,7 @@ class RuntimeTests(unittest.TestCase):
             context,receipt=gr.prepare_engineering(ROOT,Path(d)/'prepared')
             self.assertEqual(context.binding['task_id'],'G3');self.assertTrue(context.binding['synthetic'])
             self.assertTrue(context.binding['engineering']);self.assertEqual(context.binding['g2_source_sha256'],gr.G2_SHA)
-            self.assertEqual(len(context.binding['consumer']['source_members']),44)
+            self.assertEqual(len(context.binding['consumer']['source_members']),46)
             self.assertEqual(len(context.examples),4);context.check()
             with self.assertRaises((AttributeError,ValueError)):context._binding=b'{}'
     def test_invalid_real_runtime_stops_before_cuda_initialization(self):

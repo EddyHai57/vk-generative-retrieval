@@ -67,7 +67,7 @@ P0～P7已正式验收，P7统一固定audit比较与MVP交接通过独立review
 - 总预算：不超过100 AUD
 - GPU目标：不超过30小时；hard ceiling 48小时
 
-详见[`docs/server_runbook.md`](./docs/server_runbook.md)。
+详见[`docs/server_runbook.md`](./docs/server_runbook.md)。G验证并行（`VKGR_EVAL_WORKERS`，workers × 并发作业数 ≤ cgroup CPU配额）见[`docs/g_sharded_eval.md`](./docs/g_sharded_eval.md)。
 
 ## 公开仓库边界
 

@@ -61,6 +61,7 @@ credentials/
 /checkpoints/**
 /indexes/**
 /cache/**
+!/cache/g3-formal-invoke-v2.py
 
 # Model, index and bulk artifacts
 *.ckpt

@@ -3,6 +3,7 @@ import copy,hashlib,math
 from pathlib import Path
 from . import generative_data as gd,generative_experiment as ge
 from . import generative_training as gt,generative_evaluation as ev
+from . import generative_sharded as gs
 from .data_audit import canonical_bytes,file_sha256
 
 G1_PINS={'40863ebbe96f9e2e1da8f53d916e68ead1fa098b41ab80237481e53a22e2506d',
@@ -11,7 +12,8 @@ G2_SHA='d12e7d78ef16d147010a625fb6cf1a98730e5ac613d62465a65b5b4c2970c82d'
 AUDIT={'aggregate_sha256':'d03978b3e4d5346208c605866640b25d83a36e4164419364dc5bd4c0be817e47',
        'supervision_sha256':'ce39dac731f7ff411a8831bdda255338dc1b1e4de11f476bc33d1173a4097d4c'}
 NEW_MEMBERS=('src/vkgr/generative_real.py','src/vkgr/generative_pilot.py',
-             'tests/test_generative_real.py','tests/test_generative_pilot.py')
+             'tests/test_generative_real.py','tests/test_generative_pilot.py',
+             'src/vkgr/generative_sharded.py','tests/test_generative_sharded.py')
 P4E_STATS_SHA='6e96e5bc3d21e22b71fcc64293cc2844be85ca3c100c7d28e910e2360470628d'
 
 def digest(value):return hashlib.sha256(canonical_bytes(value)).hexdigest()
@@ -199,13 +201,25 @@ def _progress(event,phase,config,epoch):
     if len(payload)>256:raise ValueError('bounded progress record')
     sys.stderr.write(payload.decode());sys.stderr.flush()
 
-def _train_trajectory(context,config,limits,output,pool,phase,*,parent=None,stop_after_step=None,should_stop=None):
+def _progress_file(progress,stage,phase,epoch,max_epochs,completed,total):
+    """Optional launcher-facing progress.json (INFRA-01 4.4); stderr records unchanged."""
+    if progress is not None:gs.write_progress(progress,gs.progress_record(progress,stage,phase,epoch,max_epochs,completed,total))
+
+def _train_trajectory(context,config,limits,output,pool,phase,*,parent=None,stop_after_step=None,should_stop=None,eval_workers=1,progress=None):
     """Orchestrate existing engine primitives; local model steps stay local."""
     import time,torch
     from .generative_pilot import accounted_ledger,write_accounted_json,save_accounted_checkpoint
+    gs.check_progress_outside(progress,output,pool.root)
     output=gd._no_symlink(output);output.mkdir(mode=0o700,exist_ok=False)
     pool.reserve(phase,'disk',8192)  # maxepochs30 + start/end, <=32 records.
     _progress('stage_start',phase,config,0)
+    train_stage='train' if phase=='formal' else 'verify-replay';progress_at=[None]
+    def train_progress(force=False):
+        if progress is None:return
+        now=time.monotonic()
+        if not force and progress_at[0] is not None and now-progress_at[0]<30:return
+        progress_at[0]=now;snapshot=ledger.snapshot()
+        _progress_file(progress,train_stage,phase,cursor.epoch,limits['max_epochs'],snapshot['completed_steps'],snapshot['max_optimizer_steps'])
     root=Path(__file__).resolve().parents[2];binding={**ge.build_binding(root,context,config),'runtime':limits['runtime'],
         'limits':limits,'pool_path':str(pool.root.absolute()),'trajectory':phase}
     _seed(config['seed']);model=gt.make_model(context.codec,config,device=limits['runtime']['device'])
@@ -223,7 +237,7 @@ def _train_trajectory(context,config,limits,output,pool,phase,*,parent=None,stop
         if state.budget!=parent['budget'] or ge._state_digest(model,optimizer,cursor,state.selection)!=parent['state_sha256']:raise ValueError('parent actual checkpoint/state')
         selected=state.selection;epochs=copy.deepcopy(parent['epoch_metrics']);evaluations=copy.deepcopy(parent['evaluations']);losses=copy.deepcopy(parent['losses']);best=parent['best'];pending=parent['pending_evaluation']
         ledger=accounted_ledger(pool,phase).resume(Path(parent['ledger_path']),parent['ledger_head'],binding,output/'ledger');ledger.charge_wall('verify',time.perf_counter()-begin)
-    number=0;last=None;status='complete'
+    number=0;last=None;status='complete';train_progress(force=True)
     def checkpoint():
         nonlocal number,last
         _guard(context,limits,output,pool)
@@ -239,7 +253,7 @@ def _train_trajectory(context,config,limits,output,pool,phase,*,parent=None,stop
             indices=cursor.next_batch(512);result=gt.train_effective_batch(model,optimizer,context.examples.rows(indices),context.codec,microbatch=limits['microbatch'],device=limits['runtime']['device'])
             if limits['runtime']['device'].startswith('cuda'):torch.cuda.synchronize()
             elapsed=time.perf_counter()-begin;ledger.complete_step(elapsed);pool.charge_wall(phase,elapsed);pool.bind_child(phase,ledger.root,ledger.head)
-            losses.append({'epoch':cursor.epoch,'examples':result.examples,'loss_mean':result.loss_mean})
+            losses.append({'epoch':cursor.epoch,'examples':result.examples,'loss_mean':result.loss_mean});train_progress()
             if stop_after_step is not None and ledger.snapshot()['completed_steps']>=stop_after_step or should_stop is not None and should_stop():
                 checkpoint();status='interrupted';break
         if status=='interrupted':break
@@ -255,10 +269,21 @@ def _train_trajectory(context,config,limits,output,pool,phase,*,parent=None,stop
                 _guard(context,limits,output,pool)
                 if hook_calls>0 and hook_calls%2==1:pool.reserve(phase,'decode')
                 hook_calls+=1
+            def before_decode():
+                _guard(context,limits,output,pool);pool.reserve(phase,'decode')
+            def on_shard(completed,total):
+                _progress_file(progress,'evaluate',phase,cursor.epoch,limits['max_epochs'],completed,total)
             try:
-                evaluation=ev.evaluate_queries(model,context,output=eval_output,checkpoint_sha256=candidate['sha256'],shard_size=64,
-                    resume_manifest=Path(pending['manifest_path']) if pending else None,resume_sha256=pending['manifest_sha256'] if pending else None,
-                    should_stop=should_stop,budget_check=query_guard)
+                if eval_workers==1:
+                    evaluation=ev.evaluate_queries(model,context,output=eval_output,checkpoint_sha256=candidate['sha256'],shard_size=64,
+                        resume_manifest=Path(pending['manifest_path']) if pending else None,resume_sha256=pending['manifest_sha256'] if pending else None,
+                        should_stop=should_stop,budget_check=query_guard)
+                else:
+                    evaluation=gs.evaluate_queries_sharded(model,context,output=eval_output,checkpoint_sha256=candidate['sha256'],workers=eval_workers,
+                        config=config,runtime=limits['runtime'],shard_size=64,
+                        resume_manifest=Path(pending['manifest_path']) if pending else None,resume_sha256=pending['manifest_sha256'] if pending else None,
+                        should_stop=should_stop,guard=lambda:_guard(context,limits,output,pool),before_decode=before_decode,
+                        after_decode=lambda:_guard(context,limits,output,pool),on_shard=on_shard)
             except (KeyboardInterrupt,InterruptedError):
                 evaluation=ge._recover_evaluation(eval_output,model,context,candidate['sha256'],64)
                 if evaluation is None:
@@ -273,7 +298,7 @@ def _train_trajectory(context,config,limits,output,pool,phase,*,parent=None,stop
             epochs.append({'epoch':cursor.epoch,'metrics':aggregate,'model_sha256':ev.model_digest(model)})
             evaluations.append({'epoch':cursor.epoch,'manifest_path':str(evaluation['manifest_path'].absolute()),'manifest_sha256':evaluation['manifest_sha256'],'checkpoint':candidate})
             cursor.complete_evaluation();checkpoint()
-            _progress('epoch_complete',phase,config,cursor.epoch)
+            _progress('epoch_complete',phase,config,cursor.epoch);train_progress(force=True)
             if improved:best={**last,'epoch':cursor.epoch,'metric':metric}
             if should_stop is not None and should_stop() and cursor.epoch<limits['max_epochs']:status='interrupted';break
     if last is None:checkpoint()
@@ -284,16 +309,17 @@ def _train_trajectory(context,config,limits,output,pool,phase,*,parent=None,stop
         'pool_head':pool.head,'pool_state':copy.deepcopy(pool.state)}
     path=output/'manifest.json';pin=write_accounted_json(pool,phase,path,value,stamp_pool=True)
     _progress('stage_complete' if status=='complete' else 'stage_interrupted',phase,config,cursor.epoch)
+    snapshot=ledger.snapshot();_progress_file(progress,'complete' if status=='complete' else 'interrupted',phase,cursor.epoch,limits['max_epochs'],snapshot['completed_steps'],snapshot['max_optimizer_steps'])
     return {'manifest':value,'manifest_path':path,'manifest_sha256':pin,'pool_head':pool.head,'pool_state':copy.deepcopy(pool.state)}
 
-def run(context,config,limits,output,*,stop_after_step=None,should_stop=None):
+def run(context,config,limits,output,*,stop_after_step=None,should_stop=None,eval_workers=1,progress=None):
     from .generative_pilot import ExecutionPool
     context.check();limits=_limits(context,limits);gt._core(config)
     if context.binding['synthetic'] is False:check_registration(config,limits['registration'],output)
     if context.binding['synthetic'] is False and stop_after_step is not None:raise ValueError('manual step interruption is engineering-only')
-    output=Path(output)
+    output=Path(output);gs.check_progress_outside(progress,output,output.with_name(output.name+'-pool'))
     with ExecutionPool.create(output.with_name(output.name+'-pool'),limits['pool_spec']) as pool:
-        return _train_trajectory(context,config,limits,output,pool,'formal',stop_after_step=stop_after_step,should_stop=should_stop)
+        return _train_trajectory(context,config,limits,output,pool,'formal',stop_after_step=stop_after_step,should_stop=should_stop,eval_workers=eval_workers,progress=progress)
 
 def _read_run(context,path,pin):
     value=gd._json(gd._checked_file(path,pin))
@@ -327,22 +353,22 @@ def _read_run(context,path,pin):
     value['receipt']={'manifest_path':str(Path(path).absolute()),'manifest_sha256':pin}
     return value
 
-def resume(context,path,pin,pool_head,output,*,should_stop=None):
+def resume(context,path,pin,pool_head,output,*,should_stop=None,eval_workers=1,progress=None):
     from .generative_pilot import ExecutionPool
     parent=_read_run(context,path,pin)
     if parent['status']!='interrupted':raise ValueError('safe interrupted parent only')
     limits=_limits(context,parent['limits'])
     with ExecutionPool.open(Path(parent['binding']['pool_path']),limits['pool_spec'],pool_head) as pool:
-        pool.resume();return _train_trajectory(context,parent['binding']['effective_config'],limits,output,pool,'formal',parent=parent,should_stop=should_stop)
+        pool.resume();return _train_trajectory(context,parent['binding']['effective_config'],limits,output,pool,'formal',parent=parent,should_stop=should_stop,eval_workers=eval_workers,progress=progress)
 
-def verify(context,path,pin,pool_head,output,*,replay):
+def verify(context,path,pin,pool_head,output,*,replay,eval_workers=1,progress=None):
     from .generative_pilot import ExecutionPool,write_accounted_json
     value=_read_run(context,path,pin)
     if value['status']!='complete':raise ValueError('standalone verify complete only')
     limits=_limits(context,value['limits'])
     with ExecutionPool.open(Path(value['binding']['pool_path']),limits['pool_spec'],pool_head) as pool:
         if replay:
-            fresh=_train_trajectory(context,value['binding']['effective_config'],limits,output,pool,'replay')
+            fresh=_train_trajectory(context,value['binding']['effective_config'],limits,output,pool,'replay',eval_workers=eval_workers,progress=progress)
             for key in ('state_sha256','selection','losses','epoch_metrics'):
                 if fresh['manifest'][key]!=value[key]:raise ValueError('actual device training/decode replay mismatch: '+key)
             for a,b in zip(fresh['manifest']['evaluations'],value['evaluations']):
@@ -457,12 +483,13 @@ def read_verified_v2(path,pin,invocation_path,invocation_pin,engineering):
     if type(receipt['query_count']) is not int or receipt['query_count']<1:raise ValueError('verified query coverage')
     return run
 
-def evaluate(context,path,pin,pool_head,output,*,should_stop=None):
+def evaluate(context,path,pin,pool_head,output,*,should_stop=None,eval_workers=1,progress=None):
     import time
     from .generative_pilot import ExecutionPool
     value=_read_run(context,path,pin)
     if value['status']!='complete':raise ValueError('selected best evaluation complete run only')
     limits=_limits(context,value['limits']);cfg=value['binding']['effective_config']
+    gs.check_progress_outside(progress,output,value['binding']['pool_path'])
     with ExecutionPool.open(Path(value['binding']['pool_path']),limits['pool_spec'],pool_head) as pool:
         model=gt.make_model(context.codec,cfg,device=limits['runtime']['device']);opt=gt.make_optimizer(model,cfg);cursor=gt.EpochCursor(cfg['seed'],len(context.examples))
         best=value['best'];gt.load_checkpoint(Path(best['path']),best['sha256'],model,opt,cursor,expected_binding=value['binding'])
@@ -473,8 +500,19 @@ def evaluate(context,path,pin,pool_head,output,*,should_stop=None):
             _guard(context,limits,Path(output).parent,pool)
             if hook_calls>0 and hook_calls%2==1:pool.reserve('formal','decode')
             hook_calls+=1
-        try:result=ev.evaluate_queries(model,context,output=output,checkpoint_sha256=best['sha256'],shard_size=64,should_stop=should_stop,budget_check=guard)
+        def before_decode():
+            _guard(context,limits,Path(output).parent,pool);pool.reserve('formal','decode')
+        def on_shard(completed,total):_progress_file(progress,'evaluate-best','formal',None,None,completed,total)
+        try:
+            if eval_workers==1:
+                _progress_file(progress,'evaluate-best','formal',None,None,None,None)
+                result=ev.evaluate_queries(model,context,output=output,checkpoint_sha256=best['sha256'],shard_size=64,should_stop=should_stop,budget_check=guard)
+            else:
+                on_shard(0,len(context.queries))
+                result=gs.evaluate_queries_sharded(model,context,output=output,checkpoint_sha256=best['sha256'],workers=eval_workers,config=cfg,runtime=limits['runtime'],shard_size=64,should_stop=should_stop,
+                    guard=lambda:_guard(context,limits,Path(output).parent,pool),before_decode=before_decode,after_decode=lambda:_guard(context,limits,Path(output).parent,pool),on_shard=on_shard)
         finally:pool.charge_wall('formal',time.perf_counter()-begin)
+        _progress_file(progress,'complete' if result['manifest']['complete'] else 'interrupted','formal',None,None,result['manifest']['completed_queries'],len(context.queries))
         return {**result,'pool_head':pool.head,'pool_state':copy.deepcopy(pool.state)}
 
 def select(verification_paths,pins,output,*,engineering=False,invocation_paths=None,invocation_pins=None):
@@ -524,6 +562,8 @@ def main(argv=None):
     def handle(signum,frame):stop[0]=True
     old_handlers={sig:signal.signal(sig,handle) for sig in (signal.SIGINT,signal.SIGTERM)}
     try:
+        eval_workers=gs.eval_workers_from_env();progress=gs.progress_target_from_env()
+        if args.command=='train':gs.check_progress_outside(progress,args.output,args.output.with_name(args.output.name+'-pool'))
         if args.command=='prepare':
             if args.engineering:
                 if args.spec is not None or args.spec_sha is not None:raise ValueError('engineering cannot accept real input spec')
@@ -549,12 +589,12 @@ def main(argv=None):
                     else:
                         permit=gd._json(gd._checked_file(args.permit,args.permit_sha));limits={**permit['limits'],'permit':{'path':str(args.permit.absolute()),'sha256':args.permit_sha}}
                     configure_runtime(limits['runtime'])
-                    result=run(context,ge._config(args.config_index,args.seed),limits,args.output,stop_after_step=args.stop_after_step,should_stop=lambda:stop[0])
+                    result=run(context,ge._config(args.config_index,args.seed),limits,args.output,stop_after_step=args.stop_after_step,should_stop=lambda:stop[0],eval_workers=eval_workers,progress=progress)
                 elif args.command in ('resume','verify','evaluate'):
                     configure_runtime(value['limits']['runtime'])
-                    if args.command=='resume':result=resume(context,args.parent,args.parent_sha,args.pool_head,args.output,should_stop=lambda:stop[0])
-                    elif args.command=='verify':result=verify(context,args.manifest,args.sha256,args.pool_head,args.output,replay=args.replay)
-                    else:result=evaluate(context,args.manifest,args.sha256,args.pool_head,args.output,should_stop=lambda:stop[0])
+                    if args.command=='resume':result=resume(context,args.parent,args.parent_sha,args.pool_head,args.output,should_stop=lambda:stop[0],eval_workers=eval_workers,progress=progress)
+                    elif args.command=='verify':result=verify(context,args.manifest,args.sha256,args.pool_head,args.output,replay=args.replay,eval_workers=eval_workers,progress=progress)
+                    else:result=evaluate(context,args.manifest,args.sha256,args.pool_head,args.output,should_stop=lambda:stop[0],eval_workers=eval_workers,progress=progress)
                 else:
                     from .generative_pilot import pilot
                     result=pilot(context,args.output,engineering=args.engineering,permit_path=args.permit,permit_sha=args.permit_sha,prepared=prepared)
