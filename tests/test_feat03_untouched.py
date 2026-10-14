@@ -23,11 +23,40 @@ GIT_QUIET = ['-c', 'user.name=guard', '-c', 'user.email=guard@example.invalid', 
 
 
 def check_pinned(root, pins=PINS):
-    raise NotImplementedError
+    """Every pinned file must exist and hash to its pinned sha256 (no git needed)."""
+    for rel, digest in pins.items():
+        try:
+            actual = hashlib.sha256((Path(root) / rel).read_bytes()).hexdigest()
+        except OSError as error:
+            raise AssertionError(f'pinned file unreadable: {rel}: {error}') from error
+        if actual != digest:
+            raise AssertionError(f'pinned file changed: {rel}')
+
+
+def _git(root, *args):
+    return subprocess.run(['git', '-C', str(root), *args], capture_output=True, text=True)
 
 
 def check_only_added(root, base=BASE):
-    raise NotImplementedError
+    """`git diff --name-status --no-renames base..HEAD` may only show 'A' lines.
+
+    No usable git or no base commit object -> SkipTest (not an error). Working-tree cleanliness is not checked here.
+    """
+    try:
+        probe = _git(root, 'cat-file', '-e', f'{base}^{{commit}}')
+    except OSError:
+        raise unittest.SkipTest('base commit absent (git unavailable)')
+    if probe.returncode != 0:
+        raise unittest.SkipTest('base commit absent')
+    try:
+        diff = _git(root, 'diff', '--name-status', '--no-renames', f'{base}..HEAD')
+    except OSError:
+        raise unittest.SkipTest('base commit absent (git unavailable)')
+    if diff.returncode != 0:
+        raise AssertionError(f'git diff failed: {diff.stderr.strip()}')
+    bad = [line for line in diff.stdout.splitlines() if line.strip() and not line.startswith('A\t')]
+    if bad:
+        raise AssertionError(f'non-additive changes since base: {bad}')
 
 
 class UntouchedTests(unittest.TestCase):
@@ -56,13 +85,16 @@ class UntouchedTests(unittest.TestCase):
         def git(repo, *args):
             subprocess.run(['git', *GIT_QUIET, '-C', str(repo), *args], check=True, capture_output=True)
 
+        def head(repo):
+            return subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], check=True, capture_output=True, text=True).stdout.strip()
+
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             git(repo, 'init', '-q')
             (repo / 'old.txt').write_text('one\n')
             git(repo, 'add', 'old.txt')
             git(repo, 'commit', '-q', '-m', 'base')
-            base = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], check=True, capture_output=True, text=True).stdout.strip()
+            base = head(repo)
             (repo / 'new.txt').write_text('two\n')
             git(repo, 'add', 'new.txt')
             git(repo, 'commit', '-q', '-m', 'add only')
@@ -77,7 +109,7 @@ class UntouchedTests(unittest.TestCase):
             (repo / 'old.txt').write_text('one\n')
             git(repo, 'add', 'old.txt')
             git(repo, 'commit', '-q', '-m', 'base')
-            base = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], check=True, capture_output=True, text=True).stdout.strip()
+            base = head(repo)
             git(repo, 'rm', '-q', 'old.txt')
             git(repo, 'commit', '-q', '-m', 'delete')
             with self.assertRaises(AssertionError):
