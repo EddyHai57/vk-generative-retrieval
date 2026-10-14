@@ -1,4 +1,4 @@
-"""FEAT-02 P runner: id_mean + the F3 anchor + one more variable (F3-masked / F4 recency / F5 scene) over HIST_V2_SIDE_V1.
+"""FEAT-02 P runner: id_mean + the F3 anchor + one more variable (F3-masked / F4 recency / F5 scene / F6 author+content) over HIST_V2_SIDE_V1.
 
 New version only: ``retrieval_b1_run`` (Batch1) and ``retrieval_feat01_run`` are imported and reused, never modified.
 Config schema ``p-feat02-run-v1`` has the field set of ``p-feat01-run-v1``; only schema, task_id and the ``feature``
@@ -16,12 +16,14 @@ from pathlib import Path
 
 from . import retrieval_b1_run as b1
 from . import history_ctx as hc
+from . import item_attr as ia
 from . import retrieval_feat01_run as f1
 from .data_audit import file_sha256
 from .history_side import SIDE_VERSION
 from .history_v2 import load_prepared
 from .retrieval_ablation_run import read_pinned, strict_json
-from .retrieval_feat02 import FEATURES, MAX_WEEK, SIDE_WIDTH, bucket_spec_sha256, make_feat02_model, parameter_report
+from .retrieval_feat02 import (AUTHOR_VOCAB_SHA256, AUTHOR_VOCAB_SIZE, F6_FEATURE, FEATURES, MAX_WEEK, SIDE_WIDTH, bucket_spec_sha256,
+                               make_feat02_model, parameter_report)
 
 TASK = 'FEAT-02'
 SCHEMA = 'p-feat02-run-v1'
@@ -75,7 +77,34 @@ def synthetic_data(seed=11):
         return [[ctx_rng.randrange(24) if ctx_rng.random() > .1 else 200, ctx_rng.randrange(11) if ctx_rng.random() > .1 else 99] for _ in history]
     rows = [{**r, 'ctx': scene(r['history'])} for r in rows]
     queries = [{**q, 'ctx': scene(q['history'])} for q in queries]
-    return {**data, 'rows': rows, 'queries': queries}
+    import torch
+    g = torch.Generator().manual_seed(seed + 4)
+    content = torch.randn(len(data['content']), 64, generator=g)
+    content = content / content.norm(dim=1, keepdim=True); content[0] = 0.      # L2-normalised catalog rows, PAD row 0 stays zero
+    author_rng = random.Random(seed + 5); support = data['support']
+    authors = {i: author_rng.randrange(12) if i in support or author_rng.random() < .5 else 100 + i for i in data['catalog']}   # unsupported: half in-vocabulary, half OOV
+    vocab = ia.author_vocab(authors, support)
+    index = _author_index(data['catalog'], data['idmap'], [authors[i] for i in data['catalog']], vocab, len(content))
+    return {**data, 'rows': rows, 'queries': queries, 'content': content, 'authors': authors, 'author_vocab': vocab, 'author_index': index}
+
+
+def _author_index(catalog, idmap, author_ids, vocab, size):
+    """Row per catalog index (0 PAD, 1 OOV, 2 + rank), aligned with ``idmap``; ``author_ids`` follows the catalog order."""
+    import torch
+    index = torch.zeros(size, dtype=torch.long)
+    for item, row in zip(catalog, ia.author_rows(author_ids, vocab)):
+        index[idmap[item]] = row
+    return index
+
+
+def item_attr_coverage(data):
+    """F6 data diagnostics: how much of the catalog gets an author term and a non-zero content vector."""
+    index, content = data['author_index'], data['content']
+    ids = [data['idmap'][i] for i in data['catalog']]; supported = [i in data['support'] for i in data['catalog']]
+    rows = [int(index[k]) for k, s in zip(ids, supported) if not s]
+    return {'catalog_items': len(ids), 'supported_items': sum(supported), 'unsupported_items': len(ids) - sum(supported),
+            'unsupported_with_vocab_author_fraction': sum(1 for r in rows if r >= 2) / len(rows) if rows else None,
+            'zero_content_items': sum(1 for k in ids if not bool(content[k].any()))}
 
 
 def _view(data, length):
@@ -208,13 +237,22 @@ def binding_for2(data, config, rows, queries, model, device, inputs_binding):
         binding['weeks_sha256'] = b1._digest([[p[0] for p in r['history_positions']] for r in rows + queries])
     if config['feature'] == 'f3_f5_scene':
         binding['ctx_sha256'] = b1._digest([r['ctx'] for r in rows] + [q['ctx'] for q in queries])
+    if config['feature'] == F6_FEATURE:
+        binding['attr_sha256'] = b1._digest([data['author_index'].tolist(), data['author_vocab']])
     return binding
 
 
 def _model(data, config, device):
     from .training import seed_all
     seed_all(config['seed'])
-    return make_feat02_model(config['feature'], data['content'], data['supported_indices'], config['history_len']).to(device)
+    if config['feature'] != F6_FEATURE:
+        return make_feat02_model(config['feature'], data['content'], data['supported_indices'], config['history_len']).to(device)
+    if 'author_index' not in data or 'author_vocab' not in data:
+        raise ValueError('F6 needs the pinned ITEM_ATTR_V1 sidecar (author_index/author_vocab)')
+    if not data.get('synthetic') and len(data['author_vocab']) != AUTHOR_VOCAB_SIZE:
+        raise ValueError('author vocabulary differs from the hard-coded audit size')
+    return make_feat02_model(config['feature'], data['content'], data['supported_indices'], config['history_len'],
+                             author_index=data['author_index'], vocab_size=len(data['author_vocab'])).to(device)
 
 
 def run_session(output, data, config, device='cpu', check=None, inputs_binding=None):
@@ -239,6 +277,8 @@ def run_session(output, data, config, device='cpu', check=None, inputs_binding=N
     output = Path(output); output.mkdir(parents=True, exist_ok=False)
     step = 0; records = []; evaluations = []; best = None; last = None; train_seconds = 0.; eval_seconds = 0.
     diagnostics = {**b1.data_diagnostics(rows, queries, data['support']), 'side_visibility': f1.side_visibility(queries, data['support'])}
+    if config['feature'] == F6_FEATURE:
+        diagnostics['item_attr_coverage'] = item_attr_coverage(data)
     b1._write_progress('train', 0, config['max_epochs'])
     while not stop.stopped:
         if check: check()
@@ -299,6 +339,8 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
     model = _model(data, config, device)
     if value['binding'] != binding_for2(data, config, rows, queries, model, device, inputs_binding):
         raise ValueError('run input/source/init/side binding mismatch')
+    if config['feature'] == F6_FEATURE and value['data_diagnostics'].get('item_attr_coverage') != item_attr_coverage(data):
+        raise ValueError('item attr coverage not reproducible from the pinned data')
     cursor = EpochCursor(len(rows), config['seed']); stats = SamplerStats(); rng = random.Random(f"p-b1-negative-v1:{config['seed']}")
     pool = sorted(data['support']) if config['extra_uniform'] else None
     epoch_ends = []
@@ -383,13 +425,19 @@ def apply_feat02(data, spec, length):
     """Overlay pinned history-v2 and the FEAT-01 side sidecar (week comes from history_positions); with a ctx pin
     also the HIST_V2_CTX_V1 sidecar (place/platform per history event), bound by its manifest sha."""
     data, binding = f1.apply_side(data, spec, length)
-    if spec['ctx_manifest'] is None:
-        return data, binding
-    history = load_prepared(spec['history_manifest'], spec['history_sha256'], length)
-    ctx = hc.load_ctx(spec['ctx_manifest'], spec['ctx_sha256'], spec['history_sha256'], length, history)
-    data = {**data, 'rows': [{**r, 'ctx': c} for r, c in zip(data['rows'], ctx['train'])],
-            'queries': [{**q, 'ctx': c} for q, c in zip(data['queries'], ctx['validation'])]}
-    return data, {**binding, 'ctx_manifest_sha256': spec['ctx_sha256']}
+    if spec['ctx_manifest'] is not None:
+        history = load_prepared(spec['history_manifest'], spec['history_sha256'], length)
+        ctx = hc.load_ctx(spec['ctx_manifest'], spec['ctx_sha256'], spec['history_sha256'], length, history)
+        data = {**data, 'rows': [{**r, 'ctx': c} for r, c in zip(data['rows'], ctx['train'])],
+                'queries': [{**q, 'ctx': c} for q, c in zip(data['queries'], ctx['validation'])]}
+        binding = {**binding, 'ctx_manifest_sha256': spec['ctx_sha256']}
+    if spec['attr_manifest'] is not None:
+        attr = ia.load_item_attr(spec['attr_manifest'], spec['attr_sha256'], spec['items_metadata_sha256'], data['catalog'], data['support'],
+                                 AUTHOR_VOCAB_SIZE, AUTHOR_VOCAB_SHA256)
+        data = {**data, 'author_vocab': attr['vocab'],
+                'author_index': _author_index(data['catalog'], data['idmap'], attr['authors'], attr['vocab'], len(data['content']))}
+        binding = {**binding, 'attr_manifest_sha256': spec['attr_sha256']}
+    return data, binding
 
 
 def main(argv=None):
@@ -400,7 +448,7 @@ def main(argv=None):
     for name in ('train', 'verify'):
         p = sub.add_parser(name); p.add_argument('--inputs', required=True); p.add_argument('--inputs-sha', required=True)
         p.add_argument('--config', required=True); p.add_argument('--config-sha', required=True); p.add_argument('--output'); p.add_argument('--manifest'); p.add_argument('--manifest-sha')
-    for name in ('prepare-ctx', 'verify-ctx'):
+    for name in ('prepare-ctx', 'verify-ctx', 'prepare-attr', 'verify-attr'):
         p = sub.add_parser(name); p.add_argument('--inputs', required=True); p.add_argument('--inputs-sha', required=True)
         p.add_argument('--output'); p.add_argument('--manifest'); p.add_argument('--manifest-sha')
     args = parser.parse_args(argv)
@@ -410,6 +458,8 @@ def main(argv=None):
             print(json.dumps({'status': value['status'], 'manifest_sha256': value['manifest_sha256']})); return 0
         if args.command in ('prepare-ctx', 'verify-ctx'):
             return _ctx_command(args, validate_inputs(read_pinned(args.inputs, args.inputs_sha)))
+        if args.command in ('prepare-attr', 'verify-attr'):
+            return _attr_command(args, validate_inputs(read_pinned(args.inputs, args.inputs_sha)))
         config = read_pinned(args.config, args.config_sha); validate_config(config)
         spec = validate_inputs(read_pinned(args.inputs, args.inputs_sha), config['feature'])
         import torch
@@ -441,6 +491,28 @@ def _ctx_command(args, spec):
     if loaded['train'] != rebuilt['train'] or loaded['validation'] != rebuilt['validation']:
         raise ValueError('raw ctx replay mismatch')
     print(json.dumps({'status': 'ctx_verified'})); return 0
+
+
+def _attr_command(args, spec):
+    """prepare-attr writes ITEM_ATTR_V1 from the pinned items_metadata.parquet; verify-attr rebuilds it from the raw file and compares.
+
+    The vocabulary size and sha256 must equal the hard-coded audit constants, so an audit/sidecar disagreement fails closed.
+    No query, holdout or test input is used: only the catalog, the train-defined support set and the two metadata columns.
+    """
+    from .retrieval_data import checked
+    data, _, binding = b1.real_inputs(spec)
+    metadata = checked(Path(spec['raw_root']) / 'metadata/items_metadata.parquet', spec['items_metadata_sha256'])
+    authors = ia.load_authors(metadata, data['catalog'])
+    binding = {**binding, 'items_metadata_sha256': spec['items_metadata_sha256'], 'consumer': b1.source_identity(), 'inputs_sha256': args.inputs_sha}
+    if args.command == 'prepare-attr':
+        receipt = ia.write_item_attr(Path(args.output), spec['items_metadata_sha256'], data['catalog'], data['support'], authors, binding,
+                                     AUTHOR_VOCAB_SIZE, AUTHOR_VOCAB_SHA256)
+        print(json.dumps({'status': 'attr_prepared', 'manifest_sha256': receipt['manifest_sha256']})); return 0
+    loaded = ia.load_item_attr(args.manifest, args.manifest_sha, spec['items_metadata_sha256'], data['catalog'], data['support'], AUTHOR_VOCAB_SIZE, AUTHOR_VOCAB_SHA256)
+    rebuilt = ia.build_item_attr(authors, data['catalog'], data['support'])
+    if loaded['authors'] != rebuilt['authors'] or loaded['vocab'] != rebuilt['vocab']:
+        raise ValueError('raw attr replay mismatch')
+    print(json.dumps({'status': 'attr_verified'})); return 0
 
 
 if __name__ == '__main__':
