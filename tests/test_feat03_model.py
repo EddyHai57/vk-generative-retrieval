@@ -252,7 +252,7 @@ def guard_q2_recent_event_gets_bucket1_logit():
     model = build3(Q2); histories, side = tm.model_inputs(); valid = histories != 0
     with torch.no_grad():
         model.recency_logit_pos[0] = 20.0
-    x, _, _ = reference_event_vectors(model, histories, side, valid)
+    x = reference_event_vectors(model, histories, side, valid)[0].detach()
     n = valid.sum(1); last = x[torch.arange(len(histories)), n - 1]
     ensure(bool((n >= 3).any()) and float((x[:, 0] - last).abs().amax()) > 1e-3, 'fixture needs rows whose first and last event differ')
     ensure(torch.allclose(model.users(histories, side), last, atol=1e-5, rtol=0), 'with u[0] large the user vector must be the most recent event vector')
