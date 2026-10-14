@@ -82,7 +82,7 @@ def _independent_loss(config, temperature):
     histories, side = fr._tensors2(batch, data['idmap'], max(len(r['history']) for r in batch), 'f3_f4_recency')
     log_q = b1._log_q(batch, negatives, pool_size, config, frequency)
     loss, _ = masked_ce_logq(model.users(histories, side), model.items(columns), labels, mask, temperature, log_q)
-    return float(loss)
+    return float(loss.detach())
 
 
 def guard_first_step_loss_uses_config_temperature():
@@ -225,7 +225,7 @@ class ConfigRegistryTests(unittest.TestCase):
         levels = {'temperature': (0.15, 0.1, 0.25), 'dim': (64, 32, 128), 'learning_rate': (0.001, 0.002, 0.0005)}
         accepted = 0
         for t, d, lr in itertools.product(*levels.values()):
-            config = knob_config('anchor', knob='H7', temperature=t, dim=d, learning_rate=lr)
+            config = {**knob_config('anchor'), 'knob': 'H7', 'temperature': t, 'dim': d, 'learning_rate': lr}
             changed = sum(1 for value, anchor in zip((t, d, lr), ANCHOR) if value != anchor)
             if changed >= 2:
                 validate_config(config); accepted += 1
@@ -235,7 +235,7 @@ class ConfigRegistryTests(unittest.TestCase):
         self.assertEqual(accepted, 20)
         for bad in ({'temperature': 0.2, 'dim': 32}, {'dim': 96, 'learning_rate': 0.002}):
             with self.assertRaises(ValueError):
-                validate_config(knob_config('anchor', knob='H7', **bad))
+                validate_config({**knob_config('anchor'), 'knob': 'H7', **bad})
 
     def test_anchor_knob_projects_to_the_f4_config_file(self):
         from vkgr.retrieval_feat02_run import SCHEMA, TASK
