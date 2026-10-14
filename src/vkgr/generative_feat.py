@@ -49,14 +49,20 @@ def _check_event(event):
         raise ValueError('side value outside registered range')
 
 
+def _example_rows(context, chunk=4096):
+    """Training rows chunk by chunk: the example store copies every row it returns, so the full set is never copied at once."""
+    for low in range(0, len(context.examples), chunk):
+        yield from context.examples.rows(list(range(low, min(low + chunk, len(context.examples)))))
+
+
 def build_side_pack(side, loaded, context, history_manifest_sha, side_manifest_sha):
     """Validate a loaded sidecar against the context it will be used with and freeze it as a ``SidePack``."""
-    examples = context.examples.rows(list(range(len(context.examples)))); queries = context.queries
-    if len(side['train']) != len(examples) or len(side['validation']) != len(queries) \
-            or len(loaded['train']) != len(examples) or len(loaded['validation']) != len(queries):
+    count = len(context.examples); queries = context.queries
+    if len(side['train']) != count or len(side['validation']) != len(queries) \
+            or len(loaded['train']) != count or len(loaded['validation']) != len(queries):
         raise ValueError('side denominator drift')
     duration_of = {}
-    for split, rows, reference, events in (('train', examples, loaded['train'], side['train']), ('validation', queries, loaded['validation'], side['validation'])):
+    for split, rows, reference, events in (('train', _example_rows(context), loaded['train'], side['train']), ('validation', queries, loaded['validation'], side['validation'])):
         for ordinal, (row, ref, line) in enumerate(zip(rows, reference, events)):
             if split == 'train' and row.get('example_id') != ordinal:
                 raise ValueError('side/example identity')
