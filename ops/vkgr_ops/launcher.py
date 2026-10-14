@@ -39,6 +39,10 @@ class LaunchError(Exception):
         self.code = code
 
 
+class AdmissionDeferred(LaunchError):
+    """Admission refused for now (load, settling runs, probe fault); the job may fit on a later try."""
+
+
 # ---------------------------------------------------------------- CLI
 
 def build_parser(prog='vkgr-launch', with_root=True):
@@ -426,7 +430,10 @@ def launch(spec, root, probes=None):
             need = {r: spec[r] for r in RESOURCE_ARGS}
             ok, snapshot, reason = admission.admit(need, root, probes)
             if not ok:
-                raise LaunchError(f'admission rejected: {reason}')
+                message = f'admission rejected: {reason}'
+                if admission.unsatisfiable(snapshot):
+                    raise LaunchError(message)
+                raise AdmissionDeferred(message)
             record = {'checked': True, 'snapshot': snapshot}
         try:
             run_dir.mkdir()

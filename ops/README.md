@@ -84,7 +84,8 @@ admit iff (total − committed − need)/total ≥ 0.20  and  (free_measured −
 - CPU 按核（cgroup v2）：`total = min(os.cpu_count(), cpu.max quota/period)`；有配额用 `cpu.stat usage_usec` 1s 差分，否则 `/proc/stat` 1s 差分。
   - 服务器实测（2026-10-14）：`cpu.max = 1024000 100000` → 只有 10.24 核，`os.cpu_count()` 的 64 不能用。
   - 声明 `--cpu-cores` 超过 total（配额核数）直接拒绝。
-- nvidia-smi 不可用 → 只放行 `--vram-mib 0`；其它探针失败 → 本轮拒绝（可恢复）。
+- 拒绝分两类（`admission.unsatisfiable(snapshot)`）：任一资源的 `need` 连空闲主机都过不了余量规则，即 `(total − need)/total < 0.20`（含 `cpu_cores > total`），是「不可满足」，scheduler 走 `rejected/`；其余（负载、占用中 run 的 committed/settling、探针故障、nvidia-smi 不可用且 `--vram-mib > 0`）是「暂时不行」，scheduler 回 pending。
+- nvidia-smi 不可用 → 只放行 `--vram-mib 0`；其它探针失败 → 本轮拒绝（可恢复，scheduler 下一轮重试）。
 - G 的 `--vram-mib` = 父进程峰值 + W × 单 worker 峰值。单 worker 峰值由 §5.3 服务器对拍实测回填；未实测前不得用 W>1 跑正式作业。
 
 ## vkgr-sched
@@ -96,7 +97,8 @@ ops/bin/vkgr-sched serve --root R                 # 每 30s 一轮，看到 queu
 ```
 
 - tick：按文件名 first-fit，只用声明量做无锁预判，每轮最多启动 1 个；`os.rename` 到 claimed 后调用与 CLI 相同的 `launcher.launch()`（重跑 1–5 → 拿锁 → 正式 `admit()`）。
-- run 已存在或同 id 已 claimed、校验失败、正式准入拒绝、锁超时 → `rejected/` + `.reason`，不回 pending；run 目录已建后失败 → `launch_failed`，留在 claimed。
+- run 已存在或同 id 已 claimed、校验失败、正式准入拒绝且请求本身放不下（见「准入」）、锁超时 → `rejected/` + `.reason`，不回 pending；run 目录已建后失败 → `launch_failed`，留在 claimed。
+- 正式准入只因当前负载、占用中 run 的余量或探针故障拒绝（`launcher.AdmissionDeferred`）→ 同名 `os.rename` 回 pending（保持 first-fit 位置），本轮结束，`note` 为 `deferred (left in pending): …`，下一轮重试；`vkgr-launch` CLI 的报错文本与 exit code 不变。
 - 推荐常驻方式：`vkgr-launch --kind ops --vram-mib 0 … -- <python> -I ops/bin/vkgr-sched serve --root R`。
 
 ## vkgr-status（只读）

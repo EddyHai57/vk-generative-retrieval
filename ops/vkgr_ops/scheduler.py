@@ -52,6 +52,12 @@ def _reject(claimed_file, reason):
     target.with_suffix('.reason').write_text(reason.strip() + '\n')
 
 
+def _requeue(claimed_file):
+    """Move a claimed entry back to pending under the same name, so it keeps its first-fit place."""
+    pending = _queue(claimed_file.parents[2], 'pending')
+    os.rename(claimed_file, pending / claimed_file.name)
+
+
 def tick(root, probes=None):
     """One round. Returns {'launched': run_id|None, 'rejected': [...], 'note': str}."""
     root = Path(root).resolve()
@@ -105,6 +111,10 @@ def _tick_locked(root, probes):
         return result
     try:
         launcher.launch(_spec_of(doc), root, probes)
+    except launcher.AdmissionDeferred as error:
+        _requeue(target)                                         # no room right now: retry next round
+        result['note'] = f'deferred (left in pending): {error}'
+        return result
     except launcher.LaunchError as error:
         if (root / 'runs' / str(run_id)).exists():
             result['note'] = f'launch_failed (left in claimed): {error}'   # run dir exists: no requeue

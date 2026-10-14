@@ -106,6 +106,24 @@ def evaluate(measured, need):
     return not problems, '; '.join(problems), detail
 
 
+def unsatisfiable(snapshot):
+    """Why a request can never be admitted, from an ``admit()`` snapshot; '' when it may fit later.
+
+    A need is unsatisfiable when it fails the headroom rule on an idle host,
+    i.e. (total - need) / total < HEADROOM. Load, settling runs, an unknown GPU and probe
+    failures (empty snapshot) never count: those are only "not now".
+    """
+    problems = []
+    rows = (snapshot or {}).get('resources') or {}
+    for r in RESOURCES:
+        row = rows.get(r) or {}
+        n, total = row.get('need') or 0, row.get('total')
+        if n > 0 and total and (total - n) / total < HEADROOM:
+            problems.append(f'{r}: need={n} exceeds the admissible cap {total * (1 - HEADROOM):.2f} '
+                            f'of total={total:.2f}')
+    return '; '.join(problems)
+
+
 def admit(need, root, probes=None):
     """(ok, snapshot, reason). Probe failure -> (False, {}, 'probe failed: ...')."""
     probes = probes or common.Probes()
