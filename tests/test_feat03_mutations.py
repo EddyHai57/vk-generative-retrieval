@@ -1,4 +1,4 @@
-"""FEAT-03 mutation tests, FEAT-002 part (M13, M14, M16, M18, M33[q1a,q1b], M35[q1a]).
+"""FEAT-03 mutation tests: FEAT-002 part (M13, M14, M16, M18, M33[q1a,q1b], M35[q1a]) and FEAT-003 part (Q2: M17, M19-M24, M35[q2], M36, M38).
 
 Each deliberately wrong implementation must be caught by every listed guard: the guard is green on the real code, raises
 AssertionError under ``mock.patch.object`` on a module-level seam, and is green again after the revert (``detected``).
@@ -7,6 +7,7 @@ Same-week reorder is NOT a guard here: F4 and Q1b are equal up to rounding under
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import torch
 
@@ -80,6 +81,77 @@ class Q1MutationTests(unittest.TestCase):
     def test_m35_q1a_position_bucket_constant_one(self):
         from vkgr import retrieval_feat02 as f2
         detected(self, f2, 'position_bucket', lambda valid: valid.long(), [t3.guard_q1a_formula])
+
+
+class Q2MutationTests(unittest.TestCase):
+    """FEAT-003 part: M17, M19, M20, M21, M22, M23, M24, M35[q2], M36, M38. Only guards that really raise under the patch are listed."""
+
+    def test_m17_position_counted_from_sequence_start(self):
+        from vkgr import retrieval_feat02 as f2
+
+        def from_start(valid):
+            rank = (valid.long().cumsum(1) - 1).clamp_min(0)
+            edges = torch.tensor(f2.POSITION_EDGES, dtype=rank.dtype)
+            return (torch.bucketize(rank.contiguous(), edges, right=True) + 1) * valid
+        detected(self, f2, 'position_bucket', from_start, [t3.tm.guard_position_bucket_boundaries, t3.guard_q2_recent_event_gets_bucket1_logit])
+
+    def test_m19_weighted_sum_divided_by_n_not_by_sum_of_weights(self):
+        from vkgr import retrieval_feat03 as m
+        detected(self, m, 'weighted_mean', lambda x, w: (x * w.unsqueeze(-1)).sum(1) / (w != 0).sum(1, keepdim=True), [t3.guard_q2_formula])
+
+    def test_m20_pad_slots_get_weight(self):
+        """The outer where is dropped: PAD weight is exp(0) = 1 (finite), so only the exactly-0 assertion sees it directly."""
+        from vkgr import retrieval_feat03 as m
+
+        def no_outer_where(logits, valid):
+            top = logits.masked_fill(~valid, float('-inf')).amax(1, keepdim=True).detach()
+            return torch.exp(torch.where(valid, logits, top) - top)
+        detected(self, m, 'pooled_weights', no_outer_where,
+                 [t3.guard_q2_pad_width_invariance, t3.guard_q2_zero_logits_equal_f4_bitwise, t3.guard_q2_pooled_weights_pad_cannot_overflow])
+
+    def test_m21_pool_mask_drops_unsupported_events(self):
+        from vkgr import retrieval_feat03 as m
+        detected(self, m.Feat03IDMean, '_pool_mask', lambda self, histories, valid: valid & self.supported[histories], [t3.guard_q2_zero_logits_equal_f4_bitwise])
+
+    def test_m22_logits_detached(self):
+        from vkgr import retrieval_feat03 as m
+        original = m.recency_logits
+        detected(self, m, 'recency_logits', lambda pos, gap, pos_ids, gap_ids, valid: original(pos.detach(), gap.detach(), pos_ids, gap_ids, valid),
+                 [t3.guard_q2_logits_receive_gradient])
+
+    def test_m23_position_logit_indexed_by_week_gap_ids(self):
+        """Only this direction: the reverse (gap logit indexed by position ids) would raise IndexError, not AssertionError."""
+        from vkgr import retrieval_feat03 as m
+        detected(self, m, 'recency_logits',
+                 lambda pos, gap, pos_ids, gap_ids, valid: pos[(gap_ids - 1).clamp_min(0)] + gap[(gap_ids - 1).clamp_min(0)], [t3.guard_q2_formula])
+
+    def test_m24_logits_initialised_with_noise(self):
+        from vkgr import retrieval_feat03 as m
+
+        def noisy(model):
+            g = torch.Generator().manual_seed(24)
+            model.recency_logit_pos = torch.nn.Parameter(torch.randn(7, generator=g) * 0.02)
+            model.recency_logit_gap = torch.nn.Parameter(torch.randn(6, generator=g) * 0.02)
+        detected(self, m, 'init_recency_logits', noisy, [t3.guard_q2_init_is_exact_zero])
+
+    def test_m35_q2_position_bucket_constant_one(self):
+        from vkgr import retrieval_feat02 as f2
+        detected(self, f2, 'position_bucket', lambda valid: valid.long(), [t3.guard_q2_formula])
+
+    def test_m36_week_gap_bucket_constant_zero(self):
+        from vkgr import retrieval_feat02 as f2
+        detected(self, f2, 'weekgap_bucket', lambda gap, valid: torch.zeros_like(gap), [t3.guard_q2_formula])
+
+    def test_m38_single_where_in_pooled_weights(self):
+        """Forward result is identical to the double where; only the backward pass (0 * inf = NaN) differs."""
+        from vkgr import retrieval_feat03 as m
+
+        def single_where(logits, valid):
+            top = logits.masked_fill(~valid, float('-inf')).amax(1, keepdim=True).detach()
+            return torch.where(valid, torch.exp(logits - top), torch.zeros_like(logits))
+        detected(self, m, 'pooled_weights', single_where, [t3.guard_q2_pooled_weights_pad_cannot_overflow])
+        with mock.patch.object(m, 'pooled_weights', single_where):                        # the other guards cannot see M38 (documented, not listed)
+            t3.guard_q2_formula(); t3.guard_q2_zero_logits_equal_f4_bitwise()
 
 
 if __name__ == '__main__':
