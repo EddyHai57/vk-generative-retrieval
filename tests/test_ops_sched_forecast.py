@@ -80,7 +80,7 @@ class ForecastCase(unittest.TestCase):
                                 cgroup_usage_per_s=1.0, ram_total_mib=200000, ram_avail_mib=190000,
                                 disk_total_gib=500, disk_free_gib=300, gpu='49140, 0')
         self.host.t = NOW
-        self.pid = 6000
+        self.pid = 48611            # distinctive: must not collide with timestamps in the output
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -278,15 +278,15 @@ class OutputTests(ForecastCase):
         _, text, _ = self.main()
         for blob in (out, text):
             self.assertNotIn(str(self.base), blob)
-            self.assertNotIn('6000', blob)       # supervisor pid
-            self.assertNotIn('6001', blob)       # job pid
+            self.assertNotIn('48611', blob)      # supervisor pid
+            self.assertNotIn('48612', blob)      # job pid
 
     def test_gpu_utilization_samples(self):
         fake = self.base / 'nvsmi.py'
         fake.write_text('import sys\na = " ".join(sys.argv[1:])\n'
                         'if "utilization.gpu" in a: print("37")\n'
                         'elif "query-gpu" in a: print("49140, 5000")\n'
-                        'elif "compute-apps" in a: print("6001, 4096")\n'
+                        'elif "compute-apps" in a: print("48612, 4096")\n'
                         'else: sys.exit(2)\n')
         self.host.nvidia = [PY, str(fake)]
         self.running('g0', key=G_TRAIN, vram=6656)
