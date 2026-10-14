@@ -315,3 +315,78 @@ def check_dropout_contrast():
     model.eval()
     with torch.no_grad():
         ok(not torch.equal(a.detach(), model(source, decoder)), 'A1: train and eval must differ')
+
+
+# ---- E: entry point -------------------------------------------------------------------------------------------
+RUNNER_GLOBALS = ac.RUNNER_GLOBALS  # ('B1_MEMBERS', '_evaluate', 'make_model_b1', 'validate_config', 'gt')
+HP_FILES = ('src/vkgr/generative_hp_arch.py', 'src/vkgr/generative_b1_hp.py')
+
+
+def entry_config(**overrides):
+    """Engineering-size G-HP config: 3 heads x 16 on d_model 64 (64 % 3 != 0), 2+2 layers, dropout 0, LR 6e-4."""
+    return hp_config(**{'d_model': 64, 'heads': 3, 'head_dim': 16, 'encoder_layers': 2, 'decoder_layers': 2, 'ff': 128, 'dropout': 0.0,
+                        'learning_rate': .0006, 'microbatch': 2, 'max_epochs': 3, 'min_epochs': 1, **overrides})
+
+
+def check_binding_members(value):
+    from vkgr import generative_b1_arch as gba
+    files = value['binding']['source']['files']
+    ok(list(files) == list(gba.MEMBERS + HP_FILES), f'G-HP binding must cover the 18 GARCH members + the 2 G-HP files, got {len(files)}')
+    ok(len(files) == 20, 'G-HP binding size')
+    ok(value['binding']['config']['task_id'] == 'G-HP-01', 'binding config task_id')
+
+
+def check_globals_restored():
+    """The G-HP runner patches generative_b1_run only for the duration of the call, also on the exception path."""
+    from vkgr import generative_b1_hp as bh
+    from vkgr import generative_b1_run as b1
+    from vkgr import generative_hp_arch as hp
+    before = {n: getattr(b1, n) for n in RUNNER_GLOBALS}
+
+    def restored(label):
+        for n in RUNNER_GLOBALS:
+            ok(getattr(b1, n) is before[n], f'{label}: generative_b1_run.{n} was not restored')
+    with bh._runner(None):
+        ok(b1.B1_MEMBERS == bh.MEMBERS and b1.validate_config is hp.validate_config and b1.make_model_b1 is hp.make_model_hp, 'the runner did not install the G-HP hooks')
+        from vkgr.tiger_arch import TigerArchModel
+        probe = TigerArchModel(V, 16, 2, 8, 1, 1, 32, 0.0)
+        ok(b1.gt.make_optimizer(probe, hp_config(learning_rate=.0006)).param_groups[0]['lr'] == .0006, 'training proxy must use the G-HP optimizer (LR 6e-4)')
+        ok(b1.gt.train_effective_batch is before['gt'].train_effective_batch, 'training proxy must delegate the frozen training step')
+    restored('normal exit')
+    try:
+        with bh._runner({'mode': 'batched', 'batch_size': 1}):
+            raise RuntimeError('boom')
+    except RuntimeError:
+        pass
+    restored('exception exit')
+
+
+def check_gates():
+    """Workers > 1, batched decode with batch != 1 and any subcommand other than train/verify fail before any output."""
+    import contextlib
+    import io
+    import os
+    from test_generative_batched import tmpdir
+    from unittest import mock
+    from vkgr import generative_b1_hp as bh
+    from vkgr import generative_sharded as gs
+    expect_rejected(lambda: bh._runner(None, 2).__enter__(), 'sharded evaluation workers')
+    for size in (2, 32):
+        expect_rejected(lambda size=size: bh._runner({'mode': 'batched', 'batch_size': size}).__enter__(), f'batched decode batch {size}')
+
+    def cli(head, env):
+        clean = {k: v for k, v in os.environ.items() if not k.startswith('VKGR_')}
+        clean.update(env)
+        with tmpdir() as tmp, mock.patch.dict(os.environ, clean, clear=True), mock.patch.object(gs, 'cpu_quota_cores', return_value=None):
+            argv = head + ['--prepared', 'x', '--prepared-sha', '0' * 64, '--history-manifest', 'y', '--history-sha', '0' * 64,
+                           '--config', 'z', '--config-sha', '0' * 64, '--output', f'{tmp}/out', '--scratch', f'{tmp}/s']
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                code = bh.main(argv)
+            return code, err.getvalue(), os.path.exists(f'{tmp}/out')
+    for label, head, env in (('workers 2', ['train'], {'VKGR_EVAL_WORKERS': '2'}), ('batched without batch size', ['train'], {'VKGR_DECODE': 'batched'}),
+                             ('batched batch 2', ['train'], {'VKGR_DECODE': 'batched', 'VKGR_DECODE_BATCH': '2'}), ('beam-diagnostic', ['beam-diagnostic'], {}), ('no subcommand', [], {})):
+        code, err, out = cli(head, env)
+        ok(code == 1 and 'G-HP-01 gate failed' in err and not out, f'{label}: must exit 1 at the G-HP-01 gate before output (code {code}, output {out}): {err.strip()[:120]}')
+    code, err, out = cli(['train'], {'VKGR_DECODE': 'batched', 'VKGR_DECODE_BATCH': '1'})
+    ok(code == 1 and 'G-HP-01 gate failed' not in err and 'G-B1 gate failed' in err, 'batch size 1 must pass the G-HP gate (and fail later on the bogus inputs)')
