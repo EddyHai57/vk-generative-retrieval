@@ -51,6 +51,11 @@ def batch(codec, lengths=(3, 1, 5)):
     return model_inputs(codec, histories, [valid_side(n, seed=b) for b, n in enumerate(lengths)])
 
 
+def decoder_tokens(codec, rows):
+    """BOS + the first code of each of the three prefix levels: valid decoder ids of this codec."""
+    return torch.tensor([[1] + [codec.offsets[j] for j in range(3)]] * rows, dtype=torch.long)
+
+
 def valid_items(source):
     return source.reshape(source.shape[0], -1, 4)[..., 0].ne(0)
 
@@ -106,7 +111,8 @@ def check_injection(codec, feature):
 def check_injection_before_scale(codec):
     """A unit side vector moves every token of its item by exactly sqrt(d) (not by 1, not by d) and nothing else."""
     model = build(codec, 'f2_feedback').eval(); source, _ = batch(codec, (2,))
-    with torch.no_grad():
+    with torch.no_grad():  # E and position zero: the difference is then exact in float32 (0.5 * sqrt(64) = 4)
+        model.embedding.weight.zero_(); model.position.weight.zero_()
         model.feedback.weight.zero_(); model.feedback.weight[0].fill_(0.5)
         one = torch.tensor([[[1, 5, 9], [0, 5, 9]]]); zero = torch.tensor([[[0, 5, 9], [0, 5, 9]]])
         diff = model.embed_source(source, one) - model.embed_source(source, zero)
@@ -188,7 +194,7 @@ def check_decoder_untouched(codec, feature):
     """decode / forward == the plain GARCH-01 decoder with the same weights (side enters the encoder only)."""
     model = build(codec, feature).eval(); ref = plain(codec).eval()
     ref.load_state_dict({k: v for k, v in model.state_dict().items() if k in ref.state_dict()})
-    source, side = batch(codec); decoder = torch.tensor([[1, 3, 20, 37]] * source.shape[0])
+    source, side = batch(codec); decoder = decoder_tokens(codec, source.shape[0])
     with torch.no_grad():
         memory, padding = model.encode(source, side)
         ok(torch.equal(model.decode(memory, padding, decoder), ref.decode(memory, padding, decoder)), f'{feature}: decoder path changed')
@@ -198,7 +204,7 @@ def check_decoder_untouched(codec, feature):
 # ---- (b) zero side tables == feature=none, bit for bit ---------------------------------------------------------
 def check_zero_side_equals_none_eval(codec, feature):
     model = build(codec, feature).eval(); ref = plain(codec).eval(); zero_side(model)
-    source, side = batch(codec); decoder = torch.tensor([[1, 3, 20, 37]] * source.shape[0])
+    source, side = batch(codec); decoder = decoder_tokens(codec, source.shape[0])
     with torch.no_grad():
         ok(torch.equal(model.embed_source(source, side), ref.embed(source)), f'{feature}: zero side embedding differs from none')
         ok(torch.equal(model.encode(source, side)[0], ref.encode(source)[0]), f'{feature}: zero side encoder memory differs from none')

@@ -105,7 +105,7 @@ class EntryRunTests(unittest.TestCase):
                 self.assertEqual(value['binding']['init_report']['side']['feature'], feature)
                 feat01 = json.loads((run / 'evaluation-001' / 'manifest.json').read_text())['binding']['context']['feat01']
                 self.assertEqual((feat01['side_manifest_sha256'], feat01['history_manifest_sha256']), (self.world.side_sha, self.world.hist_sha))
-                self.assertNotEqual([e['evaluation']['computation_sha256'] for e in value['epochs']], [e['evaluation']['computation_sha256'] for e in none['epochs']])
+                self.assertNotEqual(value['losses'], none['losses'])  # the side input really reaches the loss
                 report = baf.verify(*self.common, run / 'manifest.json', value['manifest_sha256'], self.tmp / f'{feature}-v', temporary=self.tmp / f'{feature}-vs', side=self.side)
                 self.assertEqual((report['status'], report['replayed_epochs']), ('verified', [value['best']['epoch']]))
                 with self.assertRaises(ValueError):  # f2/f3 verify needs the side arguments
