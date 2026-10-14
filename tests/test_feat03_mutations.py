@@ -1,4 +1,5 @@
-"""FEAT-03 mutation tests: FEAT-002 part (M13, M14, M16, M18, M33[q1a,q1b], M35[q1a]) and FEAT-003 part (Q2: M17, M19-M24, M35[q2], M36, M38).
+"""FEAT-03 mutation tests: FEAT-002 part (M13, M14, M16, M18, M33[q1a,q1b], M35[q1a]), FEAT-003 part (Q2: M17, M19-M24, M35[q2], M36, M38)
+and FEAT-004 part (Q3: M26a, M26b, M27-M30, M32a, M32b, M33[q3], M34).
 
 Each deliberately wrong implementation must be caught by every listed guard: the guard is green on the real code, raises
 AssertionError under ``mock.patch.object`` on a module-level seam, and is green again after the revert (``detected``).
@@ -152,6 +153,88 @@ class Q2MutationTests(unittest.TestCase):
         detected(self, m, 'pooled_weights', single_where, [t3.guard_q2_pooled_weights_pad_cannot_overflow])
         with mock.patch.object(m, 'pooled_weights', single_where):                        # the other guards cannot see M38 (documented, not listed)
             t3.guard_q2_formula(); t3.guard_q2_zero_logits_equal_f4_bitwise()
+
+
+class Q3MutationTests(unittest.TestCase):
+    """FEAT-004 part: M26a, M26b, M27, M28, M29, M30, M32a, M32b, M33[q3], M34. M31 needs the runner (FEAT-005)."""
+
+    def test_m26a_terms_scaled_by_width_over_n(self):
+        """User-level term added on PAD slots before pooling: equals terms * W / n (W = tensor width)."""
+        from vkgr import retrieval_feat03 as m
+        original = m.user_level_terms
+        detected(self, m, 'user_level_terms', lambda model, side, valid: original(model, side, valid) * side.shape[1] / valid.sum(1, keepdim=True),
+                 [t3.guard_q3_pad_width_invariance, t3.guard_q3_formula])
+
+    def test_m26b_terms_divided_by_n(self):
+        from vkgr import retrieval_feat03 as m
+        original = m.user_level_terms
+        detected(self, m, 'user_level_terms', lambda model, side, valid: original(model, side, valid) / valid.sum(1, keepdim=True), [t3.guard_q3_formula])
+
+    def test_m27_length_is_the_tensor_width(self):
+        from vkgr import retrieval_feat03 as m
+
+        def width_as_n(model, side, valid):
+            n = torch.full_like(valid.sum(1), side.shape[1])
+            return model.len_table(m.length_bucket(n)) + model.act_table(m.activity_bucket(m.distinct_weeks(side[..., 3], valid)))
+        detected(self, m, 'user_level_terms', width_as_n, [t3.guard_q3_pad_width_invariance])
+
+    def test_m28_active_weeks_counted_as_span(self):
+        from vkgr import retrieval_feat03 as m
+        detected(self, m, 'distinct_weeks', lambda week, valid: (week * valid).amax(1) - week[:, 0] + 1, [t3.guard_q3_distinct_weeks_not_span])
+
+    def test_m29_distinct_weeks_counts_the_pad_zero(self):
+        from vkgr import retrieval_feat03 as m
+        detected(self, m, 'distinct_weeks', lambda week, valid: 1 + (week[:, 1:] != week[:, :-1]).sum(1), [t3.guard_q3_distinct_weeks_ignores_pad])
+
+    def test_m30_absolute_last_week_used_for_the_bucket(self):
+        from vkgr import retrieval_feat03 as m
+
+        def last_week(model, side, valid):
+            return model.len_table(m.length_bucket(valid.sum(1))) + model.act_table(m.activity_bucket((side[..., 3] * valid).amax(1)))
+        detected(self, m, 'user_level_terms', last_week, [lambda: t3.guard_week_shift_invariance(t3.Q3)])
+
+    def _drift(self, name, edges):
+        """Every single-edge drift (+1 / -1 that stays strictly increasing) must be caught by both guards, which cover BOTH tuples."""
+        from vkgr import retrieval_feat03 as m
+        guards = [t3.guard_q3_constants_match_audit, t3.guard_q3_bucket_boundaries]
+        for i in range(len(edges)):
+            for delta in (-1, 1):
+                drifted = list(edges); drifted[i] += delta
+                if all(a < b for a, b in zip(drifted, drifted[1:])) and drifted[0] >= 1:
+                    detected(self, m, name, tuple(drifted), guards)
+
+    def test_m32a_length_edges_drift(self):
+        self._drift('LEN_EDGES', t3.AUDIT_LEN_EDGES)
+
+    def test_m32b_activity_edges_drift(self):
+        self._drift('ACT_EDGES', t3.AUDIT_ACT_EDGES)
+
+    def test_m33_q3_user_level_terms_detached(self):
+        from vkgr import retrieval_feat03 as m
+        original = m.user_level_terms
+        detected(self, m, 'user_level_terms', lambda model, side, valid: original(model, side, valid).detach(), [t3.guard_q3_new_tables_receive_gradient])
+        with mock.patch.object(m, 'user_level_terms', lambda model, side, valid: original(model, side, valid).detach()):
+            with self.assertRaises(AssertionError):
+                t3.guard_new_tables_receive_gradient(t3.Q3)                       # the generic [q1a,q1b,q3] entry point routes to the same guard
+
+    def test_m34_tables_zeroed_by_small_init(self):
+        """The trap in K6: _small_init zeroes weight[None] when padding_idx is None, i.e. the whole table."""
+        from vkgr import retrieval_feat02 as f2, retrieval_feat03 as m
+
+        def zeroed(model):
+            model.len_table = torch.nn.Embedding(len(m.LEN_EDGES) + 1, 64); model.act_table = torch.nn.Embedding(len(m.ACT_EDGES) + 1, 64)
+            f2._small_init(model, ('len_table', 'act_table'))
+        detected(self, m, 'init_user_activity_tables', zeroed, [t3.guard_q3_tables_init])
+
+    def test_m34_wrong_std(self):
+        from vkgr import retrieval_feat03 as m
+
+        def wide(model):
+            for name, rows in (('len_table', len(m.LEN_EDGES) + 1), ('act_table', len(m.ACT_EDGES) + 1)):
+                setattr(model, name, torch.nn.Embedding(rows, 64))
+                with torch.no_grad():
+                    getattr(model, name).weight.normal_(0.0, 0.2)
+        detected(self, m, 'init_user_activity_tables', wide, [t3.guard_q3_tables_init])
 
 
 if __name__ == '__main__':
