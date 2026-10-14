@@ -89,7 +89,7 @@ def render(block):
     return f"""{BEGIN}
 ## 11. GFEAT-02（A1 上的 G 特征）冻结记录
 状态：**FROZEN**。冻结时间（UTC）：{block['freeze_time_utc']}。代码 commit（`gfeat02/g`）：`{block['commit']}`。基线：`{block['base_commit']}`（GARCH-01 + GFEAT-01 合并）。
-本节由 `gfeat02_freeze.py --write` 从代码与 git 机械生成（sha256、commit、参数数都不是手写）；§1–§10 一字未改（本节之前全文的 sha256 记在机器块 `prefix_sha256`）。冻结后任何新的代码 commit 都要重新冻结。
+本节由 `gfeat02_freeze.py --write` 从代码与 git 机械生成（sha256、commit、参数数都不是手写）；本节之前的既有内容一字未改，只在末尾追加（本节之前全文的 sha256 记在机器块 `prefix_sha256`；本卡没有 §10，编号 11 按任务书）。冻结后任何新的代码 commit 都要重新冻结。
 ### 11.1 研究问题
 - GFEAT-01 在 core03（1+1 层）上验证过的两个 encoder side 特征——F2 反馈位、F3 观看时长分桶 + 观看比例分桶——放到论文规模模型 A1（GARCH-01，4+4 层、6×64 heads、d128、FF1024、dropout 0.1、LR 3e-4）上，是否仍提升 R@50。
 ### 11.2 对照与唯一改变量
