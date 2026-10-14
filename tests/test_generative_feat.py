@@ -226,8 +226,9 @@ class ModelTests(unittest.TestCase):
                 self.assertTrue(torch.allclose(got, (table[bit] * model.d_model ** 0.5).expand(1, 4, -1), atol=1e-6))
         # all four tokens of one item receive the SAME vector (broadcast, not first-token-only)
         same = model.embed_source(src, torch.tensor([[[63, 5, 9]]])).detach() - model.embed_source(src, torch.tensor([[[0, 5, 9]]])).detach()
-        self.assertTrue(all(torch.equal(same[0, 0], same[0, t]) for t in range(1, 4)))
-        self.assertGreater(float(same.abs().min()), 0.0)
+        # (not torch.equal: the two operands are different float32 sums per token, so only the rounding noise differs)
+        self.assertTrue(all(torch.allclose(same[0, 0], same[0, t], atol=1e-6) for t in range(1, 4)))
+        self.assertGreater(float(same.abs().min()), 1e-3)
 
     def test_f3_two_bucket_embeddings_broadcast(self):
         model = self.model('f3_watch_buckets'); source, side = self.batch()
