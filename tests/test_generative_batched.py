@@ -401,6 +401,26 @@ class ParityScriptTests(unittest.TestCase):
                     report = self._report(*call('best', f'scratch-{name}'), 'best')
                     self.assertIs(report['equal'], False)
 
+    def test_parity_diag_reports_only_counts_and_magnitudes(self):
+        from test_generative_b1 import config as b1_config, engineering_world
+        from vkgr import generative_b1_batched as bb
+        spec = importlib.util.spec_from_file_location('g_decode_parity_diag', ROOT / 'scripts' / 'g_decode_parity_diag.py')
+        diag = importlib.util.module_from_spec(spec); spec.loader.exec_module(diag)
+        with tmpdir() as tmp:
+            _, receipt, manifest, sha = engineering_world(tmp)
+            value = bb.run(ROOT, receipt['manifest_path'], receipt['manifest_sha256'], manifest, sha, b1_config(), Path(tmp) / 'run', temporary=Path(tmp) / 's1')
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = diag.main(['--prepared', str(receipt['manifest_path']), '--prepared-sha', receipt['manifest_sha256'], '--history-manifest', str(manifest),
+                                  '--history-sha', sha, '--manifest', str(Path(tmp) / 'run' / 'manifest.json'), '--manifest-sha', value['manifest_sha256'],
+                                  '--scratch', str(Path(tmp) / 'scratch'), '--batch-size', '3', '--checkpoint', 'last'], root=ROOT)
+            self.assertEqual(code, 0)
+            report = json.loads(out.getvalue())
+            self.assertEqual(set(report), {'checkpoint', 'queries', 'batch_size', 'variants', 'wall_seconds', 'logit_probe'})
+            self.assertEqual(set(report['variants']), {'serial_repeat', 'batched_b1', 'serial_copy_memory', 'batched_b3'})
+            self.assertTrue(all(v['differing_queries'] == 0 for v in report['variants'].values()))
+            self.assertNotIn('items', out.getvalue()); self.assertNotIn('recall', out.getvalue())
+
     def test_parity_script_requires_checkpoint_choice(self):
         with tmpdir() as tmp:
             _, call = self._world(tmp)
