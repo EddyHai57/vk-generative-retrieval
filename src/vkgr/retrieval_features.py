@@ -5,6 +5,9 @@
   f1_ratio_pool     F1: weighted mean, w = clip(timespent/duration, 0.1, 2.0); zero new parameters
   f2_feedback       F2: event vector = item emb + sum of 6 feedback embeddings (multi-hot)
   f3_watch_buckets  F3: event vector = item emb + timespent-bucket emb + watch-ratio-bucket emb
+  c0_unsupported_const  split control (not counted): one shared learned vector added to every *unsupported*
+                    history event only; supported events and all side values are ignored. Measures the
+                    "unsupported history becomes visible" part of F2/F3 without any feedback/watch information.
 Side tensor per history slot: [feedback_mask, timespent, duration]; PAD slots are all zero.
 Bucket edges are frozen in docs/superpowers/specs/2026-10-14-feat01-card.md (train-only audit).
 """
@@ -13,7 +16,7 @@ import torch
 from .retrieval_hp import embedding_report, init_embeddings
 from .retrieval_models import TwoTower
 
-FEATURES = ('none', 'f1_ratio_pool', 'f2_feedback', 'f3_watch_buckets')
+FEATURES = ('none', 'f1_ratio_pool', 'f2_feedback', 'f3_watch_buckets', 'c0_unsupported_const')
 FEEDBACK_DIM = 6
 RATIO_WEIGHT_MIN, RATIO_WEIGHT_MAX = 0.1, 2.0
 TIMESPENT_EDGES = (4, 10, 31, 61, 135, 255)  # buckets 1-3 | 4-9 | 10-30 | 31-60 | 61-134 | 135-254 | 255
@@ -56,6 +59,8 @@ class FeatureIDMean(TwoTower):
         if feature == 'f3_watch_buckets':
             self.timespent_bucket = torch.nn.Embedding(TIMESPENT_BUCKETS + 1, 64, padding_idx=0)
             self.ratio_bucket = torch.nn.Embedding(RATIO_BUCKETS + 1, 64, padding_idx=0)
+        if feature == 'c0_unsupported_const':
+            self.unsupported_const = torch.nn.Embedding(1, 64)
 
     def _check(self, histories, side):
         if histories.ndim != 2 or not 1 <= histories.shape[1] <= self.max_len or torch.any((histories != 0).sum(1) == 0):
@@ -83,6 +88,9 @@ class FeatureIDMean(TwoTower):
             encoded = encoded + bits @ self.feedback.weight
         if self.feature == 'f3_watch_buckets':
             encoded = encoded + self.timespent_bucket(timespent_bucket(side[..., 1], valid)) + self.ratio_bucket(ratio_bucket(side[..., 1], side[..., 2], valid))
+        if self.feature == 'c0_unsupported_const':
+            unsupported = (valid & ~self.supported[histories]).unsqueeze(-1).to(encoded.dtype)
+            encoded = encoded + unsupported * self.unsupported_const.weight[0]
         return encoded.sum(1) / valid.sum(1, keepdim=True)
 
 

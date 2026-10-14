@@ -110,13 +110,47 @@ def export_vectors_side(model, catalog, queries, idmap, batch_size, width, check
     return normalize_export(np.concatenate(user_rows), check), normalize_export(np.concatenate(item_rows), check)
 
 
+HISTORY_SUPPORT_BUCKETS = ('h0', 'h_lt_half', 'h_ge_half', 'h1')
+
+
+def history_support_bucket(history, support):
+    """Card §5 pre-registered slice; ``support`` = full-train likes (train-only). Integer comparisons only."""
+    n = len(history); s = sum(1 for i in history if i in support)
+    return 'h0' if s == 0 else 'h1' if s == n else 'h_lt_half' if 2 * s < n else 'h_ge_half'
+
+
+def history_support_slices(predictions, queries, support, catalog):
+    """R@50 / N@50 per history-supported-fraction bucket (all-eligible queries, same metric code as ``metrics``)."""
+    from .baselines import metrics
+    names = [history_support_bucket(q['history'], support) for q in queries]
+    result = {}
+    for name in HISTORY_SUPPORT_BUCKETS:
+        idx = [j for j, n in enumerate(names) if n == name]
+        value = metrics([predictions[j] for j in idx], [queries[j] for j in idx], catalog, (50,))['all']
+        result[name] = {'count': value['count'], 'recall@50': value['recall@50'], 'ndcg@50': value['ndcg@50']}
+    return result
+
+
+def side_visibility(queries, support):
+    """Card §0-1: how many unsupported history events F2 can make visible (needs >=1 feedback bit); F3/C0 make all visible."""
+    events = [(i, s[0]) for q in queries for i, s in zip(q['history'], q['side'])]
+    unsupported = [m for i, m in events if i not in support]
+    with_bits = sum(1 for m in unsupported if m)
+    return {'history_events': len(events), 'unsupported_events': len(unsupported),
+            'unsupported_event_fraction': len(unsupported) / len(events) if events else None,
+            'unsupported_with_feedback_bits': with_bits, 'unsupported_f2_visible_fraction': with_bits / len(unsupported) if unsupported else None,
+            'unsupported_with_like_bit': sum(1 for m in unsupported if m & 1),
+            'all_unsupported_queries_f2_visible': sum(1 for q in queries if all(i not in support for i in q['history']) and any(s[0] for s in q['side']))}
+
+
 def evaluate_model(model, data, queries, config, check=None):
     from .retrieval_experiment import evaluate_vectors
     users, items = export_vectors_side(model, data['catalog'], queries, data['idmap'], config['batch_size'], 50 if config['history_len'] <= 50 else config['history_len'], check)
     result = evaluate_vectors(users, items, data['catalog'], queries, data['support'], check=check); result.pop('exact_seconds')
     predictions = result['predictions']
     diagnostics = {'zero_user_vectors': result['zero_user_vectors'], 'zero_user_vector_fraction': result['zero_user_vectors'] / len(queries),
-                   'top1_is_last_history_fraction': sum(1 for p, q in zip(predictions, queries) if p and p[0] == q['history'][-1]) / len(queries)}
+                   'top1_is_last_history_fraction': sum(1 for p, q in zip(predictions, queries) if p and p[0] == q['history'][-1]) / len(queries),
+                   'history_support_slices': history_support_slices(predictions, queries, data['support'], data['catalog'])}
     return result, diagnostics
 
 
@@ -153,7 +187,7 @@ def run_session(output, data, config, device='cpu', check=None, inputs_binding=N
     view = {**data, 'rows': rows}
     output = Path(output); output.mkdir(parents=True, exist_ok=False)
     step = 0; records = []; evaluations = []; best = None; last = None; train_seconds = 0.; eval_seconds = 0.
-    diagnostics = b1.data_diagnostics(rows, queries, data['support'])
+    diagnostics = {**b1.data_diagnostics(rows, queries, data['support']), 'side_visibility': side_visibility(queries, data['support'])}
     b1._write_progress('train', 0, config['max_epochs'])
     while not stop.stopped:
         if check: check()
@@ -242,6 +276,8 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
         recomputed = metrics(merged['result']['predictions'], queries, data['catalog'], (10, 20, 50))
         if recomputed != evaluation['result']['metrics']:
             raise ValueError('metrics not reproducible from stored predictions')
+        if history_support_slices(merged['result']['predictions'], queries, data['support'], data['catalog']) != evaluation.get('diagnostics', {}).get('history_support_slices'):
+            raise ValueError('history support slice not reproducible from stored predictions')
         primary = recomputed['all']
         if stop.observe(epoch, primary['recall@50'], primary['ndcg@50']):
             expected_best = (epoch, step)
