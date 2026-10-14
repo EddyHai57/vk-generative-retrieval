@@ -142,9 +142,9 @@ def guard_f4_formula():
 def guard_changing_history_week_changes_feature():
     model = build('f3_f4_recency')
     histories = torch.tensor([[11, 12, 13, 14, 15]]); side = torch.zeros(1, 5, 6, dtype=torch.long)
-    side[0, :, 0] = 1; side[0, :, 1] = 20; side[0, :, 2] = 30; side[0, :, 3] = torch.tensor([0, 2, 5, 10, 20])
+    side[0, :, 0] = 1; side[0, :, 1] = 20; side[0, :, 2] = 30; side[0, :, 3] = torch.tensor([0, 4, 8, 12, 16])   # gap buckets [6, 6, 5, 4, 1]
     base = model.users(histories, side)
-    for slot, week in ((0, 19), (2, 12), (4, 24)):     # earlier event closer / middle event later / last event later (shifts every gap)
+    for slot, week in ((1, 8), (3, 15), (4, 24)):      # an older event moves closer / a recent one moves closer / last event later (shifts every gap); each stays monotone
         changed = side.clone(); changed[0, slot, 3] = week
         ensure(not torch.equal(model.users(histories, changed), base), f'changing the week of history event {slot} left the feature unchanged')
 
@@ -215,8 +215,9 @@ class ScaffoldTests(unittest.TestCase):
                 other = side.clone(); high = 64 if column == 0 else 25 if column == 3 else 256
                 other[..., column] = torch.where(valid, torch.randint(0, high, valid.shape, generator=g), torch.zeros_like(side[..., column]))
                 self.assertTrue(torch.equal(model.users(histories, other), base), (feature, column))
-            for column in USED_COLUMNS[feature] - {3}:       # control: the columns a variant does use do reach the output
-                other = side.clone(); other[..., column] = torch.where(valid, side[..., column] % 200 + 1, torch.zeros_like(side[..., column]))
+            perturb = {1: lambda c: 256 - c, 2: lambda c: 256 - c, 3: lambda c: torch.zeros_like(c)}   # keep values in range / monotone
+            for column in USED_COLUMNS[feature]:             # control: the columns a variant does use do reach the output
+                other = side.clone(); other[..., column] = torch.where(valid, perturb[column](side[..., column]), torch.zeros_like(side[..., column]))
                 self.assertFalse(torch.equal(model.users(histories, other), base), (feature, column))
 
     def test_param_report_matches_formula(self):
