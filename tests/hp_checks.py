@@ -417,9 +417,12 @@ def gate_inputs(hits=196, n50=0.03):
             'verify_run': {'argv': ['python', '-m', 'vkgr.generative_b1_arch', 'verify', '--manifest', 'm.json', '--manifest-sha', train_sha]}}
 
 
-def check_gate(gate):
-    """P2: the A1 entry gate passes only with train succeeded + verified (same best epoch, same manifest sha) + >= 196 hits."""
-    ok(gate.MIN_HITS == 196 and gate.QUERIES == Q, 'gate threshold must be 196 of 2520 hits')
+def check_gate(gate, constants=True):
+    """P2: the A1 entry gate passes only with train succeeded + verified (same best epoch, same manifest sha) + >= 196 hits.
+
+    ``constants=False`` skips the constant pin so mutation tests prove the behavioural assertions alone catch the defect."""
+    if constants:
+        ok(gate.MIN_HITS == 196 and gate.QUERIES == Q, 'gate threshold must be 196 of 2520 hits')
     value = gate.decide(**gate_inputs())
     ok(value['passed'] is True and value['hits'] == 196 and value['threshold_hits'] == 196, f'all checks satisfied must pass: {value}')
     ok(value['checks'] == {'train_succeeded': True, 'verified': True, 'r50_ok': True}, 'check flags')
@@ -458,13 +461,14 @@ def combo_case(won, n50=None, status=None, verified=None, anchor_hits=200):
     return {'run_id': 'g-garch01-a1-lr3e-4-s42', 'r50': _r(anchor_hits), 'n50': 0.03, 'verified': True, 'config': anchor_cfg}, runs
 
 
-def check_combo(combo):
+def check_combo(combo, constants=True):
     """P3: >= 2 distinct knobs each winning by >= 6 hits trigger one combination built from A1 + the best level per knob."""
     from vkgr import generative_hp_arch as hp
-    ok(combo.MIN_DELTA_HITS == 6 and combo.QUERIES == Q, 'win threshold must be 6 of 2520 hits (= dR@50 0.002)')
-    ok(tuple(combo.HP_SHAPES) == hp.HP_SHAPES and tuple(combo.LEARNING_RATES) == hp.LEARNING_RATES, 'combo constants differ from generative_hp_arch')
-    ok({k: tuple(v) for k, v in combo.KNOBS.items()} == hp.KNOBS, 'combo knob fields differ from generative_hp_arch')
-    ok(combo.KNOB_OF == {'G1': 'width', 'G2': 'lr', 'G3': 'lr', 'G4': 'layers', 'G5': 'dropout'}, 'knob groups')
+    if constants:
+        ok(combo.MIN_DELTA_HITS == 6 and combo.QUERIES == Q, 'win threshold must be 6 of 2520 hits (= dR@50 0.002)')
+        ok(tuple(combo.HP_SHAPES) == hp.HP_SHAPES and tuple(combo.LEARNING_RATES) == hp.LEARNING_RATES, 'combo constants differ from generative_hp_arch')
+        ok({k: tuple(v) for k, v in combo.KNOBS.items()} == hp.KNOBS, 'combo knob fields differ from generative_hp_arch')
+        ok(combo.KNOB_OF == {'G1': 'width', 'G2': 'lr', 'G3': 'lr', 'G4': 'layers', 'G5': 'dropout'}, 'knob groups')
     value = combo.decide(*combo_case({}))
     ok(value['triggered'] is False and value['knobs_won'] == [] and value['combo_config'] is None, 'no winner must not trigger')
     ok(value['judged_on'] == ['G1', 'G2', 'G3', 'G4', 'G5'] and value['pending'] == ['G6'] and value['status'] == 'provisional', 'provisional judgement on G1-G5')
