@@ -219,6 +219,7 @@ class Feat02RunTests(unittest.TestCase):
         support = {1, 2}
         self.assertEqual(fr.top50_unsupported_share([[1, 3], [3, 4, 2, 1]], support), (0.5 + 0.5) / 2)
         self.assertEqual(fr.top50_unsupported_share([[1, 2]], support), 0.0)
+        self.assertEqual(fr.top50_unsupported_share([[1, 2] * 25 + [9] * 10], support), 0.0)    # only the first 50 count
         with self.assertRaises(ValueError):
             fr.top50_unsupported_share([[]], support)
         stats = fr.item_norm_stats(np.array([1., 3., 2., 8.]), [1, 2, 3, 4], support)

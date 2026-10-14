@@ -1,10 +1,11 @@
-"""FEAT-02 P runner: id_mean + the F3 anchor + one more variable (F3-masked / F4 recency), over HIST_V2_SIDE_V1.
+"""FEAT-02 P runner: id_mean + the F3 anchor + one more variable (F3-masked / F4 recency) over HIST_V2_SIDE_V1.
 
-New version only: ``retrieval_b1_run`` (Batch1) and ``retrieval_feat01_run`` (FEAT-01) are imported and reused, never modified.
-Config schema ``p-feat02-run-v1`` = Batch1 fields + ``feature`` + ``side_version``; ``feature='f3'`` reproduces the FEAT-01 F3 runner
-bit for bit (equivalence control; not a submitted run).
-Checkpoints best+last; verify is fail-closed like FEAT-01 and additionally recomputes the target-support slices and the
-top-50 unsupported share from the stored predictions and compares the re-exported diagnostics of the best checkpoint.
+New version only: ``retrieval_b1_run`` (Batch1) and ``retrieval_feat01_run`` are imported and reused, never modified.
+Config schema ``p-feat02-run-v1`` has the field set of ``p-feat01-run-v1``; only schema, task_id and the ``feature``
+values differ. ``feature='f3'`` reproduces the FEAT-01 F3 runner exactly (equivalence control; not a submitted run).
+Checkpoints best+last; verify is fail-closed like Batch1/FEAT-01 plus: parameter report and bucket spec bound in the
+binding, target-slice metrics / top-50 unsupported share recomputed from the stored predictions, diagnostics of the
+best checkpoint re-exported bit for bit.
 """
 import argparse
 import json
@@ -23,9 +24,10 @@ from .retrieval_feat02 import FEATURES, MAX_WEEK, SIDE_WIDTH, bucket_spec_sha256
 TASK = 'FEAT-02'
 SCHEMA = 'p-feat02-run-v1'
 INPUTS_SCHEMA = 'p-feat02-inputs-v1'
+CHECKPOINT_SCHEMA = 'p-feat02-checkpoint-v1'
 MANIFEST_SCHEMA = 'p-feat02-train-manifest-v1'
-PIN_FIELDS = ('ctx_manifest', 'ctx_sha256', 'attr_manifest', 'attr_sha256')
-REQUIRED_PIN = {'f3_f5_scene': 'ctx_manifest', 'f3_f6_author_content': 'attr_manifest'}
+PIN_PAIRS = (('ctx_manifest', 'ctx_sha256'), ('attr_manifest', 'attr_sha256'))
+REQUIRED_PINS = {'f3_f5_scene': ('ctx_manifest', 'ctx_sha256'), 'f3_f6_author_content': ('attr_manifest', 'attr_sha256')}
 
 
 def default_config():
@@ -47,28 +49,34 @@ def validate_config(value, synthetic=False):
 # ---------------------------------------------------------------- data
 
 def synthetic_data(seed=11):
-    """FEAT-01 synthetic fixture with real week structure: every history gets non-decreasing weeks drawn from 0..24
-    (history_positions = [week, global ordinal]); training targets sit at or after the last history week (<= 24),
-    validation queries keep target week 25. The Batch1 fixture has week 0 everywhere and could not test F4."""
+    """FEAT-01 synthetic fixture with real week spread: sorted history weeks in 0..24, validation target week 25.
+
+    The Batch1 fixture has week 0 everywhere, which cannot exercise the week-gap feature. Within-week ordinals stay
+    strictly increasing; the first training row is pinned to span weeks 0..24.
+    """
     data = f1.synthetic_data(seed); rng = random.Random(seed + 2)
 
-    def positions(history):
+    def positions(history, span=False):
         weeks = sorted(rng.randrange(MAX_WEEK + 1) for _ in history)
+        if span:
+            weeks[0], weeks[-1] = 0, MAX_WEEK
         return [[w, k] for k, w in enumerate(weeks)]
     rows = []
-    for r in data['rows']:
-        history_positions = positions(r['history'])
-        rows.append({**r, 'history_positions': history_positions, 'target_position': [rng.randrange(history_positions[-1][0], MAX_WEEK + 1), len(r['history'])]})
+    for j, r in enumerate(data['rows']):
+        pos = positions(r['history'], span=j == 0)
+        rows.append({**r, 'history_positions': pos, 'target_position': [rng.randrange(pos[-1][0], MAX_WEEK + 1), len(pos)]})
     queries = [{**q, 'history_positions': positions(q['history'])} for q in data['queries']]
     return {**data, 'rows': rows, 'queries': queries}
 
 
-_view = f1._view
+_view = f1._view     # cuts history, history_positions and side to the last ``length`` events
 
 
 def _tensors2(batch, idmap, width, feature):
     """Padded history ids and the 6-column side tensor [feedback_mask, timespent, duration, week, place, platform].
-    Only each history event's own fields are read; the week column is filled for F4 only (other variants never read it)."""
+
+    Only the history events' own fields are read; the week column is filled for the recency variant only.
+    """
     import torch
     histories = torch.zeros(len(batch), width, dtype=torch.long)
     side = torch.zeros(len(batch), width, SIDE_WIDTH, dtype=torch.long)
@@ -109,7 +117,7 @@ def train_step(model, optimizer, batch, data, stats, epoch, config, rng, pool, f
 
 
 def export_vectors_side2(model, catalog, queries, idmap, batch_size, width, feature, check=None):
-    """Normalized (users, items) like FEAT-01 plus the raw item L2 norms *before* normalization (float64, catalog order)."""
+    """Normalized user/item vectors plus the RAW (pre-normalization) L2 norm of every catalog item vector."""
     import numpy as np
     import torch
     from .retrieval_experiment import normalize_export
@@ -127,34 +135,32 @@ def export_vectors_side2(model, catalog, queries, idmap, batch_size, width, feat
     return normalize_export(np.concatenate(user_rows), check), normalize_export(raw_items, check), norms
 
 
+# ---------------------------------------------------------------- diagnostics
+
+def item_norm_stats(norms, catalog, support):
+    """Raw item-vector L2 norm (before normalization): count / mean / median for supported and unsupported catalog items."""
+    import numpy as np
+    groups = {'supported': [], 'unsupported': []}
+    for item, norm in zip(catalog, norms.tolist()):
+        groups['supported' if item in support else 'unsupported'].append(norm)
+    return {name: {'count': len(v), 'mean': float(np.mean(v)) if v else None, 'p50': float(np.percentile(v, 50)) if v else None} for name, v in groups.items()}
+
+
+def top50_unsupported_share(predictions, support):
+    """Mean over queries of the fraction of its top-50 catalog items that are unsupported (no trained id embedding)."""
+    tops = [p[:50] for p in predictions]
+    if not tops or any(len(top) == 0 for top in tops):
+        raise ValueError('empty prediction list')
+    return sum(sum(1 for i in top if i not in support) / len(top) for top in tops) / len(tops)
+
+
 def support_slices(predictions, queries, support, catalog, ks=(10, 20, 50)):
-    """Target slices (supported / unsupported / OOV) exactly as ``evaluate_vectors`` builds them."""
+    """Target slices supported / unsupported / oov, sliced exactly like ``evaluate_vectors``; verify recomputes them."""
     from .baselines import metrics
     result = {}
     for name in ('supported', 'unsupported', 'oov'):
         positions = [j for j, q in enumerate(queries) if ('oov' if q['oov'] else 'supported' if q['target'] in support else 'unsupported') == name]
         result[name] = metrics([predictions[j] for j in positions], [queries[j] for j in positions], catalog, ks)['all']
-    return result
-
-
-def top50_unsupported_share(predictions, support):
-    """Mean over queries of the fraction of top-50 catalog items without a trained id embedding."""
-    shares = []
-    for p in predictions:
-        top = p[:50]
-        if not top:
-            raise ValueError('empty prediction list')
-        shares.append(sum(1 for i in top if i not in support) / len(top))
-    return sum(shares) / len(shares)
-
-
-def item_norm_stats(norms, catalog, support):
-    """Raw (pre-normalization) item vector L2 norm: count / mean / median for supported and unsupported catalog items."""
-    import numpy as np
-    result = {}
-    for name, keep in (('supported', True), ('unsupported', False)):
-        values = [float(n) for i, n in zip(catalog, norms) if (i in support) == keep]
-        result[name] = {'count': len(values), 'mean': float(np.mean(values)) if values else None, 'p50': float(np.percentile(values, 50)) if values else None}
     return result
 
 
@@ -171,14 +177,16 @@ def evaluate_model(model, data, queries, config, check=None):
     return result, diagnostics
 
 
+# ---------------------------------------------------------------- binding / run
+
 def binding_for2(data, config, rows, queries, model, device, inputs_binding):
     base = b1.binding_for(data, config, rows, queries, model.init_report, device, inputs_binding)
-    extra = {'task': 'P-FEAT02', 'feature': config['feature'], 'side_version': SIDE_VERSION,
-             'side_sha256': b1._digest([r['side'] for r in rows] + [q['side'] for q in queries]),
-             'bucket_spec_sha256': bucket_spec_sha256(), 'param_report': parameter_report(model)}
-    if config['feature'] == 'f3_f4_recency':      # the only variant that consumes the history weeks
-        extra['weeks_sha256'] = b1._digest([[p[0] for p in r['history_positions']] for r in rows + queries])
-    return {**base, **extra}
+    binding = {**base, 'task': 'P-FEAT02', 'feature': config['feature'], 'side_version': SIDE_VERSION,
+               'side_sha256': b1._digest([r['side'] for r in rows] + [q['side'] for q in queries]),
+               'bucket_spec_sha256': bucket_spec_sha256(), 'param_report': parameter_report(model)}
+    if config['feature'] == 'f3_f4_recency':
+        binding['weeks_sha256'] = b1._digest([[p[0] for p in r['history_positions']] for r in rows + queries])
+    return binding
 
 
 def _model(data, config, device):
@@ -229,7 +237,7 @@ def run_session(output, data, config, device='cpu', check=None, inputs_binding=N
                             'predictions_sha256': predictions_sha, 'diagnostics': epoch_diag})
         eval_seconds += time.monotonic() - begin
         if check: check()
-        state = {'schema': 'p-feat02-checkpoint-v1', 'binding_sha256': b1._digest(binding), 'step': step, 'epoch': epoch, 'model': model.state_dict(),
+        state = {'schema': CHECKPOINT_SCHEMA, 'binding_sha256': b1._digest(binding), 'step': step, 'epoch': epoch, 'model': model.state_dict(),
                  'optimizer': optimizer.state_dict(), 'cursor': cursor.state_dict(), 'negative_rng': negative_rng.getstate(),
                  'stats': b1._stats_value(stats), 'selection': stop.state(), **b1._rng_state()}
         last = {'path': 'last.pt', 'sha256': b1._torch_save_atomic(output / 'last.pt', state), 'step': step, 'epoch': epoch}
@@ -301,7 +309,7 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
         if f1.history_support_slices(predictions, queries, data['support'], data['catalog']) != stored.get('history_support_slices'):
             raise ValueError('history support slice not reproducible from stored predictions')
         if support_slices(predictions, queries, data['support'], data['catalog']) != evaluation['result'].get('support_metrics'):
-            raise ValueError('target support metrics not reproducible from stored predictions')
+            raise ValueError('target support slice metrics not reproducible from stored predictions')
         if top50_unsupported_share(predictions, data['support']) != stored.get('top50_unsupported_share'):
             raise ValueError('top50 unsupported share not reproducible from stored predictions')
         primary = recomputed['all']
@@ -319,8 +327,8 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
     result, diagnostics = evaluate_model(model, data, queries, config, check)
     if result != full[best['epoch'] - 1]['result']:
         raise ValueError('best checkpoint exact re-export mismatch')
-    if diagnostics != value['evaluations'][best['epoch'] - 1]['diagnostics']:
-        raise ValueError('best checkpoint diagnostics re-export mismatch')
+    if diagnostics != value['evaluations'][best['epoch'] - 1].get('diagnostics'):
+        raise ValueError('best checkpoint exact re-export diagnostics mismatch')
     last = value['last']
     if type(last) is not dict or last.get('path') != 'last.pt' or last.get('step') != value['steps'] or file_sha256(run / 'last.pt') != last.get('sha256'):
         raise ValueError('last checkpoint hash mismatch')
@@ -335,22 +343,22 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
 # ---------------------------------------------------------------- real inputs
 
 def validate_inputs(value, feature=None):
-    """``p-feat02-inputs-v1`` = FEAT-01 inputs + optional (manifest, sha) pairs for the ctx and attr sidecars.
-    A pair is all-or-nothing; the pair a feature consumes is required for that feature (unused pins are never loaded)."""
-    if type(value) is not dict or value.get('schema') != INPUTS_SCHEMA or any(k not in value for k in PIN_FIELDS):
+    """p-feat02-inputs-v1 = FEAT-01 inputs + optional ctx/attr pin pairs; a variant that uses a pin requires it."""
+    if type(value) is not dict or value.get('schema') != INPUTS_SCHEMA or any(k not in value for pair in PIN_PAIRS for k in pair):
         raise ValueError('FEAT-02 inputs schema')
-    f1.validate_inputs({**{k: v for k, v in value.items() if k not in PIN_FIELDS}, 'schema': 'p-feat01-inputs-v1'})
-    for manifest, sha in (PIN_FIELDS[:2], PIN_FIELDS[2:]):
-        if (value[manifest] is None) != (value[sha] is None) or (value[manifest] is not None and type(value[manifest]) is not str) \
-                or (value[sha] is not None and not f1._sha(value[sha])):
+    pins = {k for pair in PIN_PAIRS for k in pair}
+    f1.validate_inputs({**{k: v for k, v in value.items() if k not in pins}, 'schema': 'p-feat01-inputs-v1'})
+    for manifest, digest in PIN_PAIRS:
+        if (value[manifest] is None) != (value[digest] is None) or (value[digest] is not None and (type(value[manifest]) is not str or not f1._sha(value[digest]))):
             raise ValueError('partial/invalid sidecar pin')
-    if feature in REQUIRED_PIN and value[REQUIRED_PIN[feature]] is None:
-        raise ValueError('sidecar pin required by this feature')
+    for key in REQUIRED_PINS.get(feature, ()):
+        if value[key] is None:
+            raise ValueError('pinned sidecar required by this feature')
     return value
 
 
 def apply_feat02(data, spec, length):
-    """History v2 overlay + side sidecar (FEAT-01 ``apply_side``); the ctx/attr sidecars are added by the variants that use them."""
+    """Overlay pinned history-v2 and the FEAT-01 side sidecar (week comes from history_positions, no new data)."""
     return f1.apply_side(data, spec, length)
 
 
@@ -375,8 +383,8 @@ def main(argv=None):
         target = Path(args.output) if args.command == 'train' else Path(args.manifest).parent
         check = b1.resource_guard(target, spec['disk_cap_bytes']); check()
         data, _, binding = b1.real_inputs(spec)
-        data, side_binding = apply_feat02(data, spec, config['history_len'])
-        inputs_binding = {**binding, **side_binding, 'inputs_sha256': args.inputs_sha}
+        data, extra_binding = apply_feat02(data, spec, config['history_len'])
+        inputs_binding = {**binding, **extra_binding, 'inputs_sha256': args.inputs_sha}
         if args.command == 'train':
             value = run_session(target, data, config, 'cuda', check, inputs_binding)
             print(json.dumps({'status': value['status'], 'manifest_sha256': value['manifest_sha256'], 'best_epoch': value['selection']['best_epoch']})); return 0
