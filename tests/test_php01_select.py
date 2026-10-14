@@ -55,7 +55,10 @@ def guard_five_hits_is_not_a_winner():
 
 def guard_same_knob_twice_does_not_trigger():
     from vkgr.retrieval_php01_select import decide
-    decision = decide(anchor(), runs(H1=10, H2=8), {})
+    try:
+        decision = decide(anchor(), runs(H1=10, H2=8), {})
+    except ValueError as exc:                               # e.g. a one-knob "combo" rejected downstream by validate_config
+        raise AssertionError(f'two levels of one knob must give a void H7, not an error: {exc}') from exc
     ensure(decision['winner_groups'] == ['temperature'], 'H1 and H2 are the same knob')
     ensure(decision['triggered'] is False and decision['h7'] == 'void', 'two levels of one knob must not trigger H7')
     ensure(decide(anchor(), runs(H1=10, H5=7), {})['triggered'] is True, 'control: two different knobs trigger H7')
