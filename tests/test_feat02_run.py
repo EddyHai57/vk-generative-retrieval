@@ -666,6 +666,64 @@ class Feat02RunTests(unittest.TestCase):
                 self.assertEqual(fr.main(['train', *common[:2], '--inputs-sha', '0' * 64, '--config', str(tmp / 'real.json'), '--config-sha', file_sha256(tmp / 'real.json'), '--output', str(tmp / 'x')]), 2)
             self.assertIn('P-FEAT02', err.getvalue())
 
+    def test_prepare_attr_output_does_not_depend_on_validation_queries(self):
+        """prepare-attr loads the queries through real_inputs but must never use them: swapping them changes no output byte."""
+        import argparse
+        from vkgr import item_attr
+        from vkgr import retrieval_feat02_run as fr
+        from vkgr.data_audit import file_sha256
+        from test_feat02_data import write_metadata
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            partitions, examples, queries, catalog, durations, h2, side, _ = prepared_full_world(tmp / 'w', seed=9)
+            authors = {i: 1000 + k % 7 if (k % 2 == 0 or k % 3 == 0) else 3000 + k for k, i in enumerate(catalog)}
+            support = set(catalog[::2])
+            (tmp / 'raw' / 'metadata').mkdir(parents=True)
+            metadata = write_metadata(tmp / 'raw' / 'metadata' / 'items_metadata.parquet', authors)
+            vocab = item_attr.author_vocab(authors, support)
+            spec = {'schema': 'p-feat02-inputs-v1', 'prepared': 'p', 'holdout': 'h', 'raw_root': str(tmp / 'raw'),
+                    'history_manifest': 'm', 'history_sha256': 'a' * 64, 'side_manifest': 's', 'side_sha256': 'b' * 64,
+                    'items_metadata_sha256': file_sha256(metadata), 'ctx_manifest': None, 'ctx_sha256': None,
+                    'attr_manifest': None, 'attr_sha256': None, 'disk_cap_bytes': 1 << 30, 'test_gate': 'closed_hash_only'}
+            base = {'rows': examples, 'catalog': catalog, 'synthetic': False, 'support': support}
+            variants = {'real': queries, 'empty': [], 'scrambled': [{**q, 'target': catalog[-1], 'history': catalog[:3]} for q in queries]}
+            outputs = {}
+            with mock.patch.object(fr, 'AUTHOR_VOCAB_SIZE', len(vocab)), mock.patch.object(fr, 'AUTHOR_VOCAB_SHA256', item_attr.vocab_digest(vocab)):
+                for name, qs in variants.items():
+                    with mock.patch.object(fr.b1, 'real_inputs', lambda s, with_partitions=False, qs=qs: ({**base, 'queries': qs}, None, {'prepared_sha': 'x'})):
+                        ns = argparse.Namespace(command='prepare-attr', inputs_sha='a' * 64, output=str(tmp / name), manifest=None, manifest_sha=None)
+                        with contextlib.redirect_stdout(io.StringIO()):
+                            fr._attr_command(ns, spec)
+                    outputs[name] = {f: (tmp / name / f).read_bytes() for f in ('authors.json', 'manifest.json')}
+            self.assertEqual(outputs['real'], outputs['empty'])
+            self.assertEqual(outputs['real'], outputs['scrambled'])
+
+    CONFIG_STEMS = {'p-feat02-f3-masked-s42': 'f3_masked', 'p-feat02-f4-recency-s42': 'f3_f4_recency',
+                    'p-feat02-f5-scene-s42': 'f3_f5_scene', 'p-feat02-f6-author-content-s42': 'f3_f6_author_content'}
+
+    def test_committed_feat02_configs_are_registered(self):
+        from vkgr.retrieval_feat02_run import validate_config
+        root = Path(__file__).resolve().parent.parent / 'configs' / 'feat02'
+        files = sorted(root.glob('p-*.json'))
+        self.assertEqual({f.stem for f in files}, set(self.CONFIG_STEMS))
+        for path in files:
+            value = json.loads(path.read_text())
+            validate_config(value)
+            self.assertEqual(value['feature'], self.CONFIG_STEMS[path.stem], path.stem)
+            self.assertEqual((value['seed'], value['history_len'], value['logq'], value['extra_uniform']), (42, 50, True, 0), path.stem)
+            self.assertEqual(path.read_text(), json.dumps(value, indent=1, sort_keys=True) + '\n', path.stem)
+
+    def test_feat02_config_files_differ_from_f3_only_in_schema_task_feature(self):
+        root = Path(__file__).resolve().parent.parent / 'configs'
+        anchor = json.loads((root / 'feat01' / 'p-feat01-f3-watch-buckets-s42.json').read_text())
+        files = sorted((root / 'feat02').glob('p-*.json'))
+        self.assertEqual(len(files), 4)
+        for path in files:
+            value = json.loads(path.read_text())
+            self.assertEqual(set(value), set(anchor), path.stem)
+            self.assertEqual({k for k in anchor if anchor[k] != value[k]}, {'schema', 'task_id', 'feature'}, path.stem)
+            self.assertEqual((value['schema'], value['task_id']), ('p-feat02-run-v1', 'FEAT-02'))
+
 
 if __name__ == '__main__':
     unittest.main()
