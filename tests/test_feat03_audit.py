@@ -6,6 +6,8 @@ import importlib.util
 import inspect
 import io
 import json
+import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -207,6 +209,113 @@ class AuditEndToEndTests(unittest.TestCase):
             with self.assertRaises(ValueError), contextlib.redirect_stdout(io.StringIO()) as out:
                 self.m.main(['--inputs-spec', str(spec), '--src', str(ROOT / 'src')])
             self.assertEqual(out.getvalue(), '')
+
+
+LAUNCHER = ROOT / 'scripts' / 'feat03_audit_launch.py'
+GIT_QUIET = ['-c', 'user.name=guard', '-c', 'user.email=guard@example.invalid', '-c', 'commit.gpgsign=false']
+BUSINESS = (
+    "import json, sys\n"
+    "sys.stdout.buffer.write(json.dumps({'argv': sys.argv[1:], 'word': '\\u00e9'}, ensure_ascii=False).encode() + b'\\n\\x00tail-without-newline')\n"
+)
+
+
+def git(repo, *args, check=True):
+    return subprocess.run(['git', *GIT_QUIET, '-C', str(repo), *args], check=check, capture_output=True, text=True)
+
+
+class LauncherTests(unittest.TestCase):
+    def make_repo(self, tmp):
+        repo = Path(tmp) / 'repo'
+        for rel, text in (('scripts/feat03_audit_constants.py', BUSINESS), ('src/vkgr/mod.py', 'X = 1\n'), ('docs/note.md', 'one\n')):
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text(text)
+        git(repo, 'init', '-q')
+        git(repo, 'add', '-A')
+        git(repo, 'commit', '-q', '-m', 'base')
+        return repo
+
+    def params(self, repo, **override):
+        p = {'worktree': str(repo), 'commit': git(repo, 'rev-parse', 'HEAD').stdout.strip(),
+             'tree': git(repo, 'rev-parse', 'HEAD^{tree}').stdout.strip(),
+             'script_sha256': hashlib.sha256((repo / 'scripts/feat03_audit_constants.py').read_bytes()).hexdigest(),
+             'inputs_spec': 'spec-path', 'src': 'src-path'}
+        p.update(override)
+        return p
+
+    def send(self, params):
+        lines = LAUNCHER.read_text().split('\n')
+        text = '\n'.join(['P = ' + json.dumps(params), *lines[1:]])
+        return subprocess.run([sys.executable, '-B', '-'], input=text.encode(), capture_output=True)
+
+    def test_committed_launcher_has_a_single_placeholder_line(self):
+        text = LAUNCHER.read_text()
+        self.assertEqual(text.split('\n')[0], 'P = None')
+        self.assertEqual(len(re.findall(r'(?m)^\s*P\s*=', text)), 1)
+        lowered = text.lower()
+        for fragment in ('/work' + 'space', '/us' + 'ers/', 'hello' + 'bike', 'validation' + '-queries'):
+            self.assertNotIn(fragment, lowered)
+
+    def test_all_good_passes_stdout_through_byte_for_byte(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.make_repo(tmp)
+            params = self.params(repo)
+            result = self.send(params)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            expected = json.dumps({'argv': ['--inputs-spec', 'spec-path', '--src', 'src-path'], 'word': '\u00e9'}, ensure_ascii=False).encode() + b'\n\x00tail-without-newline'
+            self.assertEqual(result.stdout, expected)
+            receipt = json.loads(result.stderr.decode().strip().splitlines()[-1])
+            self.assertEqual(receipt, {'commit': params['commit'], 'tree': params['tree'], 'script_sha256': params['script_sha256']})
+            # a modified tracked file outside src/ and scripts/ does not matter
+            (repo / 'docs/note.md').write_text('changed\n')
+            self.assertEqual(self.send(params).returncode, 0)
+
+    def assert_refused(self, tmp, params):
+        result = self.send(params)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, b'')
+
+    def test_commit_tree_and_script_mismatches_are_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.make_repo(tmp)
+            self.assert_refused(tmp, self.params(repo, commit='0' * 40))
+            self.assert_refused(tmp, self.params(repo, tree='1' * 40))
+            self.assert_refused(tmp, self.params(repo, script_sha256='2' * 64))
+            self.assert_refused(tmp, {'worktree': str(repo)})        # incomplete parameters
+            self.assertEqual(self.send(self.params(repo)).returncode, 0)
+
+    def test_tracked_change_under_src_or_scripts_is_refused(self):
+        for rel in ('src/vkgr/mod.py', 'scripts/feat03_audit_constants.py'):
+            with self.subTest(rel), tempfile.TemporaryDirectory() as tmp:
+                repo = self.make_repo(tmp)
+                params = self.params(repo)
+                if rel.startswith('scripts'):
+                    params['script_sha256'] = hashlib.sha256(((repo / rel).read_text() + '# edit\n').encode()).hexdigest()
+                (repo / rel).write_text((repo / rel).read_text() + '# edit\n')
+                self.assert_refused(tmp, params)
+
+    def test_untracked_file_under_src_or_scripts_is_refused(self):
+        for rel in ('src/vkgr/shadow.py', 'scripts/extra.py'):
+            with self.subTest(rel), tempfile.TemporaryDirectory() as tmp:
+                repo = self.make_repo(tmp)
+                params = self.params(repo)
+                (repo / rel).write_text('Y = 2\n')
+                self.assert_refused(tmp, params)
+                (repo / '.gitignore').write_text('')
+                # an ignored byte-code cache is not an untracked source file
+                (repo / rel).unlink()
+                (repo / 'src/vkgr/__pycache__').mkdir()
+                (repo / 'src/vkgr/__pycache__/mod.pyc').write_bytes(b'x')
+                (repo / '.gitignore').write_text('__pycache__/\n')
+                git(repo, 'add', '.gitignore')
+                git(repo, 'commit', '-q', '-m', 'ignore caches')
+                self.assertEqual(self.send(self.params(repo)).returncode, 0)
+
+    def test_launcher_writes_nothing_into_the_worktree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.make_repo(tmp)
+            before = git(repo, 'status', '--porcelain').stdout
+            self.assertEqual(self.send(self.params(repo)).returncode, 0)
+            self.assertEqual(git(repo, 'status', '--porcelain').stdout, before)
 
 
 if __name__ == '__main__':
