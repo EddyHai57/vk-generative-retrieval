@@ -6,7 +6,8 @@ shared HIST_V2 sidecar, and trains with explicit switches:
   init=small (INIT_EMB_N002), history_len=20|50|100, max_epochs=100/min_epochs=5/patience=3,
   sid=SID_BHKM_B16D3_S42 | SID_RANDPERM42_OF_BHKM_B16D3 (G4 only).
 Evaluation is the frozen beam=100 evaluator (serial, or INFRA-01 sharded when
-VKGR_EVAL_WORKERS>1) for L<=50, and a serial L-window twin for L=100. Only best.pt and
+VKGR_EVAL_WORKERS>1) for L<=50, and a serial L-window twin for L=100; VKGR_DECODE=batched
+(INFRA-02, opt-in) swaps either for the exact batched twin in generative_batched. Only best.pt and
 last.pt are kept; verify recomputes every epoch aggregate from published rows, replays the
 selection and re-evaluates only the best checkpoint (fail-closed).
 """
@@ -20,6 +21,7 @@ from pathlib import Path
 
 import torch
 
+from . import generative_batched as gb
 from . import generative_data as gd
 from . import generative_evaluation as ev
 from . import generative_experiment as ge
@@ -34,7 +36,7 @@ from .generative_hp import EarlyStop, core_config, make_model_b1
 
 TASKS = ('HIST-V2', 'HIST-LEN', 'G4')
 BUDGET = 'BUDGET_E100_MIN5_P3'
-B1_MEMBERS = tuple(f'src/vkgr/{n}.py' for n in ('history_v2', 'generative_data_v2', 'generative_hp', 'generative_diagnostics', 'generative_b1_run',
+B1_MEMBERS = tuple(f'src/vkgr/{n}.py' for n in ('history_v2', 'generative_data_v2', 'generative_hp', 'generative_diagnostics', 'generative_b1_run', 'generative_batched',
                                                  'generative_sharded', 'generative_real', 'generative_training', 'generative_evaluation',
                                                  'generative_experiment', 'generative_data', 'tiger', 'sid'))
 
@@ -143,7 +145,14 @@ def train_batch(model, optimizer, rows, context, tokens, config, device):
         optimizer.zero_grad(set_to_none=True)
 
 
-def _evaluate(model, context, tokens, config, runtime, output, checkpoint_sha, guard, workers, on_shard=None):
+def _evaluate(model, context, tokens, config, runtime, output, checkpoint_sha, guard, workers, on_shard=None, decode=None):
+    if gb.check_decode(decode) is not None and workers != 1:
+        raise ValueError('decode env: batched decode excludes VKGR_EVAL_WORKERS>1')
+    if decode is not None:
+        if config['history_len'] > 50:
+            return 'l100_query_evaluation', gb.evaluate_l100_batched(model, context, tokens, output=output, checkpoint_sha256=checkpoint_sha, batch_size=decode['batch_size'], guard=guard)
+        return 'query_evaluation', gb.evaluate_queries_batched(model, context, output=output, checkpoint_sha256=checkpoint_sha, shard_size=64, batch_size=decode['batch_size'],
+                                                               budget_check=guard, on_shard=on_shard)
     if config['history_len'] > 50:
         result = evaluate_l100(model, context, tokens, output=output, checkpoint_sha256=checkpoint_sha, guard=guard)
         return 'l100_query_evaluation', result
@@ -186,7 +195,7 @@ def _write_manifest(path, value):
     return file_sha256(path)
 
 
-def run(root, prepared_path, prepared_sha, history_manifest, history_sha, config, output, *, temporary, eval_workers=1, progress=None):
+def run(root, prepared_path, prepared_sha, history_manifest, history_sha, config, output, *, temporary, eval_workers=1, progress=None, decode=None):
     root = Path(root)
     context, engineering = _contexts(root, prepared_path, prepared_sha, history_manifest, history_sha, config, temporary)
     validate_config(config, engineering)
@@ -223,7 +232,7 @@ def run(root, prepared_path, prepared_sha, history_manifest, history_sha, config
         checkpoint_sha = _save(output / 'last.pt', state); model_sha = ev.model_digest(model)
         begin = time.perf_counter(); report('evaluate', force=True)
         kind, evaluation = _evaluate(model, context, tokens, config, runtime, output / f'evaluation-{epoch:03d}', checkpoint_sha, guard, eval_workers,
-                                     on_shard=lambda completed, total: report('evaluate', completed, total))
+                                     on_shard=lambda completed, total: report('evaluate', completed, total), decode=decode)
         wall['evaluate'] += time.perf_counter() - begin
         aggregate = evaluation['aggregate']; main = aggregate['metrics']['all_eligible']
         improved = stop.observe(epoch, main['recall@50'], main['ndcg@50']); cursor.complete_evaluation()
@@ -263,7 +272,7 @@ def _load_best(run, value, context, config, runtime, binding):
     return model
 
 
-def verify(root, prepared_path, prepared_sha, history_manifest, history_sha, manifest_path, manifest_sha, output, *, temporary, eval_workers=1):
+def verify(root, prepared_path, prepared_sha, history_manifest, history_sha, manifest_path, manifest_sha, output, *, temporary, eval_workers=1, decode=None):
     root = Path(root); manifest_path = Path(manifest_path); run = manifest_path.parent
     value = _read_run(manifest_path, manifest_sha); config = value['config']
     context, engineering = _contexts(root, prepared_path, prepared_sha, history_manifest, history_sha, config, temporary)
@@ -297,7 +306,7 @@ def verify(root, prepared_path, prepared_sha, history_manifest, history_sha, man
     if ev.model_digest(model) != expected_best['model_sha256']:
         raise ValueError('best model digest mismatch')
     output = gd._no_symlink(Path(output)); output.mkdir(mode=0o700, exist_ok=False)
-    _, replay = _evaluate(model, context, tokens, config, runtime, output / f"replay-best-{best['epoch']:03d}", best['sha256'], _guard(engineering, output, runtime['device']), eval_workers)
+    _, replay = _evaluate(model, context, tokens, config, runtime, output / f"replay-best-{best['epoch']:03d}", best['sha256'], _guard(engineering, output, runtime['device']), eval_workers, decode=decode)
     if replay['manifest']['computation_sha256'] != expected_best['evaluation']['computation_sha256']:
         raise ValueError('best checkpoint re-evaluation mismatch')
     return {'status': 'verified', 'replayed_epochs': [best['epoch']], 'best_epoch': best['epoch'], 'epochs': len(value['epochs'])}
@@ -341,14 +350,16 @@ def main(argv=None):
     args = parser.parse_args(argv)
     root = Path(__file__).resolve().parents[2]
     try:
-        workers = gs.eval_workers_from_env(); progress = gs.progress_target_from_env()
+        workers = gs.eval_workers_from_env(); progress = gs.progress_target_from_env(); decode = gb.decode_mode_from_env()
+        if decode is not None and workers != 1:
+            raise ValueError('decode env: batched decode excludes VKGR_EVAL_WORKERS>1')
         common = (root, Path(args.prepared), args.prepared_sha, Path(args.history_manifest), args.history_sha)
         if args.command == 'train':
             config = gd._json(gd._checked_file(Path(args.config), args.config_sha))
-            value = run(*common, config, Path(args.output), temporary=Path(args.scratch), eval_workers=workers, progress=progress)
+            value = run(*common, config, Path(args.output), temporary=Path(args.scratch), eval_workers=workers, progress=progress, decode=decode)
             print(json.dumps({'status': value['status'], 'manifest_sha256': value['manifest_sha256'], 'best_epoch': value['selection']['best_epoch']}))
         elif args.command == 'verify':
-            print(json.dumps(verify(*common, Path(args.manifest), args.manifest_sha, Path(args.output), temporary=Path(args.scratch), eval_workers=workers)))
+            print(json.dumps(verify(*common, Path(args.manifest), args.manifest_sha, Path(args.output), temporary=Path(args.scratch), eval_workers=workers, decode=decode)))
         else:
             result = beam_diagnostic(*common, Path(args.manifest), args.manifest_sha, args.beam, Path(args.output), temporary=Path(args.scratch))
             print(json.dumps({'status': 'diagnostic_complete', 'manifest_sha256': result['manifest_sha256']}))
