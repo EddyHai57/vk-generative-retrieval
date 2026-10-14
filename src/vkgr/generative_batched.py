@@ -236,13 +236,19 @@ def evaluate_l100_batched(model, context, tokens, *, output, checkpoint_sha256, 
     device = next(model.parameters()).device; queries = context.queries; catalog = set(context.catalog)
     if device.type == 'cuda':
         torch.cuda.reset_peak_memory_stats(device)
+    # Decode in blocks of _BLOCK_FACTOR*batch_size queries with the resource guard between blocks
+    # (the serial twin guards every query; per-query results do not depend on the block split).
+    block = _BLOCK_FACTOR * batch_size; results = []; elapsed = 0.
+    for low in range(0, len(queries), block):
+        if guard is not None:
+            guard()
+        _sync(device); begin = time.perf_counter()
+        results.extend(decode_histories_batched(model, tokens, [q['history'] for q in queries[low:low + block]], 100, batch_size))
+        _sync(device); elapsed += time.perf_counter() - begin
     if guard is not None:
         guard()
-    _sync(device); begin = time.perf_counter()
-    results = decode_histories_batched(model, tokens, [q['history'] for q in queries], 100, batch_size)
-    _sync(device); elapsed = time.perf_counter() - begin
-    if guard is not None:
-        guard()
+    if len(results) != len(queries):
+        raise ValueError('batched result count')
     rows = []
     for ordinal, (query, (items, audit)) in enumerate(zip(queries, results)):
         _gate(items, audit, catalog)
@@ -251,6 +257,6 @@ def evaluate_l100_batched(model, context, tokens, *, output, checkpoint_sha256, 
     rows_sha = gdiag._write(output / 'rows.json', rows)
     manifest = {'schema_version': 1, 'task_id': 'G-B1', 'kind': 'l100_query_evaluation', 'binding': binding, 'rows_sha256': rows_sha,
                 'query_count': len(rows), 'aggregate': aggregate, 'computation_sha256': ev._computation(rows, aggregate),
-                'observations': {'latency': gdiag._latency(rows), 'execution': _execution(batch_size, len(queries), elapsed, device)}}
+                'observations': {'latency': gdiag._latency(rows), 'execution': _execution(batch_size, block, elapsed, device)}}
     path = output / 'manifest.json'
     return {'manifest': manifest, 'manifest_path': path, 'manifest_sha256': gdiag._write(path, manifest), 'aggregate': aggregate}

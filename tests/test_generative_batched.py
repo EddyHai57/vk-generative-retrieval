@@ -68,7 +68,7 @@ class EnvTests(unittest.TestCase):
                 gb.decode_mode_from_env(env)
 
     def test_b1_cli_rejects_bad_decode_env_before_output(self):
-        from vkgr import generative_b1_run as b1
+        from vkgr import generative_b1_batched as b1
         argv = lambda tmp: ['train', '--prepared', 'x', '--prepared-sha', '0' * 64, '--history-manifest', 'y', '--history-sha', '0' * 64,
                             '--config', 'z', '--config-sha', '0' * 64, '--output', str(Path(tmp) / 'out'), '--scratch', str(Path(tmp) / 's')]
         for env in ({'VKGR_DECODE': 'gpu'}, {'VKGR_DECODE': 'batched', 'VKGR_EVAL_WORKERS': '2'}):
@@ -157,6 +157,44 @@ class LargeCatalogTests(unittest.TestCase):
                     self.assertEqual(gb.decode_histories_batched(model, codec, hs, 100, size), expected)
 
 
+class _NearTieModel(torch.nn.Module):
+    """Stub decoder (log_softmax patched to identity): first digit 0/1 both score 1.0; under first digit 1 the
+    second step adds 2**-24, under 0 it adds 0. float64 totals rank first-digit-1 paths strictly above (1+2**-24 > 1);
+    float32 totals round 1+2**-24 to 1.0 and the (-score, item) tie-break would rank by item id instead."""
+    def __init__(self, offsets, vocab):
+        super().__init__(); self.weight = torch.nn.Parameter(torch.zeros(1)); self.offsets = offsets; self.vocab = vocab
+
+    def encode(self, source):
+        return torch.zeros(source.shape[0], source.shape[1], 1), torch.zeros(source.shape, dtype=torch.bool)
+
+    def decode(self, memory, padding, decoder):
+        rows, width = decoder.shape; out = torch.zeros(rows, width, self.vocab, dtype=torch.float32)
+        if width == 1:
+            out[:, -1, :] = 1.
+        elif width == 2:
+            out[(decoder[:, 1] - self.offsets[0]) == 1, -1, :] = 2. ** -24
+        return out
+
+
+class Float64AccumulationTests(unittest.TestCase):
+    def setUp(self):
+        self.assertIsNotNone(gb, 'generative_batched missing')
+
+    def test_ulp_near_tie_needs_float64_totals(self):
+        codec = large_codec(items=16, branching=2, seed=3); catalog = codec.catalog
+        first = {int(i): int(s[0]) for i, s in zip(catalog.ids, catalog.sids)}
+        self.assertEqual(set(first.values()), {0, 1})
+        float64_order = sorted(first, key=lambda i: (-first[i], i))
+        self.assertNotEqual(float64_order, sorted(first))  # float32 (all totals 1.0) would give plain id order
+        model = _NearTieModel(codec.offsets, codec.vocab_size); hs = [[10], [11, 12], [13]]
+        with patch.object(torch, 'log_softmax', lambda x, dim=-1: x):
+            serial = [decode_history(model, codec, h, 100) for h in hs]
+            self.assertTrue(all(items == float64_order for items, _ in serial))
+            for size in (1, 3):
+                with self.subTest(batch=size):
+                    self.assertEqual(gb.decode_histories_batched(model, codec, hs, 100, size), serial)
+
+
 class EvaluatorTests(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(gb, 'generative_batched missing')
@@ -207,13 +245,47 @@ class B1IntegrationTests(unittest.TestCase):
         self.assertIsNotNone(gb, 'generative_batched missing')
 
     def _pair(self, tmp, **overrides):
-        from vkgr import generative_b1_run as b1
+        from vkgr import generative_b1_batched as b1
         from test_generative_b1 import config as b1_config, engineering_world
         _, receipt, manifest, sha = engineering_world(tmp)
         cfg = b1_config(**overrides); common = (ROOT, receipt['manifest_path'], receipt['manifest_sha256'], manifest, sha)
         serial = b1.run(*common, cfg, Path(tmp) / 'run', temporary=Path(tmp) / 's1')
         batched = b1.run(*common, cfg, Path(tmp) / 'run-b', temporary=Path(tmp) / 's2', decode={'mode': 'batched', 'batch_size': 3})
         return b1, common, serial, batched
+
+    def test_default_runner_source_identity_is_6f3901d(self):
+        """MEDIUM-4: the default runner keeps the 6f3901d member set and bytes; only the opt-in entry binds the batched code."""
+        import subprocess
+        from vkgr import generative_b1_run as b1
+        from vkgr import generative_b1_batched as bb
+        names = ('history_v2', 'generative_data_v2', 'generative_hp', 'generative_diagnostics', 'generative_b1_run',
+                 'generative_sharded', 'generative_real', 'generative_training', 'generative_evaluation', 'generative_experiment', 'generative_data', 'tiger', 'sid')
+        self.assertEqual(b1.B1_MEMBERS, tuple(f'src/vkgr/{n}.py' for n in names))
+        try:
+            blob = subprocess.run(['git', '-C', str(ROOT), 'show', '6f3901d:src/vkgr/generative_b1_run.py'], capture_output=True, check=True).stdout
+        except (subprocess.CalledProcessError, OSError):
+            self.skipTest('6f3901d not in this checkout')
+        self.assertEqual((ROOT / 'src/vkgr/generative_b1_run.py').read_bytes(), blob)
+        self.assertEqual(bb.MEMBERS, b1.B1_MEMBERS + ('src/vkgr/generative_batched.py', 'src/vkgr/generative_b1_batched.py'))
+
+    def test_entry_points_do_not_cross_verify_and_restore_globals(self):
+        from vkgr import generative_b1_run as b1
+        from vkgr import generative_b1_batched as bb
+        from test_generative_b1 import config as b1_config, engineering_world
+        members, evaluate = b1.B1_MEMBERS, b1._evaluate
+        with tmpdir() as tmp:
+            _, receipt, manifest, sha = engineering_world(tmp); common = (ROOT, receipt['manifest_path'], receipt['manifest_sha256'], manifest, sha)
+            plain = b1.run(*common, b1_config(), Path(tmp) / 'plain', temporary=Path(tmp) / 's1')
+            wrapped = bb.run(*common, b1_config(), Path(tmp) / 'wrapped', temporary=Path(tmp) / 's2')
+            self.assertIs(b1.B1_MEMBERS, members); self.assertIs(b1._evaluate, evaluate)
+            self.assertNotIn('src/vkgr/generative_batched.py', plain['binding']['source']['files'])
+            self.assertIn('src/vkgr/generative_batched.py', wrapped['binding']['source']['files'])
+            self.assertEqual([e['evaluation']['computation_sha256'] for e in plain['epochs']], [e['evaluation']['computation_sha256'] for e in wrapped['epochs']])
+            with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                bb.verify(*common, Path(tmp) / 'plain' / 'manifest.json', plain['manifest_sha256'], Path(tmp) / 'v1', temporary=Path(tmp) / 's3')
+            with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                b1.verify(*common, Path(tmp) / 'wrapped' / 'manifest.json', wrapped['manifest_sha256'], Path(tmp) / 'v2', temporary=Path(tmp) / 's4')
+            self.assertIs(b1.B1_MEMBERS, members); self.assertIs(b1._evaluate, evaluate)
 
     def test_b1_batched_run_matches_serial_and_cross_verifies(self):
         for overrides in ({}, {'task_id': 'HIST-LEN', 'history_len': 100}):
@@ -227,36 +299,114 @@ class B1IntegrationTests(unittest.TestCase):
                                    decode={'mode': 'batched', 'batch_size': 2})
                 self.assertEqual(report['status'], 'verified')
 
-    def test_b1_rejects_batched_with_sharded_workers(self):
+    def test_l100_batched_runs_guard_between_decode_blocks(self):
         from vkgr import generative_b1_run as b1
+        from vkgr.generative_data_v2 import SIDTokensL
+        from vkgr.generative_diagnostics import evaluate_l100
+        from vkgr.generative_hp import make_model_b1
+        from test_generative_b1 import config as b1_config, engineering_world
+        with tmpdir() as tmp:
+            _, receipt, manifest, sha = engineering_world(tmp); cfg = b1_config(task_id='HIST-LEN', history_len=100)
+            context, _ = b1._contexts(ROOT, receipt['manifest_path'], receipt['manifest_sha256'], manifest, sha, cfg, Path(tmp) / 's')
+            tokens = SIDTokensL(context.codec, 100); torch.manual_seed(4); model = make_model_b1(context.codec, cfg, device='cpu')
+            ref = evaluate_l100(model, context, tokens, output=Path(tmp) / 'serial', checkpoint_sha256=CK)
+            n = len(context.queries); self.assertGreater(n, 2)
+            events = []; real = gb.decode_histories_batched
+            def spy(m, t, h, b, s):
+                events.append(('decode', len(h))); return real(m, t, h, b, s)
+            with patch.object(gb, '_BLOCK_FACTOR', 1), patch.object(gb, 'decode_histories_batched', side_effect=spy):
+                got = gb.evaluate_l100_batched(model, context, tokens, output=Path(tmp) / 'batched', checkpoint_sha256=CK, batch_size=2,
+                                               guard=lambda: events.append(('guard',)))
+            decodes = [e for e in events if e[0] == 'decode']
+            self.assertEqual(len(decodes), -(-n // 2)); self.assertEqual(sum(e[1] for e in decodes), n)
+            for i, e in enumerate(events):  # every decode block is bracketed by guard calls
+                if e[0] == 'decode':
+                    self.assertEqual(events[i - 1], ('guard',)); self.assertEqual(events[i + 1], ('guard',))
+            self.assertEqual(got['manifest']['computation_sha256'], ref['manifest']['computation_sha256'])
+            self.assertEqual(got['manifest']['observations']['execution']['block_queries'], 2)
+
+    def test_b1_rejects_batched_with_sharded_workers(self):
+        from vkgr import generative_b1_batched as bb
         with self.assertRaisesRegex(ValueError, 'decode env'):
-            b1._evaluate(None, None, None, {'history_len': 50}, {}, Path('/nonexistent'), CK, None, 2, decode={'mode': 'batched', 'batch_size': 2})
+            bb._evaluator({'mode': 'batched', 'batch_size': 2})(None, None, None, {'history_len': 50}, {}, Path('/nonexistent'), CK, None, 2)
 
 
 class ParityScriptTests(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(gb, 'generative_batched missing')
 
-    def test_parity_script_reports_only_boolean_wall_and_vram(self):
+    def _world(self, tmp, entry='plain', **overrides):
         from vkgr import generative_b1_run as b1
+        from vkgr import generative_b1_batched as bb
         from test_generative_b1 import config as b1_config, engineering_world
         spec = importlib.util.spec_from_file_location('g_decode_parity', ROOT / 'scripts' / 'g_decode_parity.py')
         script = importlib.util.module_from_spec(spec); spec.loader.exec_module(script)
-        with tmpdir() as tmp:
-            _, receipt, manifest, sha = engineering_world(tmp)
-            value = b1.run(ROOT, receipt['manifest_path'], receipt['manifest_sha256'], manifest, sha, b1_config(), Path(tmp) / 'run', temporary=Path(tmp) / 's1')
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
+        _, receipt, manifest, sha = engineering_world(tmp)
+        runner = b1 if entry == 'plain' else bb
+        value = runner.run(ROOT, receipt['manifest_path'], receipt['manifest_sha256'], manifest, sha, b1_config(**overrides), Path(tmp) / 'run', temporary=Path(tmp) / 's1')
+        def call(checkpoint, scratch):
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = script.main(['--prepared', str(receipt['manifest_path']), '--prepared-sha', receipt['manifest_sha256'], '--history-manifest', str(manifest),
                                     '--history-sha', sha, '--manifest', str(Path(tmp) / 'run' / 'manifest.json'), '--manifest-sha', value['manifest_sha256'],
-                                    '--scratch', str(Path(tmp) / 'scratch'), '--batch-size', '3'], root=ROOT)
-            self.assertEqual(code, 0)
-            report = json.loads(out.getvalue())
-            self.assertEqual(set(report), {'equal', 'queries', 'batch_size', 'serial', 'batched'})
-            self.assertIs(report['equal'], True); self.assertEqual(report['queries'], 7); self.assertEqual(report['batch_size'], 3)
-            for side in ('serial', 'batched'):
-                self.assertEqual(set(report[side]), {'wall_seconds', 'peak_vram_bytes'})
-                self.assertIsNone(report[side]['peak_vram_bytes'])
+                                    '--scratch', str(Path(tmp) / scratch), '--batch-size', '3', '--checkpoint', checkpoint], root=ROOT)
+            return code, out.getvalue(), err.getvalue()
+        return value, call
+
+    def _report(self, code, out, err, checkpoint):
+        self.assertEqual(code, 0, err)
+        report = json.loads(out)
+        self.assertEqual(set(report), {'equal', 'queries', 'batch_size', 'checkpoint', 'epoch', 'serial', 'batched'})
+        self.assertEqual(report['queries'], 7); self.assertEqual(report['batch_size'], 3); self.assertEqual(report['checkpoint'], checkpoint)
+        for side in ('serial', 'batched'):
+            self.assertEqual(set(report[side]), {'wall_seconds', 'peak_vram_bytes'})
+            self.assertIsNone(report[side]['peak_vram_bytes'])
+        return report
+
+    def test_parity_script_best_and_last_report_only_boolean_wall_and_vram(self):
+        for entry, overrides in (('plain', {}), ('batched-entry', {}), ('plain', {'task_id': 'HIST-LEN', 'history_len': 100})):
+            with self.subTest(entry=entry, **overrides), tmpdir() as tmp:
+                value, call = self._world(tmp, entry, **overrides)
+                for checkpoint, epoch in (('best', value['best']['epoch']), ('last', value['last']['epoch'])):
+                    report = self._report(*call(checkpoint, f'scratch-{checkpoint}'), checkpoint)
+                    self.assertIs(report['equal'], True); self.assertEqual(report['epoch'], epoch)
+
+    def test_parity_script_loads_the_requested_checkpoint(self):
+        from vkgr import generative_evaluation as gev
+        with tmpdir() as tmp:
+            value, call = self._world(tmp)
+            records = {r['epoch']: r for r in value['epochs']}
+            for checkpoint in ('best', 'last'):
+                seen = []; real = gb.decode_histories_batched
+                def spy(m, t, h, b, s):
+                    seen.append(gev.model_digest(m)); return real(m, t, h, b, s)
+                with self.subTest(checkpoint=checkpoint), patch.object(gb, 'decode_histories_batched', side_effect=spy):
+                    self._report(*call(checkpoint, f'scratch-{checkpoint}'), checkpoint)
+                    self.assertEqual(seen, [records[value[checkpoint]['epoch']]['model_sha256']])
+            (Path(tmp) / 'run' / 'last.pt').write_bytes(b'tampered')
+            code, out, err = call('last', 'scratch-tampered')
+            self.assertEqual(code, 1); self.assertEqual(out, ''); self.assertIn('last checkpoint', err)
+
+    def test_parity_script_reports_false_on_any_difference(self):
+        """MEDIUM-1: a batched result that differs from serial in order, membership or audit must give equal=false (exit 0)."""
+        mutations = {'order': lambda items, audit: (items[1:2] + items[:1] + items[2:], audit),
+                     'drop': lambda items, audit: (items[:-1], audit),
+                     'audit': lambda items, audit: (items, {**audit, 'max_active': audit['max_active'] + 1})}
+        with tmpdir() as tmp:
+            _, call = self._world(tmp); real = gb.decode_histories_batched
+            for name, mutate in mutations.items():
+                def fake(m, t, h, b, s, mutate=mutate):
+                    out = real(m, t, h, b, s); out[-1] = mutate(*out[-1]); return out
+                with self.subTest(mutation=name), patch.object(gb, 'decode_histories_batched', side_effect=fake):
+                    report = self._report(*call('best', f'scratch-{name}'), 'best')
+                    self.assertIs(report['equal'], False)
+
+    def test_parity_script_requires_checkpoint_choice(self):
+        with tmpdir() as tmp:
+            _, call = self._world(tmp)
+            for bad in ('', 'epoch-1', 'BEST'):
+                with self.subTest(bad=bad), self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                    call(bad, f'scratch-bad-{bad}')
 
 
 if __name__ == '__main__':
