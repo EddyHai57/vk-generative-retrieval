@@ -18,7 +18,7 @@ from test_feat02_model import ensure  # noqa: E402
 from test_php01_run import F4_CONFIG, KNOB_VALUES, ROOT  # noqa: E402
 
 N = 2520
-ANCHOR_HITS = 424
+ANCHOR_HITS = 400                         # synthetic fixture value, not a real metric
 KNOBS = ('H1', 'H2', 'H3', 'H4', 'H5', 'H6')
 RULE_FILE = ROOT / 'configs' / 'php01' / 'p-php01-h7-combo-rule.json'
 
