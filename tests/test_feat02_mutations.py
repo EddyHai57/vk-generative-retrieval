@@ -95,6 +95,31 @@ class MutationTests(unittest.TestCase):
             return out
         detected(self, history_ctx, 'build_ctx', mutated, [td.guard_ctx_target_and_future_event_fields_cannot_change_features])
 
+    def test_m9_item_tower_still_zeroes_unsupported_items(self):
+        """F6 item tower multiplies the WHOLE vector by the supported flag: unsupported items go back to zero vectors."""
+        from vkgr.retrieval_feat02 import Feat02IDMean
+        original = Feat02IDMean.items
+        detected(self, Feat02IDMean, 'items', lambda self, indices: original(self, indices) * self.supported[indices].unsqueeze(-1),
+                 [tm.guard_f6_item_vector_formula, tm.guard_f6_unsupported_items_are_nonzero_while_anchor_zero])
+
+    def test_m10_content_projection_frozen(self):
+        """The content projection output is detached: W exists and is applied but never learns."""
+        from vkgr import retrieval_feat02 as m
+        detected(self, m, 'project_content', lambda projection, content: projection(content).detach(), [tm.guard_f6_projection_is_learned_linear])
+
+    def test_m11_oov_author_mapped_to_a_trainable_row(self):
+        """Authors outside the vocabulary get a row of their own (>= 2) instead of the inert OOV row 1."""
+        from vkgr import item_attr
+        detected(self, item_attr, 'author_rows',
+                 lambda authors, vocab: [0 if a is None else 2 + vocab.index(a) if a in vocab else 2 + a % max(len(vocab), 1) for a in authors],
+                 [tm.guard_f6_author_pad_and_oov_rows_are_inert])
+
+    def test_m12_vocabulary_built_from_the_whole_catalog(self):
+        """The author vocabulary uses the authors of ALL catalog items instead of the supported ones."""
+        from vkgr import item_attr
+        detected(self, item_attr, 'author_vocab', lambda authors, support: sorted(set(authors.values())),
+                 [td.guard_author_vocab_from_supported_items_only, td.guard_prepare_attr_vocab_pin_binds_the_supported_vocab])
+
 
 if __name__ == '__main__':
     unittest.main()

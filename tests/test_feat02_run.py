@@ -168,6 +168,19 @@ class Feat02RunTests(unittest.TestCase):
                 self.assertEqual(binding['param_report'], parameter_report(fr._model(data, config, 'cpu')))
                 self.assertEqual(('weeks_sha256' in binding), feature == 'f3_f4_recency')
                 self.assertEqual(('ctx_sha256' in binding), feature == 'f3_f5_scene')
+                self.assertEqual(('attr_sha256' in binding), feature == 'f3_f6_author_content')
+                if feature == 'f3_f6_author_content':
+                    self.assertIn('item_attr_coverage', value['data_diagnostics'])
+                    moved = data['author_index'].clone(); k = int((moved >= 2).nonzero()[0])
+                    moved[k] = 2 if int(moved[k]) != 2 else 3
+                    with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                        fr.verify_run(run / 'manifest.json', value['manifest_sha256'], {**data, 'author_index': moved}, config)
+                    with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                        fr.verify_run(run / 'manifest.json', value['manifest_sha256'], {**data, 'author_vocab': data['author_vocab'] + [10 ** 6]}, config)
+                    with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                        fr.verify_run(run / 'manifest.json', value['manifest_sha256'], {**data, 'content': data['content'].flip(1)}, config)
+                    with self.assertRaises(ValueError):
+                        fr.verify_run(run / 'manifest.json', value['manifest_sha256'], {k: v for k, v in data.items() if k != 'author_index'}, config)
                 if feature == 'f3_f5_scene':
                     ctx = {**data, 'rows': [{**r, 'ctx': [[(place + 1) % 256, platform] for place, platform in r['ctx']]} for r in data['rows']]}
                     with self.assertRaisesRegex(ValueError, 'binding mismatch'):
@@ -417,6 +430,206 @@ class Feat02RunTests(unittest.TestCase):
                     self.assertEqual(tensor[j, :len(r['history']), 1].tolist(), [s[1] for s in r['side']])
                     self.assertTrue(bool(tensor[j, len(r['history']):].eq(0).all()))
                 self.assertTrue(max(int(tensor[..., 3].max()), 0) <= 24)
+
+    def test_synthetic_data_carries_the_f6_attr_fixture(self):
+        from vkgr import item_attr
+        from vkgr import retrieval_feat02_run as fr
+        data = fr.synthetic_data()
+        content, index, vocab = data['content'], data['author_index'], data['author_vocab']
+        self.assertEqual(tuple(content.shape), (401, 64)); self.assertEqual(tuple(index.shape), (401,))
+        self.assertEqual(content.dtype, torch.float32); self.assertEqual(index.dtype, torch.long)
+        self.assertTrue(torch.all(content[0] == 0))
+        self.assertTrue(torch.allclose(content[1:].norm(dim=1), torch.ones(400), atol=1e-5), 'non-zero L2-normalised content rows')
+        self.assertEqual(int(index[0]), 0)
+        self.assertEqual(vocab, sorted(set(vocab)))
+        supported = [data['idmap'][i] for i in sorted(data['support'])]; unsupported = [data['idmap'][i] for i in data['catalog'] if i not in data['support']]
+        self.assertTrue(all(int(index[k]) >= 2 for k in supported), 'supported items always have in-vocabulary authors')
+        self.assertTrue(any(int(index[k]) == 1 for k in unsupported) and any(int(index[k]) >= 2 for k in unsupported), 'unsupported items mix OOV and in-vocabulary authors')
+        self.assertEqual(vocab, item_attr.author_vocab(data['authors'], data['support']))
+        self.assertEqual(index.tolist(), item_attr.author_rows([None] + [data['authors'][i] for i in data['catalog']], vocab))
+        self.assertEqual(int(index.max()), len(vocab) + 1)
+
+    def test_f6_target_slices_recomputed_by_verify(self):
+        from vkgr.data_audit import file_sha256
+        from vkgr.retrieval_ablation_run import strict_json
+        with tempfile.TemporaryDirectory() as tmp:
+            fr, data, config, value = self._run(tmp, feature='f3_f6_author_content')
+            run = Path(tmp) / 'run'; _, queries = fr._view(data, 50)
+            best = value['best']['epoch'] - 1
+            slices = value['evaluations'][0]['result']['support_metrics']
+            self.assertEqual(set(slices), {'supported', 'unsupported', 'oov'})
+            self.assertEqual(sum(slices[k]['count'] for k in slices), len(queries))
+            if slices['oov']['count']:
+                self.assertEqual(slices['oov']['recall@50'], 0.0, 'OOV targets are not in the frozen catalog: zero by construction')
+            coverage = value['data_diagnostics']['item_attr_coverage']
+            self.assertEqual((coverage['catalog_items'], coverage['supported_items'], coverage['unsupported_items'], coverage['zero_content_items']), (400, 300, 100, 0))
+            self.assertTrue(0 < coverage['unsupported_with_vocab_author_fraction'] < 1)
+            for evaluation, merged in zip(value['evaluations'], fr.full_evaluations(run, value)):
+                predictions = merged['result']['predictions']
+                self.assertEqual(evaluation['result']['support_metrics'], fr.support_slices(predictions, queries, data['support'], data['catalog']))
+                self.assertEqual(evaluation['diagnostics']['top50_unsupported_share'], fr.top50_unsupported_share(predictions, data['support']))
+            fr.verify_run(run / 'manifest.json', value['manifest_sha256'], data, config)
+            for path, pattern in ((lambda m: m['evaluations'][0]['result']['support_metrics']['unsupported'].__setitem__('count', 999), 'support'),
+                                  (lambda m: m['evaluations'][0]['result']['support_metrics']['supported'].__setitem__('recall@50', 0.987654), 'support'),
+                                  (lambda m: m['evaluations'][0]['diagnostics'].__setitem__('top50_unsupported_share', 0.123456), 'top50'),
+                                  (lambda m: m['evaluations'][best]['diagnostics']['item_norm_stats']['unsupported'].__setitem__('mean', 9.0), 'diagnostics'),
+                                  (lambda m: m['data_diagnostics']['item_attr_coverage'].__setitem__('zero_content_items', 7), 'coverage')):
+                forged = strict_json((run / 'manifest.json').read_text()); path(forged)
+                (run / 'forged.json').write_text(json.dumps(forged))
+                with self.assertRaisesRegex(ValueError, pattern):
+                    fr.verify_run(run / 'forged.json', file_sha256(run / 'forged.json'), data, config)
+
+    def test_f6_catalog_has_no_zero_vectors_while_f3_has_one_per_unsupported_item(self):
+        """Measured on the synthetic catalog (400 items, 100 unsupported), exported through the runner exactly as evaluation does."""
+        import numpy as np
+        from vkgr import retrieval_feat02_run as fr
+        data = fr.synthetic_data(); _, queries = fr._view(data, 50); counts = {}
+        for feature in ('f3', 'f3_f6_author_content'):
+            model = fr._model(data, small_config(feature=feature), 'cpu')
+            _, _, norms = fr.export_vectors_side2(model, data['catalog'], queries, data['idmap'], 16, 50, feature)
+            counts[feature] = int(np.sum(norms == 0))
+        self.assertEqual(counts, {'f3': 100, 'f3_f6_author_content': 0})
+
+    def test_f6_requires_author_index_and_content_comes_only_from_the_prepared_catalog(self):
+        import inspect
+        from vkgr import retrieval_feat02_run as fr
+        data = fr.synthetic_data()
+        for key in ('author_index', 'author_vocab'):
+            with self.assertRaises(ValueError, msg=key):
+                fr._model({k: v for k, v in data.items() if k != key}, small_config(feature='f3_f6_author_content'), 'cpu')
+        model = fr._model(data, small_config(feature='f3_f6_author_content'), 'cpu')
+        self.assertTrue(torch.equal(model.content, data['content']), 'the content buffer is the prepared catalog embedding, nothing else')
+        self.assertTrue(torch.equal(model.author_index, data['author_index']))
+        self.assertEqual(model.author_table.weight.shape[0], len(data['author_vocab']) + 2)
+        for source in (inspect.getsource(fr._tensors2), inspect.getsource(fr.export_vectors_side2)):
+            for banned in ('content', 'author'):
+                self.assertNotIn(banned, source)                 # per-sample tensors never carry attributes: only the model buffers do
+        self.assertTrue(torch.equal(fr._model(data, small_config(feature='f3'), 'cpu').embedding.weight, model.embedding.weight))
+
+    def test_f6_user_vectors_react_to_history_items_and_ignore_target_fields(self):
+        from vkgr import retrieval_feat02_run as fr
+        data = fr.synthetic_data(); rows, _ = fr._view(data, 50)
+        model = fr._model(data, small_config(feature='f3_f6_author_content'), 'cpu'); model.eval()
+        batch = rows[:24]; width = max(len(r['history']) for r in batch)
+        base = model.users(*fr._tensors2(batch, data['idmap'], width, 'f3_f6_author_content'))
+        same = model.users(*fr._tensors2([flip_non_history_fields(r) for r in batch], data['idmap'], width, 'f3_f6_author_content'))
+        self.assertTrue(torch.equal(base, same))
+        moved = [{**r, 'history': [(i + 1) % 400 for i in r['history']]} for r in batch]
+        self.assertFalse(torch.equal(base, model.users(*fr._tensors2(moved, data['idmap'], width, 'f3_f6_author_content'))))
+
+    def test_real_attr_path_prepare_verify_apply(self):
+        """Real CLI path (prepare-attr / verify-attr / apply_feat02) on pinned synthetic files with mocked real_inputs."""
+        import argparse
+        from vkgr import item_attr
+        from vkgr import retrieval_feat02_run as fr
+        from vkgr.data_audit import file_sha256
+        from test_feat02_data import write_metadata
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            partitions, examples, queries, catalog, durations, h2, side, _ = prepared_full_world(tmp / 'w', seed=9)
+            authors = {i: 1000 + k % 7 if (k % 2 == 0 or k % 3 == 0) else 3000 + k for k, i in enumerate(catalog)}
+            support = set(catalog[::2])
+            (tmp / 'raw' / 'metadata').mkdir(parents=True)
+            metadata = write_metadata(tmp / 'raw' / 'metadata' / 'items_metadata.parquet', authors)
+            vocab = item_attr.author_vocab(authors, support); size, sha = len(vocab), item_attr.vocab_digest(vocab)
+            self.assertEqual(size, 7); self.assertTrue(any(authors[i] not in vocab for i in catalog))
+            spec = {'schema': 'p-feat02-inputs-v1', 'prepared': str(tmp / 'p'), 'holdout': str(tmp / 'h'), 'raw_root': str(tmp / 'raw'),
+                    'history_manifest': str(tmp / 'w' / 'h2' / 'manifest.json'), 'history_sha256': h2['manifest_sha256'],
+                    'side_manifest': str(tmp / 'w' / 'side' / 'manifest.json'), 'side_sha256': side['manifest_sha256'], 'items_metadata_sha256': file_sha256(metadata),
+                    'ctx_manifest': None, 'ctx_sha256': None, 'attr_manifest': None, 'attr_sha256': None, 'disk_cap_bytes': 1 << 30, 'test_gate': 'closed_hash_only'}
+            fr.validate_inputs(spec)
+            with self.assertRaises(ValueError):
+                fr.validate_inputs(spec, 'f3_f6_author_content')                                 # F6 needs the attr pin
+            data = {'rows': examples, 'queries': queries, 'catalog': catalog, 'synthetic': False, 'support': support,
+                    'idmap': {i: k + 1 for k, i in enumerate(catalog)}, 'content': torch.zeros(len(catalog) + 1, 64)}
+            fake = lambda s, with_partitions=False: (data, None, {'prepared_sha': 'x'})
+            plain, plain_binding = fr.apply_feat02(data, spec, 50)
+            self.assertNotIn('author_index', plain); self.assertNotIn('attr_manifest_sha256', plain_binding)      # no pin -> nothing loaded
+            ns = lambda command, **kw: argparse.Namespace(command=command, inputs_sha='a' * 64, output=kw.get('output'), manifest=kw.get('manifest'), manifest_sha=kw.get('manifest_sha'))
+            with mock.patch.object(fr.b1, 'real_inputs', fake), mock.patch.object(fr, 'AUTHOR_VOCAB_SIZE', size), mock.patch.object(fr, 'AUTHOR_VOCAB_SHA256', sha):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(fr.main(['prepare-attr', '--inputs', str(self._write(tmp / 'inputs.json', spec)), '--inputs-sha', file_sha256(tmp / 'inputs.json'),
+                                              '--output', str(tmp / 'attr')]), 0)
+                self.assertEqual(json.loads(out.getvalue())['status'], 'attr_prepared')
+                attr_sha = file_sha256(tmp / 'attr' / 'manifest.json')
+                manifest = json.loads((tmp / 'attr' / 'manifest.json').read_text())
+                self.assertEqual((manifest['attr_version'], manifest['items_metadata_sha256'], manifest['vocab_size'], manifest['vocab_sha256']), ('ITEM_ATTR_V1', file_sha256(metadata), size, sha))
+                self.assertEqual(manifest['binding']['inputs_sha256'], file_sha256(tmp / 'inputs.json'))
+                args = ['--inputs', str(tmp / 'inputs.json'), '--inputs-sha', file_sha256(tmp / 'inputs.json'), '--manifest', str(tmp / 'attr' / 'manifest.json'), '--manifest-sha', attr_sha]
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(fr.main(['verify-attr', *args]), 0)
+                self.assertEqual(json.loads(out.getvalue())['status'], 'attr_verified')
+                spec_a = {**spec, 'attr_manifest': str(tmp / 'attr' / 'manifest.json'), 'attr_sha256': attr_sha}
+                fr.validate_inputs(spec_a, 'f3_f6_author_content')
+                for length in (50, 20):
+                    applied, binding = fr.apply_feat02(data, spec_a, length)
+                    base, base_binding = fr.apply_feat02(data, spec, length)
+                    self.assertEqual(binding['attr_manifest_sha256'], attr_sha)
+                    self.assertEqual({k: v for k, v in binding.items() if k != 'attr_manifest_sha256'}, base_binding)
+                    self.assertEqual(applied['author_vocab'], vocab)
+                    self.assertEqual(applied['author_index'].tolist(), item_attr.author_rows([None] + [authors[i] for i in catalog], vocab))
+                    self.assertEqual({k: v for k, v in applied.items() if k not in ('author_index', 'author_vocab')}, base)
+                # a changed constant (size or sha) makes the sidecar unusable and prepare-attr refuse to write
+                for name, wrong in (('AUTHOR_VOCAB_SIZE', size + 1), ('AUTHOR_VOCAB_SHA256', '0' * 64)):
+                    with mock.patch.object(fr, name, wrong):
+                        with self.assertRaises(ValueError, msg=name):
+                            fr.apply_feat02(data, spec_a, 50)
+                        with self.assertRaises(ValueError, msg=name):
+                            fr._attr_command(ns('prepare-attr', output=str(tmp / f'attr-{name}')), spec)
+                        self.assertFalse((tmp / f'attr-{name}').exists())
+                        with self.assertRaises(ValueError, msg=name):
+                            fr._attr_command(ns('verify-attr', manifest=str(tmp / 'attr' / 'manifest.json'), manifest_sha=attr_sha), spec)
+                # metadata pin wrong
+                wrong_pin = {**spec, 'items_metadata_sha256': 'f' * 64}
+                with self.assertRaises(ValueError):
+                    fr._attr_command(ns('prepare-attr', output=str(tmp / 'attr-pin')), wrong_pin)
+                with self.assertRaises(ValueError):
+                    fr._attr_command(ns('verify-attr', manifest=str(tmp / 'attr' / 'manifest.json'), manifest_sha=attr_sha), wrong_pin)
+                with self.assertRaises(ValueError):
+                    fr.apply_feat02(data, {**spec_a, 'items_metadata_sha256': 'f' * 64}, 50)         # sidecar was prepared from another metadata file
+                # wrong attr pins
+                with self.assertRaises(ValueError):
+                    fr.apply_feat02(data, {**spec_a, 'attr_sha256': '0' * 64}, 50)
+                with self.assertRaises(ValueError):
+                    fr._attr_command(ns('verify-attr', manifest=str(tmp / 'attr' / 'manifest.json'), manifest_sha='0' * 64), spec)
+                # raw drift: the metadata file changes (new pin) -> the sidecar no longer binds it; with the old pin the file hash fails
+                drift = dict(authors); drift[catalog[0]] = 7777
+                write_metadata(tmp / 'raw' / 'metadata' / 'items_metadata.parquet.new', drift)
+                (tmp / 'raw' / 'metadata' / 'items_metadata.parquet').write_bytes((tmp / 'raw' / 'metadata' / 'items_metadata.parquet.new').read_bytes())
+                with self.assertRaises(ValueError):
+                    fr._attr_command(ns('verify-attr', manifest=str(tmp / 'attr' / 'manifest.json'), manifest_sha=attr_sha), spec)                  # stale metadata pin
+                drifted = {**spec, 'items_metadata_sha256': file_sha256(tmp / 'raw' / 'metadata' / 'items_metadata.parquet')}
+                with self.assertRaises(ValueError):
+                    fr._attr_command(ns('verify-attr', manifest=str(tmp / 'attr' / 'manifest.json'), manifest_sha=attr_sha), drifted)                # sidecar bound to the old file
+                write_metadata(tmp / 'raw' / 'metadata' / 'items_metadata.parquet.new', authors)
+                (tmp / 'raw' / 'metadata' / 'items_metadata.parquet').write_bytes((tmp / 'raw' / 'metadata' / 'items_metadata.parquet.new').read_bytes())
+                self.assertEqual(file_sha256(tmp / 'raw' / 'metadata' / 'items_metadata.parquet'), spec['items_metadata_sha256'])
+                # replay mismatch with the pins intact: the raw author table read back differs from the stored sidecar
+                real = item_attr.load_authors
+                with mock.patch.object(item_attr, 'load_authors', lambda path, cat: {**real(path, cat), catalog[1]: 9999}):
+                    with self.assertRaisesRegex(ValueError, 'raw attr replay mismatch'):
+                        fr._attr_command(ns('verify-attr', manifest=str(tmp / 'attr' / 'manifest.json'), manifest_sha=attr_sha), spec)
+                fr._attr_command(ns('verify-attr', manifest=str(tmp / 'attr' / 'manifest.json'), manifest_sha=attr_sha), spec)
+                with self.assertRaises(FileExistsError):
+                    fr._attr_command(ns('prepare-attr', output=str(tmp / 'attr')), spec)             # an existing output directory is never overwritten
+
+    def test_train_cli_requires_the_attr_pin_for_f6(self):
+        from vkgr import retrieval_feat02_run as fr
+        from vkgr.data_audit import file_sha256
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            spec = {'schema': 'p-feat02-inputs-v1', 'prepared': '/a', 'holdout': '/b', 'raw_root': '/c', 'history_manifest': '/d/manifest.json',
+                    'history_sha256': 'a' * 64, 'side_manifest': '/e/manifest.json', 'side_sha256': 'b' * 64, 'items_metadata_sha256': 'c' * 64,
+                    'ctx_manifest': None, 'ctx_sha256': None, 'attr_manifest': None, 'attr_sha256': None, 'disk_cap_bytes': 1 << 30, 'test_gate': 'closed_hash_only'}
+            (tmp / 'inputs.json').write_text(json.dumps(spec)); (tmp / 'real.json').write_text(json.dumps(f2_config(feature='f3_f6_author_content')))
+            argv = ['train', '--inputs', str(tmp / 'inputs.json'), '--inputs-sha', file_sha256(tmp / 'inputs.json'), '--config', str(tmp / 'real.json'),
+                    '--config-sha', file_sha256(tmp / 'real.json'), '--output', str(tmp / 'x')]
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(fr.main(argv), 2)
+            self.assertIn('pinned sidecar required', err.getvalue())
+            self.assertFalse((tmp / 'x').exists())
 
     def test_cli_synthetic_train_and_real_path_wiring(self):
         from vkgr import retrieval_feat02_run as fr
