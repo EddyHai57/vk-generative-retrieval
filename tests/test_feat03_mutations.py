@@ -1,11 +1,14 @@
-"""FEAT-03 mutation tests: FEAT-002 part (M13, M14, M16, M18, M33[q1a,q1b], M35[q1a]), FEAT-003 part (Q2: M17, M19-M24, M35[q2], M36, M38)
-and FEAT-004 part (Q3: M26a, M26b, M27-M30, M32a, M32b, M33[q3], M34).
+"""FEAT-03 mutation tests: FEAT-002 part (M13, M14, M16, M18, M33[q1a,q1b], M35[q1a]), FEAT-003 part (Q2: M17, M19-M24, M35[q2], M36, M38),
+FEAT-004 part (Q3: M26a, M26b, M27-M30, M32a, M32b, M33[q3], M34) and FEAT-005 part (needs the runner: M15, M25, M31, M37, CLI default device;
+plus the completeness check of the whole table M13-M38).
 
 Each deliberately wrong implementation must be caught by every listed guard: the guard is green on the real code, raises
 AssertionError under ``mock.patch.object`` on a module-level seam, and is green again after the revert (``detected``).
 Same-week reorder is NOT a guard here: F4 and Q1b are equal up to rounding under it.
 """
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -14,6 +17,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_feat03_model as t3  # noqa: E402
+import test_feat03_run as t3r  # noqa: E402
 from test_feat02_mutations import detected  # noqa: E402
 
 
@@ -235,6 +239,74 @@ class Q3MutationTests(unittest.TestCase):
                 with torch.no_grad():
                     getattr(model, name).weight.normal_(0.0, 0.2)
         detected(self, m, 'init_user_activity_tables', wide, [t3.guard_q3_tables_init])
+
+
+def clamped_target_week_mutant(original):
+    """Anchor leak: the last valid slot's week is replaced by the (clamped to <= 24) target week, as M3 of FEAT-02 does."""
+    def mutated(batch, idmap, width, feature):
+        histories, side = original(batch, idmap, width, feature)
+        for j, r in enumerate(batch):
+            side[j, len(r['history']) - 1, 3] = min(r['target_position'][0], 24)
+        return histories, side
+    return mutated
+
+
+class RunnerMutationTests(unittest.TestCase):
+    """FEAT-005 part: M15 (Q1b), M25 (Q2), M31 (Q3), M37 and the CLI default device. The patch point of M15/M25/M31 is feat02_run._tensors2,
+    reached through the module attribute ``fr._tensors2`` that retrieval_feat03_run._tensors3 calls at run time (K2)."""
+
+    def _anchor_leak(self, variant):
+        from vkgr import retrieval_feat02_run as fr
+        detected(self, fr, '_tensors2', clamped_target_week_mutant(fr._tensors2), [lambda: t3r.guard_target_week_change_leaves_feature_unchanged(variant)])
+
+    def test_m15_q1b_week_gap_anchored_on_the_target_week(self):
+        self._anchor_leak(t3.Q1B)
+
+    def test_m25_q2_week_gap_anchored_on_the_target_week(self):
+        self._anchor_leak(t3.Q2)
+
+    def test_m31_q3_target_week_joins_the_distinct_week_count(self):
+        """The crafted fixture (last two events share a week < 24, a = edge - 1) makes the leak change the user vector, not only the side tensor."""
+        from vkgr import retrieval_feat02_run as fr, retrieval_feat03 as m
+        self._anchor_leak(t3.Q3)
+        data = fr.synthetic_data(); rows, _ = fr._view(data, 50)
+        crafted = t3r.crafted_q3_rows(rows)[:30]; model = t3r.model3(data, t3.Q3); width = t3r.width_of(crafted)
+        base = model.users(*t3r.r3()._tensors3(crafted, data['idmap'], width, t3.Q3))
+        moved = [{**r, 'target_position': [24, 5]} for r in crafted]
+        with mock.patch.object(fr, '_tensors2', clamped_target_week_mutant(fr._tensors2)):
+            self.assertFalse(torch.equal(model.users(*t3r.r3()._tensors3(moved, data['idmap'], width, t3.Q3)), base))
+            self.assertTrue({m.ACT_EDGES[0] - 1} <= {len({p[0] for p in r['history_positions']}) for r in crafted})
+
+    def test_m37_needs_week_misses_the_user_activity_variant(self):
+        m = t3r.r3()
+        detected(self, m, 'NEEDS_WEEK', frozenset(m.NEEDS_WEEK - {t3.Q3}), [t3r.guard_tensors3_week_column_wiring])
+        for dropped in (t3.Q1B, t3.Q2, t3.CONTROL):                                        # every member is wired, not only Q3
+            detected(self, m, 'NEEDS_WEEK', frozenset(m.NEEDS_WEEK - {dropped}), [t3r.guard_tensors3_week_column_wiring])
+        detected(self, m, 'NEEDS_WEEK', frozenset(m.NEEDS_WEEK | {t3.Q1A}), [t3r.guard_tensors3_week_column_wiring])
+
+    def test_cli_default_device_cuda_turns_the_default_assertion_red(self):
+        m = t3r.r3()
+        detected(self, m, 'DEFAULT_DEVICE', 'cuda', [t3r.guard_cli_default_device_is_cpu])
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(m, 'DEFAULT_DEVICE', 'cuda'), mock.patch('torch.cuda.is_available', return_value=False):
+            Path(tmp, 'config.json').write_text(json.dumps(t3r.config3(feature=t3.Q1A)))
+            code, out, _ = t3r.run_cli(['synthetic-train', '--config', str(Path(tmp) / 'config.json'), '--output', str(Path(tmp) / 'run')])
+            self.assertEqual((code, out), (2, ''))                                           # the mutant cannot even run locally: the default would break every CPU use
+
+
+class MutationTableTests(unittest.TestCase):
+    """Completeness of the whole table M13-M38 (28 entries: M26 and M32 are split in a/b; M33 is run for q1a, q1b, q3; M35 for q1a, q2)."""
+
+    def test_all_28_entries_exist_as_tests(self):
+        import re
+        names = []
+        for cls in (Q1MutationTests, Q2MutationTests, Q3MutationTests, RunnerMutationTests):
+            names += unittest.TestLoader().getTestCaseNames(cls)
+        found = {re.match(r'test_m(\d+[ab]?)_', n).group(1) for n in names if re.match(r'test_m\d+', n)}
+        expected = {str(i) for i in range(13, 39) if i not in (26, 32)} | {'26a', '26b', '32a', '32b'}
+        self.assertEqual(len(expected), 28)
+        self.assertEqual(found, expected)
+        for part in ('test_m33_q1a_', 'test_m33_q1b_', 'test_m33_q3_', 'test_m35_q1a_', 'test_m35_q2_'):
+            self.assertTrue(any(n.startswith(part) for n in names), part)
 
 
 if __name__ == '__main__':
