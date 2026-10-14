@@ -390,3 +390,192 @@ def check_gates():
         ok(code == 1 and 'G-HP-01 gate failed' in err and not out, f'{label}: must exit 1 at the G-HP-01 gate before output (code {code}, output {out}): {err.strip()[:120]}')
     code, err, out = cli(['train'], {'VKGR_DECODE': 'batched', 'VKGR_DECODE_BATCH': '1'})
     ok(code == 1 and 'G-HP-01 gate failed' not in err and 'G-B1 gate failed' in err, 'batch size 1 must pass the G-HP gate (and fail later on the bogus inputs)')
+
+
+# ---- P: scripts (gate, combo, parity) -------------------------------------------------------------------------
+def load_script(name):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, ROOT / 'scripts' / f'{name}.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+Q = 2520
+
+
+def _r(hits):
+    return hits / Q
+
+
+def gate_inputs(hits=196, n50=0.03):
+    train_sha = 'a' * 64
+    manifest = {'status': 'complete', 'selection': {'best_epoch': 7, 'best_metric': [_r(hits), n50], 'epoch': 10},
+                'epochs': [{} for _ in range(10)], 'wall_seconds': {'train': 100.0, 'evaluate': 50.0}, 'hit_max_epochs': False}
+    return {'train_terminal': {'status': 'succeeded'}, 'train_manifest': manifest, 'train_manifest_sha256': train_sha,
+            'verify_terminal': {'status': 'succeeded'}, 'verify_last_line': {'status': 'verified', 'best_epoch': 7, 'epochs': 10},
+            'verify_run': {'argv': ['python', '-m', 'vkgr.generative_b1_arch', 'verify', '--manifest', 'm.json', '--manifest-sha', train_sha]}}
+
+
+def check_gate(gate):
+    """P2: the A1 entry gate passes only with train succeeded + verified (same best epoch, same manifest sha) + >= 196 hits."""
+    ok(gate.MIN_HITS == 196 and gate.QUERIES == Q, 'gate threshold must be 196 of 2520 hits')
+    value = gate.decide(**gate_inputs())
+    ok(value['passed'] is True and value['hits'] == 196 and value['threshold_hits'] == 196, f'all checks satisfied must pass: {value}')
+    ok(value['checks'] == {'train_succeeded': True, 'verified': True, 'r50_ok': True}, 'check flags')
+    ok((value['best_epoch'], value['epochs'], value['wall_seconds'], value['hit_max_epochs']) == (7, 10, {'train': 100.0, 'evaluate': 50.0}, False), 'reported epochs / wall')
+    ok(value['missing'] == [], 'missing list')
+    ok(gate.decide(**gate_inputs(hits=195))['passed'] is False, '195 hits (0.077381 < 0.077397) must fail')
+    ok(gate.decide(**gate_inputs(hits=195))['checks']['r50_ok'] is False, '195 hits: r50_ok')
+    ok(gate.decide(**gate_inputs(hits=250))['passed'] is True, '250 hits must pass')
+
+    def broken(label, **patch):
+        value = {**gate_inputs(), **patch}
+        result = gate.decide(**value)
+        ok(result['passed'] is False, f'{label} must fail the gate: {result}')
+        return result
+    broken('train failed', train_terminal={'status': 'failed'})
+    broken('manifest running', train_manifest={**gate_inputs()['train_manifest'], 'status': 'running'})
+    ok(broken('verify missing', verify_terminal=None, verify_last_line=None, verify_run=None)['missing'] != [], 'missing verify must be listed')
+    broken('verify job failed', verify_terminal={'status': 'failed'})
+    broken('verify not verified', verify_last_line={'status': 'error', 'best_epoch': 7})
+    broken('verify best epoch differs', verify_last_line={'status': 'verified', 'best_epoch': 6})
+    broken('verify of another manifest', verify_run={'argv': ['--manifest-sha', 'b' * 64]})
+    ok(broken('train missing', train_terminal=None, train_manifest=None)['missing'] != [], 'missing train must be listed')
+    expect_rejected(lambda: gate.hits(0.0774), 'r50 that is not an integer hit count over 2520')
+
+
+def combo_case(won, n50=None, status=None, verified=None, anchor_hits=200):
+    """won: id -> delta hits vs the anchor; every other G run gets delta 0."""
+    from vkgr import generative_hp_arch as hp
+    anchor_cfg = a1_config()
+    runs = []
+    for gid, (run_id, _, fields, _) in GRUNS.items():
+        delta = won.get(gid, 0)
+        runs.append({'id': gid, 'run_id': run_id, 'status': (status or {}).get(gid, 'succeeded'), 'verified': (verified or {}).get(gid, True),
+                     'r50': _r(anchor_hits + delta), 'n50': (n50 or {}).get(gid, 0.03), 'config': grun_config(gid)})
+    ok(all(r['config']['task_id'] == hp.TASK_ID for r in runs), 'fixture task id')
+    return {'run_id': 'g-garch01-a1-lr3e-4-s42', 'r50': _r(anchor_hits), 'n50': 0.03, 'verified': True, 'config': anchor_cfg}, runs
+
+
+def check_combo(combo):
+    """P3: >= 2 distinct knobs each winning by >= 6 hits trigger one combination built from A1 + the best level per knob."""
+    from vkgr import generative_hp_arch as hp
+    ok(combo.MIN_DELTA_HITS == 6 and combo.QUERIES == Q, 'win threshold must be 6 of 2520 hits (= dR@50 0.002)')
+    ok(tuple(combo.HP_SHAPES) == hp.HP_SHAPES and tuple(combo.LEARNING_RATES) == hp.LEARNING_RATES, 'combo constants differ from generative_hp_arch')
+    ok({k: tuple(v) for k, v in combo.KNOBS.items()} == hp.KNOBS, 'combo knob fields differ from generative_hp_arch')
+    ok(combo.KNOB_OF == {'G1': 'width', 'G2': 'lr', 'G3': 'lr', 'G4': 'layers', 'G5': 'dropout'}, 'knob groups')
+    value = combo.decide(*combo_case({}))
+    ok(value['triggered'] is False and value['knobs_won'] == [] and value['combo_config'] is None, 'no winner must not trigger')
+    ok(value['judged_on'] == ['G1', 'G2', 'G3', 'G4', 'G5'] and value['pending'] == ['G6'] and value['status'] == 'provisional', 'provisional judgement on G1-G5')
+    value = combo.decide(*combo_case({'G2': 10, 'G3': 8}))
+    ok(value['triggered'] is False and value['knobs_won'] == ['lr'], 'G2 + G3 are one knob (learning rate): must not trigger')
+    ok(combo.decide(*combo_case({'G1': 5, 'G5': 9}))['triggered'] is False, '5 hits is not a win')
+    value = combo.decide(*combo_case({'G1': 6, 'G5': 9}))
+    ok(value['triggered'] is True and value['knobs_won'] == ['width', 'dropout'], 'G1 + G5 at >= 6 hits must trigger')
+    cfg = value['combo_config']
+    a1 = a1_config()
+    diff = {k for k in a1 if cfg[k] != a1[k]}
+    ok(diff == {'task_id', 'd_model', 'ff', 'head_dim', 'dropout'}, f'combo must change exactly width + dropout fields: {sorted(diff)}')
+    ok(tuple(cfg[k] for k in hp.SHAPE_KEYS) in hp.HP_SHAPES and cfg['seed'] == 42 and cfg['task_id'] == 'G-HP-01', 'combo structure registered')
+    hp.validate_config(cfg)
+    import hashlib
+    ok(value['combo_config_sha256'] == hashlib.sha256((json.dumps(cfg, indent=1, sort_keys=True) + '\n').encode()).hexdigest(), 'combo config sha')
+    value = combo.decide(*combo_case({'G2': 8, 'G3': 12, 'G4': 7}))
+    ok(value['triggered'] and value['combo_config']['learning_rate'] == .0006 and value['combo_config']['encoder_layers'] == 2, 'LR level must be the higher-R@50 winner (G3)')
+    value = combo.decide(*combo_case({'G2': 8, 'G3': 8, 'G4': 7}, n50={'G2': 0.04, 'G3': 0.03}))
+    ok(value['combo_config']['learning_rate'] == .0001, 'R@50 tie on the LR knob: higher N@50 (G2) wins')
+    value = combo.decide(*combo_case({'G2': 8, 'G3': 8, 'G4': 7}))
+    ok(value['combo_config']['learning_rate'] == .0001, 'full tie on the LR knob: enumeration order (G2) wins')
+    value = combo.decide(*combo_case({'G1': 9, 'G5': 9}, verified={'G1': False}))
+    ok(value['triggered'] is False and 'G1' in value['excluded'], 'unverified run must not win and must be excluded')
+    value = combo.decide(*combo_case({'G1': 9, 'G5': 9}, status={'G5': 'failed'}))
+    ok(value['triggered'] is False and 'G5' in value['excluded'], 'failed run must not win and must be excluded')
+    anchor, runs = combo_case({})
+    expect_rejected(lambda: combo.decide({**anchor, 'verified': False}, runs), 'unverified anchor')
+    expect_rejected(lambda: combo.decide({**anchor, 'r50': 0.0774}, runs), 'non-integer anchor hits')
+    # card 1.5 selection over anchor + verified G1-G5: R@50 -> N@50 -> enumeration order
+    ok(combo.decide(*combo_case({}))['selection'] == 'anchor', 'all tied: anchor wins by enumeration order')
+    ok(combo.decide(*combo_case({'G4': 3}))['selection'] == 'G4', 'highest R@50 is selected even below the win threshold')
+    ok(combo.decide(*combo_case({'G2': 3, 'G4': 3}, n50={'G4': 0.05}))['selection'] == 'G4', 'R@50 tie: higher N@50')
+    ok(combo.decide(*combo_case({'G2': 3, 'G4': 3}))['selection'] == 'G2', 'R@50 + N@50 tie: enumeration order')
+    ok(combo.decide(*combo_case({'G4': 3}, verified={'G4': False}))['selection'] == 'anchor', 'unverified run is not a selection candidate')
+
+
+PH1_KEYS = {'init_equal', 'train_steps', 'train_steps_equal', 'first_diff_step', 'max_abs_param_diff', 'eval_logits_equal', 'queries',
+            'r50_reference', 'r50_reloaded', 'reload_hits_delta'}
+PH2_KEYS = {'queries', 'equal', 'serial_wall_seconds', 'batched_b1_wall_seconds', 'peak_vram_bytes'}
+PH3_KEYS = {'steps', 'finite', 'error', 'step_seconds_mean', 'peak_vram_bytes', 'params_total', 'params_expected'}
+
+
+def parity_world(tmp):
+    """Engineering world + a GARCH-entry reference run (the A1 role) + three engineering G-HP configs + a callable running the script.
+
+    Configs: 'wide' (new structure -> PH2), 'lr' (LR only) and 'drop0' (dropout only): the last two share the reference structure.
+    """
+    import contextlib
+    import io
+    from test_generative_arch import arch_config
+    from test_generative_b1 import engineering_world
+    from vkgr import generative_b1_arch as ba
+    from vkgr.data_audit import file_sha256
+    script = load_script('ghp01_parity')
+    _, receipt, manifest, sha = engineering_world(tmp)
+    common = (ROOT, receipt['manifest_path'], receipt['manifest_sha256'], manifest, sha)
+    reference = arch_config(learning_rate=.0003)
+    value = ba.run(*common, reference, Path(tmp) / 'run', temporary=Path(tmp) / 's-ref')
+    configs = {'wide': {'d_model': 128, 'head_dim': 32, 'ff': 256}, 'lr': {'learning_rate': .0006}, 'drop0': {'dropout': 0.0}}
+    paths = []
+    for name, patch in configs.items():
+        path = Path(tmp) / f'{name}.json'
+        path.write_text(json.dumps({**reference, 'task_id': 'G-HP-01', **patch}, indent=1, sort_keys=True) + '\n')
+        paths.append(str(path))
+
+    def call(scratch, steps='3', manifest_sha=None):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = script.main(['--prepared', str(receipt['manifest_path']), '--prepared-sha', receipt['manifest_sha256'], '--history-manifest', str(manifest),
+                                '--history-sha', sha, '--manifest', str(Path(tmp) / 'run' / 'manifest.json'),
+                                '--manifest-sha', manifest_sha or file_sha256(Path(tmp) / 'run' / 'manifest.json'),
+                                '--scratch', str(Path(tmp) / scratch), '--train-steps', steps, '--configs', ','.join(paths)], root=ROOT)
+        return code, out.getvalue(), err.getvalue()
+    return script, value, call
+
+
+def check_parity_report(call, scratch='ph-equal'):
+    """P1: identical factories are reported equal, every gate field present, one JSON line, no per-query rows."""
+    code, out, err = call(scratch)
+    ok(code == 0, f'parity script failed: {err}')
+    ok(len(out.strip().splitlines()) == 1 and '"items"' not in out, 'one JSON line without per-query rows')
+    report = json.loads(out)
+    ok(set(report) == {'ph1_a1_factory', 'ph2_decode', 'ph3_train'}, f'report sections {sorted(report)}')
+    ph1, ph2, ph3 = report['ph1_a1_factory'], report['ph2_decode'], report['ph3_train']
+    ok(set(ph1) == PH1_KEYS, f'PH1 keys {sorted(ph1)}')
+    ok(ph1['init_equal'] is True and ph1['train_steps_equal'] is True and ph1['first_diff_step'] is None and ph1['eval_logits_equal'] is True, f'PH1 must report equal: {ph1}')
+    ok((ph1['train_steps'], ph1['max_abs_param_diff'], ph1['reload_hits_delta']) == (3, 0.0, 0), f'PH1 numbers: {ph1}')
+    ok(ph1['r50_reloaded'] == ph1['r50_reference'], 'reloaded best must reproduce the reference R@50 exactly on CPU')
+    ok(set(ph2) == {'wide'}, f'PH2 must test only configs whose structure differs from the reference: {sorted(ph2)}')
+    ok(set(ph2['wide']) == PH2_KEYS and ph2['wide']['equal'] is True and ph2['wide']['queries'] == ph1['queries'], f'PH2: {ph2}')
+    ok(set(ph3) == {'per_config', 'runtime'} and set(ph3['per_config']) == {'wide', 'lr', 'drop0'}, f'PH3 sections: {sorted(ph3)}')
+    for name, entry in ph3['per_config'].items():
+        ok(set(entry) == PH3_KEYS and entry['finite'] is True and (entry['steps'], entry['error']) == (3, None), f'PH3 {name}: {entry}')
+        ok(entry['params_total'] == entry['params_expected'], f'PH3 {name}: params')
+    return report
+
+
+def check_parity_perturbed(call, scratch='ph-perturbed'):
+    """P1: a perturbed new factory is reported unequal, not hidden."""
+    from unittest import mock
+    from vkgr import generative_hp_arch as hp
+    real = hp.make_model_hp
+
+    def perturbed(codec, config, *, device):
+        model = real(codec, config, device=device)
+        with torch.no_grad():
+            model.output.bias.add_(1e-3)
+        return model
+    with mock.patch.object(hp, 'make_model_hp', perturbed):
+        code, out, err = call(scratch)
+    ok(code == 0, f'parity script failed: {err}')
+    ph1 = json.loads(out)['ph1_a1_factory']
+    ok(ph1['init_equal'] is False and ph1['train_steps_equal'] is False and ph1['first_diff_step'] == 1 and ph1['max_abs_param_diff'] > 0.0, f'perturbation hidden: {ph1}')
