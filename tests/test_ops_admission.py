@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -183,6 +185,129 @@ class OccupancyTests(AdmissionTestCase):
                  owner={'sup': (5000, 111), 'job': (5001, 112), 'started_at': NOW - 1000})
         _, snapshot, _ = self.admit(host)
         self.assertEqual(snapshot['resources']['ram_mib']['committed'], 0)
+
+
+class UnsatisfiableTests(AdmissionTestCase):
+    """INFRA-03: a need is unsatisfiable only if it fails even on an idle host (headroom rule with
+    committed = settling = 0 and free = total); everything else is 'maybe later'."""
+
+    # totals: ram 100000 MiB, vram 50000 MiB, disk 1000 GiB, cpu 10.0 cores -> caps 80000 / 40000 / 800 / 8
+    CAPS = {'ram_mib': 80000, 'vram_mib': 40000, 'disk_gib': 800, 'cpu_cores': 8}
+
+    def idle_host(self):
+        return self.host(ram_total_mib=100000, ram_avail_mib=100000, gpu='50000, 0',
+                         disk_total_gib=1000, disk_free_gib=1000, cpu_count=16,
+                         cpu_max='1000000 100000', cgroup_usage_per_s=0.0)
+
+    def test_boundary_at_cap_per_resource(self):
+        host = self.idle_host()
+        for resource, cap in self.CAPS.items():
+            with self.subTest(resource=resource):
+                _, at_cap, _ = self.admit(host, **{resource: cap})
+                self.assertEqual(admission.unsatisfiable(at_cap), '')
+                _, over, _ = self.admit(host, **{resource: cap + 1})
+                self.assertIn(resource, admission.unsatisfiable(over))
+
+    def test_cap_agrees_with_idle_host_admission(self):
+        host = self.idle_host()
+        for resource, cap in self.CAPS.items():
+            with self.subTest(resource=resource):
+                self.assertTrue(self.admit(host, **{resource: cap})[0])
+                self.assertFalse(self.admit(host, **{resource: cap + 1})[0])
+
+    def test_load_does_not_make_a_need_unsatisfiable(self):
+        host = self.host(ram_total_mib=100000, ram_avail_mib=1000)
+        ok, snapshot, _ = self.admit(host, ram_mib=20000)
+        self.assertFalse(ok)
+        self.assertEqual(admission.unsatisfiable(snapshot), '')
+
+    def test_empty_snapshot_from_probe_failure_is_not_unsatisfiable(self):
+        host = self.host()
+        (host.proc / 'meminfo').unlink()
+        ok, snapshot, reason = self.admit(host, ram_mib=10 ** 9)
+        self.assertFalse(ok)
+        self.assertIn('probe', reason)
+        self.assertEqual(admission.unsatisfiable(snapshot), '')
+
+    def test_gpu_unknown_is_not_unsatisfiable(self):
+        host = self.host(nvidia=False)
+        ok, snapshot, _ = self.admit(host, vram_mib=10 ** 6)
+        self.assertFalse(ok)
+        self.assertEqual(admission.unsatisfiable(snapshot), '')
+
+    def test_several_resources_all_named(self):
+        host = self.idle_host()
+        _, snapshot, _ = self.admit(host, ram_mib=90000, disk_gib=900)
+        reason = admission.unsatisfiable(snapshot)
+        self.assertIn('ram_mib', reason)
+        self.assertIn('disk_gib', reason)
+        self.assertNotIn('vram_mib', reason)
+
+
+class DeferralTests(AdmissionTestCase):
+    """INFRA-03: launcher.launch() raises AdmissionDeferred (a LaunchError, same message and code)
+    when admission refuses only for now, and a plain LaunchError when the request can never fit."""
+
+    def setUp(self):
+        super().setUp()
+        self.repo = self.base / 'repo'
+        make_repo(self.repo)
+
+    def refused(self, host, **resources):
+        spec = base_spec(self.repo, run_id='refused', no_admission=False, **resources)
+        with self.assertRaises(launcher.LaunchError) as raised:
+            launcher.launch(spec, self.root, probes=host.probes())
+        self.assertEqual(raised.exception.code, 1)
+        self.assertTrue(str(raised.exception).startswith('admission rejected: '))
+        self.assertFalse((self.root / 'runs' / 'refused').exists())
+        return raised.exception
+
+    def test_host_load_is_deferred(self):
+        error = self.refused(self.host(ram_total_mib=100000, ram_avail_mib=30000), ram_mib=20000)
+        self.assertIsInstance(error, launcher.AdmissionDeferred)
+
+    def test_committed_by_other_runs_is_deferred(self):
+        make_run(self.root, 'starting', ram=70000, created_at=NOW - 10)
+        error = self.refused(self.host(ram_total_mib=100000, ram_avail_mib=100000), ram_mib=20000)
+        self.assertIsInstance(error, launcher.AdmissionDeferred)
+
+    def test_probe_failure_is_deferred(self):
+        host = self.host()
+        (host.proc / 'meminfo').unlink()
+        error = self.refused(host)
+        self.assertIsInstance(error, launcher.AdmissionDeferred)
+        self.assertIn('probe failed', str(error))
+
+    def test_gpu_unknown_with_vram_need_is_deferred(self):
+        error = self.refused(self.host(nvidia=False), vram_mib=1)
+        self.assertIsInstance(error, launcher.AdmissionDeferred)
+
+    def test_need_beyond_cap_is_plain_launch_error(self):
+        host = self.host(ram_total_mib=100000, ram_avail_mib=100000)
+        error = self.refused(host, ram_mib=80001)
+        self.assertNotIsInstance(error, launcher.AdmissionDeferred)
+
+    def test_cpu_beyond_quota_is_plain_launch_error(self):
+        host = self.host(cpu_count=64, cpu_max='1024000 100000', cgroup_usage_per_s=0.0)
+        error = self.refused(host, cpu_cores=11)
+        self.assertNotIsInstance(error, launcher.AdmissionDeferred)
+        self.assertIn('quota', str(error))
+
+    def test_cpu_between_cap_and_quota_is_plain_launch_error(self):
+        host = self.host(cpu_count=64, cpu_max='1024000 100000', cgroup_usage_per_s=0.0)
+        error = self.refused(host, cpu_cores=9)            # cap is 8.192 cores
+        self.assertNotIsInstance(error, launcher.AdmissionDeferred)
+
+    def test_cli_message_and_exit_code_unchanged(self):
+        host = self.host(ram_total_mib=100000, ram_avail_mib=30000)
+        argv = ['--root', str(self.root), '--run-id', 'cli-1', '--kind', 'smoke', '--cwd', str(self.repo),
+                '--cpu-cores', '1', '--ram-mib', '20000', '--vram-mib', '0', '--disk-gib', '1',
+                '--wall-hours', '1', '--', 'true']
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = launcher.main(argv, probes=host.probes())
+        self.assertEqual(code, 1)
+        self.assertTrue(err.getvalue().startswith('vkgr-launch: admission rejected: ram_mib: need=20000'))
 
 
 class GpuUnknownTests(AdmissionTestCase):

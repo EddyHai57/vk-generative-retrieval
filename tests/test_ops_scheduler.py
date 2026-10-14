@@ -83,16 +83,6 @@ class TickTests(SchedulerCase):
         reason = next((self.root / 'queue' / 'rejected').glob('*.reason')).read_text()
         self.assertIn('exists', reason)
 
-    def test_formal_admit_rejection_goes_to_rejected_not_pending(self):
-        self.submit('raced-1')
-        with patch.object(admission, 'admit', return_value=(False, {}, 'ram_mib: not enough (race)')):
-            result = self.tick()
-        self.assertIsNone(result['launched'])
-        self.assertEqual(self.names('pending'), [])
-        self.assertEqual(len(self.names('rejected')), 1)
-        self.assertIn('ram_mib', next((self.root / 'queue' / 'rejected').glob('*.reason')).read_text())
-        self.assertFalse((self.root / 'runs' / 'raced-1').exists())
-
     def test_launch_failed_is_not_requeued(self):
         self.submit('broken-1', argv=[str(self.base / 'missing-binary')])
         self.tick()
@@ -135,6 +125,145 @@ class TickTests(SchedulerCase):
         (self.root / 'queue').mkdir(parents=True)
         (self.root / 'queue' / 'STOP').touch()
         self.assertEqual(scheduler.serve(self.root, probes=self.host.probes(), interval=0.01), 0)
+
+
+class AdmissionDeferralTests(SchedulerCase):
+    """INFRA-03: 'no room right now' stays pending; 'can never fit' and bad requests still go to rejected.
+
+    The tick pre-judges with one measurement; launcher.launch() then runs the formal admit() with
+    another. Each test patches admission.measure with a two-item sequence so the job is claimed on
+    the first and loses the formal check on the second (a third call would raise StopIteration).
+    """
+
+    # resource -> (need, host with room, same-size host under load)
+    TRANSIENT = {
+        'cpu_cores': (5, dict(cpu_max='1024000 100000', cgroup_usage_per_s=0.0),
+                      dict(cpu_max='1024000 100000', cgroup_usage_per_s=4.0)),
+        'ram_mib': (40000, dict(ram_total_mib=100000, ram_avail_mib=90000),
+                    dict(ram_total_mib=100000, ram_avail_mib=30000)),
+        'vram_mib': (20000, dict(gpu='49140, 1000'), dict(gpu='49140, 40000')),
+        'disk_gib': (300, dict(disk_total_gib=1000, disk_free_gib=900),
+                     dict(disk_total_gib=1000, disk_free_gib=100)),
+    }
+    # resource -> (need, big host seen by the pre-judgement, smaller host seen at launch: need > 80% of total)
+    IMPOSSIBLE = {
+        'cpu_cores': (5, dict(cpu_count=16),
+                      dict(cpu_count=16, cpu_max='400000 100000', cgroup_usage_per_s=0.0)),
+        'ram_mib': (40000, dict(ram_total_mib=100000, ram_avail_mib=90000),
+                    dict(ram_total_mib=40000, ram_avail_mib=40000)),
+        'vram_mib': (20000, dict(gpu='49140, 1000'), dict(gpu='24000, 0')),
+        'disk_gib': (300, dict(disk_total_gib=1000, disk_free_gib=900),
+                     dict(disk_total_gib=300, disk_free_gib=300)),
+    }
+
+    def seen(self, first_kw, second_kw):
+        """(first host, [measurement of first host, measurement of second host])."""
+        first = FixtureHost(self.base / 'host-first', **first_kw)
+        second = FixtureHost(self.base / 'host-second', **second_kw)
+        return first, [admission.measure(self.root, first.probes()),
+                       admission.measure(self.root, second.probes())]
+
+    def tick_seeing(self, run_id, first_kw, second_kw, **need):
+        path = self.submit(run_id, **need)
+        first, measurements = self.seen(first_kw, second_kw)
+        with patch.object(admission, 'measure', side_effect=measurements):
+            return path, first, scheduler.tick(self.root, probes=first.probes())
+
+    def assert_deferred(self, resource):
+        need, roomy, loaded = self.TRANSIENT[resource]
+        path, first, result = self.tick_seeing('defer-1', roomy, loaded, **{resource: need})
+        self.assertIsNone(result['launched'])
+        self.assertEqual(result['rejected'], [])
+        self.assertIn('deferred', result['note'])
+        self.assertEqual(self.names('pending'), [path.name])         # same file, same queue position
+        self.assertEqual(self.names('claimed'), [])
+        self.assertEqual(self.names('rejected'), [])
+        self.assertEqual(list((self.root / 'queue' / 'rejected').glob('*.reason')), [])
+        self.assertFalse((self.root / 'runs' / 'defer-1').exists())
+        retry = scheduler.tick(self.root, probes=first.probes())     # next round, load is gone
+        self.assertEqual(retry['launched'], 'defer-1')
+        wait_terminal(self.root / 'runs' / 'defer-1')
+        self.assertEqual(self.names('pending'), [])
+        self.assertEqual(self.names('claimed'), [path.name])
+
+    def assert_rejected(self, resource):
+        need, big, small = self.IMPOSSIBLE[resource]
+        _, _, result = self.tick_seeing('never-1', big, small, **{resource: need})
+        self.assertIsNone(result['launched'])
+        self.assertEqual(result['rejected'], ['never-1'])
+        self.assertEqual(self.names('pending'), [])
+        self.assertEqual(len(self.names('rejected')), 1)
+        reason = next((self.root / 'queue' / 'rejected').glob('*.reason')).read_text()
+        self.assertIn('admission rejected', reason)
+        self.assertIn(resource, reason)
+        self.assertFalse((self.root / 'runs' / 'never-1').exists())
+
+    def test_cpu_shortage_stays_pending_then_launches(self):
+        self.assert_deferred('cpu_cores')
+
+    def test_ram_shortage_stays_pending_then_launches(self):
+        self.assert_deferred('ram_mib')
+
+    def test_vram_shortage_stays_pending_then_launches(self):
+        self.assert_deferred('vram_mib')
+
+    def test_disk_shortage_stays_pending_then_launches(self):
+        self.assert_deferred('disk_gib')
+
+    def test_cpu_request_beyond_quota_cap_is_rejected(self):
+        self.assert_rejected('cpu_cores')
+
+    def test_ram_request_beyond_cap_is_rejected(self):
+        self.assert_rejected('ram_mib')
+
+    def test_vram_request_beyond_cap_is_rejected(self):
+        self.assert_rejected('vram_mib')
+
+    def test_disk_request_beyond_cap_is_rejected(self):
+        self.assert_rejected('disk_gib')
+
+    def test_probe_fault_during_formal_admission_stays_pending(self):
+        path = self.submit('flaky-1')
+        measurements = [admission.measure(self.root, self.host.probes()), common.ProbeError('nvidia-smi timed out')]
+        with patch.object(admission, 'measure', side_effect=measurements):
+            result = self.tick()
+        self.assertIsNone(result['launched'])
+        self.assertEqual(self.names('pending'), [path.name])
+        self.assertEqual(self.names('claimed'), [])
+        self.assertEqual(self.names('rejected'), [])
+        self.assertEqual(self.tick()['launched'], 'flaky-1')
+        wait_terminal(self.root / 'runs' / 'flaky-1')
+
+    def test_deferred_job_keeps_its_place_ahead_of_later_jobs(self):
+        need, roomy, loaded = self.TRANSIENT['ram_mib']
+        first_path = self.submit('first-1', ram_mib=need)
+        second_path = self.submit('second-1', ram_mib=need)
+        first, measurements = self.seen(roomy, loaded)
+        with patch.object(admission, 'measure', side_effect=measurements):
+            result = scheduler.tick(self.root, probes=first.probes())
+        self.assertIsNone(result['launched'])
+        self.assertEqual(self.names('pending'), [first_path.name, second_path.name])
+        self.assertEqual(scheduler.tick(self.root, probes=first.probes())['launched'], 'first-1')
+        wait_terminal(self.root / 'runs' / 'first-1')
+
+    def test_binding_mismatch_at_launch_is_still_rejected(self):
+        readme = self.repo / 'README.md'
+        self.submit('bind-1', pinned_files=[f'README.md={sha(readme.read_bytes())}'])
+        readme.write_text('changed after submit\n')
+        result = self.tick()
+        self.assertEqual(result['rejected'], ['bind-1'])
+        self.assertEqual(self.names('pending'), [])
+        self.assertIn('README.md', next((self.root / 'queue' / 'rejected').glob('*.reason')).read_text())
+
+    def test_invalid_spec_in_queue_is_still_rejected(self):
+        path = self.submit('bad-spec-1')
+        doc = read_json(path)
+        doc['cpu_cores'] = -1
+        path.write_text(json.dumps(doc))
+        result = self.tick()
+        self.assertEqual(result['rejected'], ['bad-spec-1'])
+        self.assertEqual(self.names('pending'), [])
+        self.assertIn('cpu_cores', next((self.root / 'queue' / 'rejected').glob('*.reason')).read_text())
 
 
 class SchedulerChildrenTests(SchedulerCase):
