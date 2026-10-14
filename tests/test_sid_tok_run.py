@@ -387,6 +387,16 @@ class Failures(Patched):
         for key in ('state', 'sids', 'codec', 'weights'):
             self.assertNotIn(key, result)
 
+    def test_gate_failed_result_exposes_no_model(self):
+        # L2: a failed gate must not hand the half-trained model back to the caller
+        directions = blob_items(3, blobs=3, noise=0.0, seed=3)
+        files = write_inputs(self.root, directions[np.arange(2048) % 3], tag='three-direct')
+        result = run.fit_rqvae_variant(run.expected_config(), 'T2', files['ids'], files['items'], device='cpu', max_steps=100,
+                                       expected_content_sha256=files['digest'])
+        self.assertEqual(result['status'], 'gate_failed')
+        for key in ('state', 'sids', 'codec', 'weights', 'ids', 'tokenizer', 'train_log'):
+            self.assertNotIn(key, result)
+
     def test_nan_writes_failure_json_and_no_manifest(self):
         files = write_inputs(self.root, (self.files['items'] * np.float32(1e20)).astype(np.float32), tag='huge')
         output, code, _, err = self.fit('T2', '--max-steps', '300', files=files)

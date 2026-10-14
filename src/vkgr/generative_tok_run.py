@@ -133,11 +133,18 @@ def _binding(root, context, config, runtime, model, prepared_sha, history_sha, s
             'synthetic': context.binding['synthetic'], 'test_gate': 'closed'}
 
 
+def _check_batch_one(decode):
+    """Batched decode is only proven equal to the serial decode at batch size 1; larger batches are refused."""
+    if decode is not None and decode['batch_size'] != 1:
+        raise ValueError('decode env: G-TOK batched decode is exact only with VKGR_DECODE_BATCH=1')
+
+
 def run(root, prepared_path, prepared_sha, history_manifest, history_sha, sid_manifest, sid_sha, content_path, content_sha, config, output, *,
         temporary, eval_workers=1, progress=None, decode=None, expected_content_digest=sid_v2.CONTENT_V1_FEATURE_SHA256):
     root = Path(root); evaluate = _evaluator(decode)
     if decode is not None and eval_workers != 1:
         raise ValueError('decode env: batched decode excludes VKGR_EVAL_WORKERS>1')
+    _check_batch_one(decode)
     context, engineering, sid = _contexts(root, prepared_path, prepared_sha, history_manifest, history_sha, sid_manifest, sid_sha, content_path,
                                           content_sha, config, temporary, expected_content_digest=expected_content_digest)
     runtime = _runtime(engineering); device = runtime['device']
@@ -227,6 +234,7 @@ def verify(root, prepared_path, prepared_sha, history_manifest, history_sha, sid
     root = Path(root); manifest_path = Path(manifest_path); run_dir = manifest_path.parent; evaluate = _evaluator(decode)
     if decode is not None and eval_workers != 1:
         raise ValueError('decode env: batched decode excludes VKGR_EVAL_WORKERS>1')
+    _check_batch_one(decode)
     value = _read_run(manifest_path, manifest_sha); config = value['config']
     context, engineering, sid = _contexts(root, prepared_path, prepared_sha, history_manifest, history_sha, sid_manifest, sid_sha, content_path,
                                           content_sha, config, temporary, expected_content_digest=expected_content_digest)

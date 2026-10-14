@@ -146,7 +146,8 @@ class SkewedModel(unittest.TestCase):
         self.assertEqual(self.codec.vocab_size, 2 + 3 * 16 + suffix)
         rows = [{'history': h, 'target': t} for h, t in zip(self.histories, self.ids.tolist()[:len(self.histories)])]
         source, decoder, labels = gd.sid_targets(rows, self.codec)
-        self.assertEqual(int(labels.max()), int(labels.max()) if labels.numel() else 0)
+        self.assertGreater(labels.numel(), 0)
+        self.assertGreaterEqual(int(labels.min()), 0)
         self.assertLess(int(labels.max()), self.codec.vocab_size)
         torch.manual_seed(0)
         model = gt.make_model(self.codec, CONFIG, device='cpu')

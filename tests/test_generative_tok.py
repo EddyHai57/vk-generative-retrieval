@@ -464,7 +464,8 @@ class MainTests(unittest.TestCase):
     def test_invalid_environment_exits_1_before_any_output(self):
         f = fx(); bundle = f.bundle('legacy')
         for env in ({'VKGR_EVAL_WORKERS': '0'}, {'VKGR_EVAL_WORKERS': 'x'}, {'VKGR_DECODE': 'fast'}, {'VKGR_DECODE_BATCH': '4'},
-                    {'VKGR_DECODE': 'batched', 'VKGR_DECODE_BATCH': '0'}, {'VKGR_DECODE': 'batched', 'VKGR_EVAL_WORKERS': '2'}):
+                    {'VKGR_DECODE': 'batched', 'VKGR_DECODE_BATCH': '0'}, {'VKGR_DECODE': 'batched', 'VKGR_EVAL_WORKERS': '2'},
+                    {'VKGR_DECODE': 'batched', 'VKGR_DECODE_BATCH': '2'}):
             for command in ('train', 'verify'):
                 with self.subTest(env=env, command=command):
                     out = f.fresh('main-out')

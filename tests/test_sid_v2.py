@@ -514,6 +514,20 @@ class FailClosed(Base):
         np.savez(buffer, **arrays)
         self.reject(w, directory, tamper(directory, 'weights.npz', buffer.getvalue()))
 
+    def test_check_weights_alone_rejects_weights_that_disagree_with_the_mapping(self):
+        # L2: with the audit recomputation switched off, only _check_weights stands between swapped weights and the loader
+        w = world('rqvae')
+        other = rq.fit(w.content, K=16, seed=7, max_steps=300, batch_size=256, wall_cap_seconds=1e9, probe_from=100, probe_step=200)['state']
+        self.assertFalse(np.array_equal(rq.export_codes(other, w.content), rq.export_codes(w.weights, w.content)))
+        directory = self.copy_of(self.bundle('rqvae'), 'wrong-weights-only')
+        arrays = {'K': np.array(16, dtype=np.int64), **{k: v.numpy() for k, v in other['state_dict'].items()}}
+        import io
+        buffer = io.BytesIO()
+        np.savez(buffer, **arrays)
+        sha = tamper(directory, 'weights.npz', buffer.getvalue())
+        with mock.patch.object(sid_v2, '_check_audit', lambda *args, **kwargs: None):
+            w.load(self.bundle('rqvae'))  # control: the untouched bundle still loads with the audit check off
+            self.reject(w, directory, sha)
     def test_malformed_weights(self):
         w = world('rqvae')
         import io
@@ -542,6 +556,18 @@ class FailClosed(Base):
         self.reject(formal, self.root / 'formal-rq')  # 1000 steps are not the pre-registered 300,000
 
 
+class StaticSource(unittest.TestCase):
+    def test_tokenizer_modules_open_no_label_query_or_split_data(self):
+        # L3: the same scan as sid_rqvae / sid_tok_run, applied to the two remaining tokenizer modules
+        import ast
+        import inspect
+        for module in (sid_v2, au):
+            with self.subTest(module=module.__name__):
+                source = inspect.getsource(module)
+                docstring = ast.get_docstring(ast.parse(source), clean=False) or ''
+                code = source.replace(docstring, '', 1).lower()
+                for word in ('validation-queries', 'examples.jsonl', 'support.json', 'history', 'target', 'open('):
+                    self.assertNotIn(word, code, word)
 class Isolation(Base):
     def test_p5_manifest_is_rejected_by_load_bundle(self):
         w = world('bhkm')
