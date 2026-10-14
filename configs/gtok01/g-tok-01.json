@@ -1,0 +1,58 @@
+{
+  "content": {
+    "dim": 64,
+    "feature_array_sha256": "766317a88353dcda241d7579aee6da73b5ad8ea0a627470e2ac8a68c99530c84"
+  },
+  "rqvae": {
+    "batch_size": 1024,
+    "beta": 0.25,
+    "check_every": 100,
+    "content_dim": 64,
+    "encoder_hidden": [
+      512,
+      256,
+      128
+    ],
+    "eps": 1e-07,
+    "eval_every": 10000,
+    "initial_accumulator_value": 0.1,
+    "kmeans_iters": 10,
+    "latent_dim": 32,
+    "levels": 3,
+    "log_every": 1000,
+    "lr": 0.4,
+    "max_steps": 300000,
+    "optimizer": "adagrad",
+    "probe_from": 500,
+    "probe_step": 2000,
+    "seed": 42,
+    "usage_diag_every": 2000,
+    "usage_gate_num_den": [
+      4,
+      5
+    ],
+    "wall_cap_seconds": 7200
+  },
+  "schema": "g-tok-01-fit-v1",
+  "task_id": "G-TOK-01",
+  "variants": {
+    "T1": {
+      "codebook_size": 256,
+      "kind": "rqvae",
+      "sid_version": "SID_RQVAE_B256D3_S42"
+    },
+    "T2": {
+      "codebook_size": 16,
+      "kind": "rqvae",
+      "sid_version": "SID_RQVAE_B16D3_S42"
+    },
+    "T3": {
+      "branching": 256,
+      "depth": 3,
+      "kind": "bhkm",
+      "max_iter": 10,
+      "seed": 42,
+      "sid_version": "SID_BHKM_B256D3_S42"
+    }
+  }
+}
