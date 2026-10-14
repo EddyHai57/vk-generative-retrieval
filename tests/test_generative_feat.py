@@ -102,5 +102,431 @@ class SharedDefinitionTests(unittest.TestCase):
         self.assertEqual(sorted(set(want)), [1, 2, 3, 4, 5])
 
 
+def synthetic_codec(items=200, branching=8, seed=0):
+    """Small SID catalog that needs no G1 contract (same construction as test_generative_batched.large_codec)."""
+    import numpy as np
+    from vkgr import generative_data as gd
+    from vkgr.sid import SIDCatalog
+    rng = np.random.RandomState(seed); ids = np.arange(10, 10 + items, dtype=np.uint32)
+    prefixes = rng.randint(0, branching, size=(items, 3)).astype(np.uint32)
+    order = np.lexsort((ids, prefixes[:, 2], prefixes[:, 1], prefixes[:, 0])); codes = prefixes[order]
+    starts = np.r_[True, np.any(codes[1:] != codes[:-1], axis=1)]; rows = np.arange(items)
+    sids = np.zeros((items, 4), dtype=np.uint32); sids[:, :3] = prefixes
+    sids[order, 3] = (rows - np.maximum.accumulate(np.where(starts, rows, 0))).astype(np.uint32)
+    return gd._ValidatedCodec(SIDCatalog(ids, sids, branching, 3, None))
+
+
+def feat_config(feature, **overrides):
+    from test_generative_b1 import config as b1_config
+    value = b1_config(); value['feature'] = feature; value.update(overrides)
+    return value
+
+
+def model_inputs(codec, histories, sides):
+    """(source, side) exactly as the training/decode paths build them: right-padded SID tokens + (B, items, 3) side."""
+    from vkgr import generative_feat as gf
+    rows = [codec.history(h) for h in histories]; width = max(map(len, rows))
+    source = torch.tensor([r + [0] * (width - len(r)) for r in rows], dtype=torch.long)
+    return source, gf.side_tensor(sides)
+
+
+def valid_side(n, seed=0):
+    rng = random.Random(seed)
+    return [[rng.randrange(0, 64), rng.choice(TS_CYCLE), rng.choice(DURATION_CYCLE)] for _ in range(n)]
+
+
+class ModelTests(unittest.TestCase):
+    """server-safe: synthetic codec, no engineering contract."""
+
+    def setUp(self):
+        self.codec = synthetic_codec()
+        self.items = [int(i) for i in self.codec.catalog.ids]
+
+    def model(self, feature, seed=42, **overrides):
+        from vkgr import generative_feat as gf
+        torch.manual_seed(seed)
+        return gf.make_model_feat(self.codec, feat_config(feature, **overrides), device='cpu')
+
+    def anchor(self, seed=42, **overrides):
+        from vkgr.generative_hp import make_model_b1
+        torch.manual_seed(seed)
+        return make_model_b1(self.codec, feat_config('none', **overrides), device='cpu')
+
+    def batch(self, lengths=(3, 1, 5)):
+        histories = [[self.items[(7 * b + 3 * k) % len(self.items)] for k in range(n)] for b, n in enumerate(lengths)]
+        sides = [valid_side(n, seed=b) for b, n in enumerate(lengths)]
+        return model_inputs(self.codec, histories, sides)
+
+    def test_base_parameters_equal_anchor_under_same_seed(self):
+        new_keys = {'f2_feedback': {'feedback.weight'}, 'f3_watch_buckets': {'timespent_bucket.weight', 'ratio_bucket.weight'}}
+        anchor = self.anchor().state_dict()
+        for feature, keys in new_keys.items():
+            with self.subTest(feature=feature):
+                state = self.model(feature).state_dict()
+                self.assertEqual(set(state) - set(anchor), keys)
+                self.assertTrue(set(anchor) <= set(state))
+                for name in anchor:
+                    self.assertTrue(torch.equal(anchor[name], state[name]), name)
+
+    def test_none_is_plain_tiger_model(self):
+        from vkgr.tiger import TigerModel
+        model = self.model('none'); anchor = self.anchor()
+        self.assertIs(type(model), TigerModel)
+        self.assertEqual(model.init_report, anchor.init_report)
+        for name, value in anchor.state_dict().items():
+            self.assertTrue(torch.equal(value, model.state_dict()[name]), name)
+
+    def test_parameter_counts_init_and_pad_rows(self):
+        for d_model, ff in ((64, 256), (128, 512)):
+            anchor = self.anchor(d_model=d_model, ff=ff); base = sum(p.numel() for p in anchor.parameters())
+            f2 = self.model('f2_feedback', d_model=d_model, ff=ff); f3 = self.model('f3_watch_buckets', d_model=d_model, ff=ff)
+            with self.subTest(d_model=d_model):
+                self.assertEqual(sum(p.numel() for p in f2.parameters()) - base, 6 * d_model)
+                self.assertEqual(sum(p.numel() for p in f3.parameters()) - base, (8 + 6) * d_model)
+                self.assertEqual(tuple(f2.feedback.weight.shape), (6, d_model))
+                self.assertEqual(tuple(f3.timespent_bucket.weight.shape), (8, d_model))
+                self.assertEqual(tuple(f3.ratio_bucket.weight.shape), (6, d_model))
+                # trainable = rows that are not PAD: (7 + 5) x d (the PAD rows are fixed zeros)
+                self.assertEqual(sum(t.weight.numel() - d_model for t in (f3.timespent_bucket, f3.ratio_bucket)), 12 * d_model)
+                for table in (f2.feedback, f3.timespent_bucket, f3.ratio_bucket):
+                    rows = table.weight.detach() if table.padding_idx is None else table.weight.detach()[1:]
+                    self.assertLess(abs(float(rows.std()) - 0.02), 0.006)
+                for table in (f3.timespent_bucket, f3.ratio_bucket):
+                    self.assertTrue(torch.equal(table.weight[0], torch.zeros(d_model)))
+                self.assertIn('feedback', f2.init_report['embeddings'])
+                self.assertEqual(set(f3.init_report['embeddings']) - set(anchor.init_report['embeddings']), {'timespent_bucket', 'ratio_bucket'})
+                self.assertTrue(all(f3.init_report['embeddings'][n]['pad_row_zero'] for n in ('timespent_bucket', 'ratio_bucket')))
+
+    def _expected_embedding(self, model, source, side, vector):
+        """Hand-computed encoder input: token embedding + the item's side vector on each of its 4 tokens, x sqrt(d) + position."""
+        tokens = model.embedding(source).detach().clone()
+        for b in range(source.shape[0]):
+            for k in range(source.shape[1] // 4):
+                if int(source[b, 4 * k]) != 0:
+                    for t in range(4):
+                        tokens[b, 4 * k + t] = tokens[b, 4 * k + t] + vector(int(side[b, k, 0]), int(side[b, k, 1]), int(side[b, k, 2]))
+        return tokens * (model.d_model ** 0.5) + model.position(torch.arange(source.shape[1])).detach()[None]
+
+    def test_f2_multi_hot_broadcast_to_all_four_tokens(self):
+        from vkgr.history_side import FEEDBACK_BITS
+        model = self.model('f2_feedback'); source, side = self.batch()
+        table = model.feedback.weight.detach()
+        def vector(mask, ts, dur):
+            out = torch.zeros(model.d_model)
+            for bit in range(6):
+                if mask >> bit & 1:
+                    out = out + table[bit]
+            return out
+        expected = self._expected_embedding(model, source, side, vector)
+        self.assertTrue(torch.allclose(model.embed_source(source, side).detach(), expected, atol=1e-6))
+        for bit, name in enumerate(FEEDBACK_BITS):  # bit order = FEEDBACK_BITS
+            with self.subTest(bit=name):
+                one = torch.tensor([[[1 << bit, 5, 9]]]); src = torch.tensor([self.codec.history(self.items[:1])])
+                got = model.embed_source(src, one).detach() - model.embed_source(src, torch.tensor([[[0, 5, 9]]])).detach()
+                self.assertTrue(torch.allclose(got, (table[bit] * model.d_model ** 0.5).expand(1, 4, -1), atol=1e-6))
+        # all four tokens of one item receive the SAME vector (broadcast, not first-token-only)
+        same = model.embed_source(src, torch.tensor([[[63, 5, 9]]])).detach() - model.embed_source(src, torch.tensor([[[0, 5, 9]]])).detach()
+        self.assertTrue(all(torch.equal(same[0, 0], same[0, t]) for t in range(1, 4)))
+        self.assertGreater(float(same.abs().min()), 0.0)
+
+    def test_f3_two_bucket_embeddings_broadcast(self):
+        model = self.model('f3_watch_buckets'); source, side = self.batch()
+        tb = model.timespent_bucket.weight.detach(); rb = model.ratio_bucket.weight.detach()
+        vector = lambda mask, ts, dur: tb[card_timespent_bucket(ts)] + rb[card_ratio_bucket(ts, dur)]
+        expected = self._expected_embedding(model, source, side, vector)
+        self.assertTrue(torch.allclose(model.embed_source(source, side).detach(), expected, atol=1e-6))
+        # the feedback mask is NOT an input of F3
+        other = side.clone(); other[..., 0] = torch.where(side[..., 0] != 0, (side[..., 0] + 1) % 64, side[..., 0])
+        self.assertTrue(torch.equal(model.embed_source(source, side), model.embed_source(source, other)))
+
+    def test_side_added_before_sqrt_d_scaling(self):
+        model = self.model('f2_feedback'); src = torch.tensor([self.codec.history(self.items[:2])])
+        with torch.no_grad():
+            model.feedback.weight.zero_(); model.feedback.weight[0].fill_(0.5)
+        zero = torch.tensor([[[0, 5, 9], [0, 5, 9]]]); one = torch.tensor([[[1, 5, 9], [0, 5, 9]]])
+        diff = (model.embed_source(src, one) - model.embed_source(src, zero)).detach()
+        self.assertTrue(torch.allclose(diff[0, :4], torch.full((4, model.d_model), 0.5 * model.d_model ** 0.5)))
+        self.assertTrue(torch.equal(diff[0, 4:], torch.zeros(4, model.d_model)))
+
+    def test_pad_items_and_bad_side_rejected(self):
+        for feature in ('f2_feedback', 'f3_watch_buckets'):
+            model = self.model(feature); source, side = self.batch((3, 1, 5))
+            self.assertEqual(model.encode(source, side)[0].shape[:2], source.shape)  # the good input is accepted
+            def bad(name, src=source, sd=side):
+                with self.subTest(feature=feature, case=name), self.assertRaises(ValueError):
+                    model.encode(src, sd)
+            pad_side = side.clone(); pad_side[1, 2] = torch.tensor([1, 5, 9]); bad('PAD item carries side', sd=pad_side)
+            half = source.clone(); half[0, 1] = 0; bad('half-PAD item', src=half)
+            bad('side=None', sd=None)
+            bad('wrong item count', sd=side[:, :-1]); bad('wrong batch', sd=side[:2]); bad('float dtype', sd=side.float())
+            bad('wrong last dim', sd=torch.cat([side, side[..., :1]], -1))
+            for col, value, name in ((0, 64, 'mask 64'), (0, -1, 'mask -1'), (1, 0, 'timespent 0'), (1, 256, 'timespent 256'), (2, 0, 'duration 0'), (2, 256, 'duration 256')):
+                broken = side.clone(); broken[0, 0, col] = value; bad(name, sd=broken)
+            bad('width not multiple of 4', src=source[:, :-1], sd=side)
+
+    def test_encode_without_side_rejected(self):
+        for feature in ('f2_feedback', 'f3_watch_buckets'):
+            model = self.model(feature); source, _ = self.batch(); decoder = torch.ones(source.shape[0], 2, dtype=torch.long)
+            with self.subTest(feature=feature):
+                with self.assertRaises(ValueError):
+                    model.encode(source)
+                with self.assertRaises(ValueError):
+                    model(source, decoder)
+
+    def test_zero_tables_equal_plain_model_memory_and_side_is_per_sample(self):
+        from vkgr.tiger import TigerModel
+        for feature in ('f2_feedback', 'f3_watch_buckets'):
+            model = self.model(feature); source, side = self.batch((3, 4, 2)); anchor = self.anchor()
+            plain = TigerModel(self.codec.vocab_size, 64, 4, 1, 1, 256); plain.load_state_dict(anchor.state_dict())
+            with self.subTest(feature=feature):
+                with torch.no_grad():
+                    for table in (getattr(model, n, None) for n in ('feedback', 'timespent_bucket', 'ratio_bucket')):
+                        if table is not None:
+                            table.weight.zero_()
+                    plain_memory, _ = plain.encode(source)
+                    self.assertTrue(torch.equal(model.encode(source, side)[0], plain_memory))  # zero tables == the anchor encoder, bit for bit
+                    model2 = self.model(feature)  # same base weights, non-zero side tables
+                    memory = model2.encode(source, side)[0]
+                    self.assertFalse(torch.equal(memory, plain_memory))
+                    old = side[1, 2].tolist()
+                    changed = side.clone(); changed[1, 2] = torch.tensor([63 if old[0] != 63 else 0, 255 if old[1] != 255 else 1, old[2]])
+                    after = model2.encode(source, changed)[0]
+                    self.assertTrue(torch.equal(after[0], memory[0]) and torch.equal(after[2], memory[2]))  # other samples untouched
+                    self.assertFalse(torch.equal(after[1], memory[1]))
+
+
+class FeatureRegistryTests(unittest.TestCase):
+    """server-safe."""
+
+    def test_feature_registry_reuses_the_shared_definitions(self):
+        from vkgr import generative_feat as gf
+        from vkgr import history_side
+        from vkgr import retrieval_features as rf
+        self.assertEqual(gf.FEATURES, ('none', 'f2_feedback', 'f3_watch_buckets'))
+        self.assertEqual(history_side.SIDE_VERSION, 'HIST_V2_SIDE_V1')
+        # imported, not copied: the single shared source
+        self.assertIs(gf.SIDE_VERSION, history_side.SIDE_VERSION)
+        self.assertIs(gf.timespent_bucket, rf.timespent_bucket)
+        self.assertIs(gf.ratio_bucket, rf.ratio_bucket)
+        self.assertEqual((gf.FEEDBACK_DIM, gf.TIMESPENT_BUCKETS, gf.RATIO_BUCKETS), (6, 7, 5))
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# side-data fixture (local harness only: needs the G1 engineering contract)
+# ---------------------------------------------------------------------------------------------------------------------
+TS_CYCLE = (1, 3, 4, 9, 10, 30, 31, 60, 61, 134, 135, 254, 255)  # hits every timespent bucket boundary of the card
+DURATION_CYCLE = (5, 9, 25, 60, 180)
+EXTRA_FEEDBACK = ('share', 'bookmark', 'open_comments', 'click_on_author', 'dislike')
+
+
+def tmpdir():
+    return tempfile.TemporaryDirectory(dir='/private/tmp')
+
+
+def side_world(tmp):
+    """Engineering context + history-v2 + HIST_V2_SIDE_V1 built by the shared P producer.
+
+    Same partitions as ``test_generative_b1.engineering_world`` with every raw row enriched by the six feedback bits and
+    timespent; durations are an item property (single-valued per item)."""
+    from vkgr import generative_real as gr
+    from vkgr import history_side, history_v2
+    tmp = Path(tmp)
+    context, receipt = gr.prepare_engineering(ROOT, tmp / 'prepared')
+    examples = context.examples.rows(list(range(len(context.examples))))
+    likes = {6: (1, 10), 7: (1, 20), 8: (1, 10), 9: (2, 50), 10: (3, 10), 11: (3, 30), 12: (4, 20), 13: (4, 40), 14: (5, 50), 15: (6, 40), 16: (7, 30)}
+    week0 = [{'user_id': 1 if k % 2 else 3, 'item_id': (10, 20, 30, 40, 50, 60)[k % 6], 'like': False} for k in range(6)]
+    week0 += [{'user_id': u, 'item_id': i, 'like': True} for _, (u, i) in sorted(likes.items())]
+    later = [(w, [{'user_id': (1, 2, 3, 4, 5, 6, 7)[k % 7], 'item_id': (10, 20, 30, 40, 50, 60)[(k * 5 + w) % 6], 'like': False} for k in range(200)]) for w in (1, 2)]
+    partitions = [(0, week0)] + later
+    rng = random.Random(7); cycle = itertools.cycle(TS_CYCLE)
+    for _, rows in partitions:
+        for row in rows:
+            for name in EXTRA_FEEDBACK:
+                row[name] = rng.random() < 0.25
+            row['timespent'] = next(cycle)
+    durations = {int(item): DURATION_CYCLE[k % len(DURATION_CYCLE)] for k, item in enumerate(sorted(context.catalog))}
+    h2 = history_v2.write_prepared(tmp / 'hist', partitions, examples, context.queries, list(context.catalog), {'synthetic': True})
+    side = history_side.write_side(tmp / 'side', tmp / 'hist' / 'manifest.json', h2['manifest_sha256'], partitions, durations, {'synthetic': True})
+    return SimpleNamespace(context=context, receipt=receipt, partitions=partitions, durations=durations, examples=examples,
+                           hist_manifest=tmp / 'hist' / 'manifest.json', hist_sha=h2['manifest_sha256'],
+                           side_manifest=tmp / 'side' / 'manifest.json', side_sha=side['manifest_sha256'])
+
+
+def raw_table(world):
+    return {(week, k): row for week, rows in world.partitions for k, row in enumerate(rows)}
+
+
+def expected_event(raw, durations, item):
+    from vkgr import history_side
+    return [sum(1 << b for b, name in enumerate(history_side.FEEDBACK_BITS) if raw[name]), raw['timespent'], durations[item]]
+
+
+def v2_context(world, length=50):
+    from vkgr import history_v2
+    from vkgr.generative_data_v2 import SID_VERSIONS, build_v2_context
+    loaded = history_v2.load_prepared(world.hist_manifest, world.hist_sha, length)
+    return loaded, build_v2_context(world.context, loaded, length, SID_VERSIONS[0])
+
+
+class SideDataTests(unittest.TestCase):
+    def test_sidecar_rows_align_with_history_positions(self):
+        """history position <-> sidecar row <-> raw row, for every registered length (single shared sidecar)."""
+        from vkgr import history_side, history_v2
+        with tmpdir() as tmp:
+            w = side_world(tmp); table = raw_table(w); seen = 0
+            for length in (100, 50, 20):
+                hist = history_v2.load_prepared(w.hist_manifest, w.hist_sha, length)
+                loaded = history_side.load_side(w.side_manifest, w.side_sha, w.hist_sha, length, hist)
+                for split in ('train', 'validation'):
+                    self.assertEqual(len(loaded[split]), len(hist[split]))
+                    for row, events in zip(hist[split], loaded[split]):
+                        self.assertEqual(len(events), len(row['history']))
+                        for item, position, event in zip(row['history'], row['history_positions'], events):
+                            raw = table[tuple(position)]
+                            self.assertEqual(raw['item_id'], item)
+                            self.assertEqual(event, expected_event(raw, w.durations, item)); seen += 1
+            self.assertGreater(seen, 100)
+
+    def test_target_and_later_event_fields_cannot_change_side(self):
+        """Anti-leakage (data layer): flip the target row and every later row of that user -> that example's side is unchanged."""
+        from vkgr import history_side, history_v2
+        with tmpdir() as tmp:
+            w = side_world(tmp)
+            hist = history_v2.load_prepared(w.hist_manifest, w.hist_sha, 100)
+            base = history_side.build_side(w.partitions, hist, w.durations); checked = 0
+            for e in w.examples:
+                mutated = copy.deepcopy(w.partitions); week, ordinal = e['target_position']; flipped = 0
+                for wk, rows in mutated:
+                    for k, row in enumerate(rows):
+                        if row['user_id'] == e['user_id'] and (wk, k) >= (week, ordinal):
+                            row.update(timespent=255 if row['timespent'] != 255 else 1, like=not row['like'], **{n: not row[n] for n in EXTRA_FEEDBACK}); flipped += 1
+                self.assertGreater(flipped, 1)
+                after = history_side.build_side(mutated, hist, w.durations)
+                self.assertEqual(after['train'][e['example_id']], base['train'][e['example_id']])
+                checked += 1
+            self.assertGreaterEqual(checked, 3)
+            # reverse control: changing one PAST event of that example must change its side
+            e = next(x for x in w.examples if len(hist['train'][x['example_id']]['history_positions']) >= 2)
+            week, ordinal = hist['train'][e['example_id']]['history_positions'][-1]
+            mutated = copy.deepcopy(w.partitions); row = mutated[week][1][ordinal]
+            row['timespent'] = 254 if row['timespent'] != 254 else 253
+            self.assertNotEqual(history_side.build_side(mutated, hist, w.durations)['train'][e['example_id']], base['train'][e['example_id']])
+
+    def test_validation_side_uses_train_weeks_only(self):
+        from vkgr import history_side, history_v2
+        with tmpdir() as tmp:
+            w = side_world(tmp)
+            hist = history_v2.load_prepared(w.hist_manifest, w.hist_sha, 100)
+            with self.assertRaises(ValueError):
+                history_side.build_side(w.partitions + [(25, w.partitions[0][1])], hist, w.durations)
+
+    def test_side_binding_is_fail_closed(self):
+        from vkgr import history_side, history_v2
+        with tmpdir() as tmp:
+            w = side_world(tmp)
+            hist = history_v2.load_prepared(w.hist_manifest, w.hist_sha, 50)
+            with self.assertRaises(ValueError):
+                history_side.load_side(w.side_manifest, '0' * 64, w.hist_sha, 50, hist)
+            with self.assertRaises(ValueError):
+                history_side.load_side(w.side_manifest, w.side_sha, 'f' * 64, 50, hist)
+            self.assertTrue(any(len(r['history']) > 1 for r in hist['train']))
+            short = {**hist, 'train': [{**r, 'history': r['history'][:-1] or r['history']} for r in hist['train']]}
+            with self.assertRaises(ValueError):
+                history_side.load_side(w.side_manifest, w.side_sha, w.hist_sha, 50, short)
+
+    def test_pack_aligns_with_context_rows_and_queries(self):
+        """history-position <-> sidecar-row alignment on G's side: every example_id and every query ordinal."""
+        from vkgr import generative_feat as gf
+        with tmpdir() as tmp:
+            w = side_world(tmp); table = raw_table(w)
+            loaded, ctx = v2_context(w)
+            pack = gf.load_side_pack(w.side_manifest, w.side_sha, w.hist_sha, loaded, ctx, 50)
+            rows = ctx.examples.rows(list(range(len(ctx.examples)))); queries = ctx.queries
+            self.assertEqual((len(pack.train), len(pack.validation)), (len(rows), len(queries)))
+            self.assertGreaterEqual(len(rows), 3)
+            for split, history_rows in (('train', rows), ('validation', queries)):
+                for ordinal, row in enumerate(history_rows):
+                    side = getattr(pack, split)[ordinal]
+                    if split == 'train':
+                        self.assertEqual(row['example_id'], ordinal)
+                    self.assertEqual(len(side), len(row['history']))
+                    for item, position, event in zip(row['history'], row['history_positions'], side):
+                        raw = table[tuple(position)]
+                        self.assertEqual(raw['item_id'], item)
+                        self.assertEqual(list(event), expected_event(raw, w.durations, item))
+            self.assertEqual(max(len(q['history']) for q in queries), 50)
+
+    def test_pack_rejects_misaligned_or_invalid_side(self):
+        from vkgr import generative_feat as gf
+        from vkgr import history_side
+        with tmpdir() as tmp:
+            w = side_world(tmp)
+            loaded, ctx = v2_context(w)
+            side = history_side.load_side(w.side_manifest, w.side_sha, w.hist_sha, 50, loaded)
+            build = lambda s: gf.build_side_pack(s, loaded, ctx, w.hist_sha, w.side_sha)
+            build(side)  # untampered side is accepted
+            long_train = next(i for i, r in enumerate(side['train']) if len(r) > 1)
+            def edit(split, mutate):
+                bad = copy.deepcopy(side); mutate(bad[split]); return bad
+            cases = {
+                'row shorter than its history': edit('train', lambda rows: rows.__setitem__(long_train, rows[long_train][:-1])),
+                'row longer than its history': edit('validation', lambda rows: rows[0].append(list(rows[0][0]))),
+                'missing validation row': edit('validation', lambda rows: rows.pop()),
+                'feedback mask 64': edit('train', lambda rows: rows[long_train][0].__setitem__(0, 64)),
+                'feedback mask -1': edit('validation', lambda rows: rows[0][0].__setitem__(0, -1)),
+                'timespent 0': edit('validation', lambda rows: rows[0][0].__setitem__(1, 0)),
+                'timespent 256': edit('train', lambda rows: rows[long_train][0].__setitem__(1, 256)),
+                'duration 0': edit('validation', lambda rows: rows[0][0].__setitem__(2, 0)),
+                'duration 256': edit('train', lambda rows: rows[long_train][0].__setitem__(2, 256)),
+                'bool mask': edit('validation', lambda rows: rows[0][0].__setitem__(0, True)),
+            }
+            for name, bad in cases.items():
+                with self.subTest(case=name), self.assertRaises(ValueError):
+                    build(bad)
+
+    def test_pack_rejects_swapped_rows_via_duration_guard(self):
+        """D9: duration is an item property. Swapping two same-length rows whose durations differ is caught even though
+        every length / range check still passes."""
+        from vkgr import generative_feat as gf
+        from vkgr import history_side
+        with tmpdir() as tmp:
+            w = side_world(tmp)
+            loaded, ctx = v2_context(w)
+            side = history_side.load_side(w.side_manifest, w.side_sha, w.hist_sha, 50, loaded)
+            build = lambda s: gf.build_side_pack(s, loaded, ctx, w.hist_sha, w.side_sha)
+            for split, history_rows in (('validation', ctx.queries), ('train', ctx.examples.rows(list(range(len(ctx.examples)))))):
+                pairs = [(a, b) for a in range(len(history_rows)) for b in range(a + 1, len(history_rows))
+                         if len(history_rows[a]['history']) == len(history_rows[b]['history'])
+                         and [e[2] for e in side[split][a]] != [e[2] for e in side[split][b]]]
+                with self.subTest(split=split):
+                    self.assertTrue(pairs, 'fixture must contain a swappable same-length pair')
+                    a, b = pairs[0]
+                    bad = copy.deepcopy(side); bad[split][a], bad[split][b] = bad[split][b], bad[split][a]
+                    with self.assertRaises(ValueError):
+                        build(bad)
+
+    def test_pack_binding_and_attached_context(self):
+        from vkgr import generative_feat as gf
+        from vkgr import history_side
+        from vkgr.data_audit import canonical_bytes
+        with tmpdir() as tmp:
+            w = side_world(tmp)
+            loaded, ctx = v2_context(w)
+            side = history_side.load_side(w.side_manifest, w.side_sha, w.hist_sha, 50, loaded)
+            pack = gf.load_side_pack(w.side_manifest, w.side_sha, w.hist_sha, loaded, ctx, 50)
+            self.assertEqual(pack.binding, {'side_version': 'HIST_V2_SIDE_V1', 'side_manifest_sha256': w.side_sha, 'history_manifest_sha256': w.hist_sha,
+                                            'train_side_sha256': history_side.side_digest(side['train']),
+                                            'validation_side_sha256': history_side.side_digest(side['validation'])})
+            attached = gf.attach_side(ctx, pack)
+            self.assertEqual(attached.binding['feat01'], pack.binding)
+            self.assertEqual({k: v for k, v in attached.binding.items() if k != 'feat01'}, ctx.binding)
+            self.assertNotIn('feat01', ctx.binding)
+            # D6: side lives outside the queries/examples, so every query_sha256 stays the anchor's
+            self.assertEqual(canonical_bytes(attached.queries), canonical_bytes(ctx.queries))
+            self.assertEqual(attached.binding['queries_sha256'], ctx.binding['queries_sha256'])
+            self.assertEqual(attached.examples.rows([0]), ctx.examples.rows([0]))
+            self.assertIs(attached.codec, ctx.codec)
+
+
 if __name__ == '__main__':
     unittest.main()
