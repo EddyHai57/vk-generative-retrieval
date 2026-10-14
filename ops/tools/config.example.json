@@ -1,0 +1,25 @@
+{
+ "ssh_host": "<ssh config Host alias>",
+ "state_dir": "<local dir for receipts and ssh-control-state-formalNN.json>",
+ "socket_prefix": "<local tmp dir>/vkgr-ssh-",
+ "mux_max_seconds": 57600,
+ "server": {
+  "python": "<server venv>/bin/python",
+  "repo_url": "https://github.com/<owner>/vk-generative-retrieval.git",
+  "ops_repo": "<server>/vkgr-infra01-ops",
+  "ops_root": "<server>/vkgr-infra01-root",
+  "g_deploy": "<server>/vkgr-infra01-g",
+  "p_deploy": "<server>/vkgr-infra01-p",
+  "pinned_dir": "<server>/vkgr-infra01-pinned",
+  "work_dir": "<server>/vkgr-infra01-work",
+  "permits_dir": "<server>/vkgr-infra01-permits",
+  "tools_dir": "<server>/vkgr-infra01-tools",
+  "scope_prefix": "<server>/vkgr-infra01-",
+  "legacy": {
+   "g_inventory_dirs": ["<server>/<legacy G dir>"],
+   "g_prepared_manifest": "<server>/<legacy prepared>/manifest.json",
+   "g_seed_dirs": {"2024": "<server>/<legacy seed dir>"},
+   "state_seed": "2024"
+  }
+ }
+}
