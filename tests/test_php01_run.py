@@ -322,5 +322,40 @@ class CLITests(unittest.TestCase):
                 php.main([command, '--inputs', 'x', '--inputs-sha', 'y'])
 
 
+class VramSmokeTests(unittest.TestCase):
+    SCRIPT = ROOT / 'scripts' / 'php01_vram_smoke.py'
+
+    def _module(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('php01_vram_smoke', self.SCRIPT)
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        return module
+
+    def test_cpu_small_run_reports_every_dim(self):
+        module = self._module(); out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(module.main(['--device', 'cpu', '--catalog', '2000', '--dims', '32', '128', '--steps', '1']), 0)
+        lines = out.getvalue().strip().splitlines(); self.assertEqual(len(lines), 1)
+        value = json.loads(lines[0])
+        self.assertEqual((value['device'], value['catalog'], value['steps']), ('cpu', 2000, 1))
+        self.assertEqual([r['dim'] for r in value['dims']], [32, 128])
+        for row in value['dims']:
+            self.assertEqual(row['param_bytes'], (2000 + 29) * row['dim'] * 4)          # 29 = T 8 + R 6 + P 8 + G 7 rows
+            self.assertEqual(row['optimizer_state_bytes'], 2 * row['param_bytes'])
+            self.assertEqual(row['vram'], 'UNKNOWN'); self.assertGreater(row['ru_maxrss'], 0)
+            self.assertTrue(row['finite_loss'])
+
+    def test_declared_vram_rule(self):
+        module = self._module()
+        self.assertEqual(module.declared_vram_mib(1000), 3072)
+        self.assertEqual(module.declared_vram_mib(3072), 3072)
+        self.assertEqual(module.declared_vram_mib(3073), 3840)                      # ceil(3073 * 1.2 / 256) * 256
+
+    def test_no_path_arguments(self):
+        module = self._module()
+        dests = {a.dest for a in module.build_parser()._actions} - {'help'}
+        self.assertEqual(dests, {'device', 'dims', 'catalog', 'steps'})
+
+
 if __name__ == '__main__':
     unittest.main()
