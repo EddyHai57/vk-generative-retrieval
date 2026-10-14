@@ -15,6 +15,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_feat02_model import ensure  # noqa: E402
 from test_feat01 import prepared_world  # noqa: E402
+from test_feat02_data import prepared_full_world  # noqa: E402
 
 
 def f2_config(**overrides):
@@ -166,6 +167,14 @@ class Feat02RunTests(unittest.TestCase):
                 self.assertEqual(binding['bucket_spec_sha256'], bucket_spec_sha256())
                 self.assertEqual(binding['param_report'], parameter_report(fr._model(data, config, 'cpu')))
                 self.assertEqual(('weeks_sha256' in binding), feature == 'f3_f4_recency')
+                self.assertEqual(('ctx_sha256' in binding), feature == 'f3_f5_scene')
+                if feature == 'f3_f5_scene':
+                    ctx = {**data, 'rows': [{**r, 'ctx': [[(place + 1) % 256, platform] for place, platform in r['ctx']]} for r in data['rows']]}
+                    with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                        fr.verify_run(run / 'manifest.json', value['manifest_sha256'], ctx, config)
+                    queries_ctx = {**data, 'queries': [{**q, 'ctx': [[place, (platform + 1) % 256] for place, platform in q['ctx']]} for q in data['queries']]}
+                    with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                        fr.verify_run(run / 'manifest.json', value['manifest_sha256'], queries_ctx, config)
                 self.assertEqual(fr.verify_run(run / 'manifest.json', value['manifest_sha256'], data, config)['status'], 'verified')
                 with self.assertRaises(ValueError):
                     fr.verify_run(run / 'manifest.json', value['manifest_sha256'], data, {**config, 'feature': 'f3' if feature != 'f3' else 'f3_masked'})
@@ -236,6 +245,135 @@ class Feat02RunTests(unittest.TestCase):
         raw = model.items(torch.tensor([data['idmap'][i] for i in data['catalog']])).detach().numpy()
         self.assertTrue(np.allclose(norms, np.linalg.norm(raw.astype(np.float64), axis=1)))
         self.assertTrue(np.allclose(np.linalg.norm(items[norms > 0], axis=1), 1.0, atol=1e-5))
+
+    def test_synthetic_data_carries_aligned_ctx_with_unseen_values(self):
+        from vkgr import retrieval_feat02_run as fr
+        data = fr.synthetic_data()
+        values = set()
+        for r in data['rows'] + data['queries']:
+            self.assertEqual(len(r['ctx']), len(r['history']))
+            values.update(v for pair in r['ctx'] for v in pair)
+        self.assertTrue(any(v >= 24 for v in values), 'synthetic ctx must contain values outside the train tables')
+        self.assertTrue(all(0 <= v <= 255 for v in values))
+
+    def test_tensors2_fills_scene_columns_for_f5_only_and_fails_closed(self):
+        from vkgr import retrieval_feat02_run as fr
+        data = fr.synthetic_data(); rows, _ = fr._view(data, 50)
+        batch = rows[:20]; width = max(len(r['history']) for r in batch)
+        histories, tensor = fr._tensors2(batch, data['idmap'], width, 'f3_f5_scene')
+        for j, r in enumerate(batch):
+            n = len(r['history'])
+            self.assertEqual(tensor[j, :n, 4].tolist(), [c[0] for c in r['ctx']]); self.assertEqual(tensor[j, :n, 5].tolist(), [c[1] for c in r['ctx']])
+            self.assertEqual(tensor[j, :n, 3].tolist(), [0] * n)                            # week column is the recency variant's
+            self.assertTrue(bool(tensor[j, n:].eq(0).all()))
+        for feature in ('f3', 'f3_masked', 'f3_f4_recency'):
+            other = fr._tensors2(batch, data['idmap'], width, feature)[1]
+            self.assertTrue(bool(other[..., 4:].eq(0).all()), feature)
+        no_ctx = [{k: v for k, v in r.items() if k != 'ctx'} for r in batch]
+        fr._tensors2(no_ctx, data['idmap'], width, 'f3')                                    # other variants never need ctx
+        with self.assertRaises(ValueError):
+            fr._tensors2(no_ctx, data['idmap'], width, 'f3_f5_scene')                      # missing ctx pin / data
+        with self.assertRaises(ValueError):
+            fr._tensors2([{**batch[0], 'ctx': batch[0]['ctx'][:-1]}], data['idmap'], width, 'f3_f5_scene')
+        with self.assertRaises(ValueError):
+            fr._tensors2([{**batch[0], 'ctx': [[1.5, 2]] * len(batch[0]['ctx'])}], data['idmap'], width, 'f3_f5_scene')
+        with self.assertRaises(ValueError):
+            fr._tensors2([{**batch[0], 'ctx': [[1, 2, 3]] * len(batch[0]['ctx'])}], data['idmap'], width, 'f3_f5_scene')
+
+    def test_view_cuts_ctx_to_the_history_length(self):
+        from vkgr import retrieval_feat02_run as fr
+        data = fr.synthetic_data()
+        longest = max(data['rows'], key=lambda r: len(r['history']))
+        rows, _ = fr._view({**data, 'rows': [longest], 'queries': []}, 3)
+        self.assertEqual(rows[0]['ctx'], longest['ctx'][-3:])
+        self.assertEqual(len(rows[0]['ctx']), len(rows[0]['history']))
+
+    def test_real_ctx_path_prepare_verify_apply(self):
+        """Real CLI path (prepare-ctx / verify-ctx / apply_feat02) on pinned synthetic files with mocked real_inputs."""
+        import argparse
+        from vkgr import retrieval_feat02_run as fr
+        from vkgr.data_audit import file_sha256
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            partitions, examples, queries, catalog, durations, h2, side, _ = prepared_full_world(tmp / 'w', seed=9)
+            import shutil
+            shutil.rmtree(tmp / 'w' / 'ctx')                                                     # prepare-ctx must create it from raw
+            spec = {'schema': 'p-feat02-inputs-v1', 'prepared': str(tmp / 'p'), 'holdout': str(tmp / 'h'), 'raw_root': str(tmp / 'raw'),
+                    'history_manifest': str(tmp / 'w' / 'h2' / 'manifest.json'), 'history_sha256': h2['manifest_sha256'],
+                    'side_manifest': str(tmp / 'w' / 'side' / 'manifest.json'), 'side_sha256': side['manifest_sha256'], 'items_metadata_sha256': 'c' * 64,
+                    'ctx_manifest': None, 'ctx_sha256': None, 'attr_manifest': None, 'attr_sha256': None, 'disk_cap_bytes': 1 << 30, 'test_gate': 'closed_hash_only'}
+            fr.validate_inputs(spec)
+            with self.assertRaises(ValueError):
+                fr.validate_inputs(spec, 'f3_f5_scene')                                            # F5 needs the ctx pin
+            data = {'rows': examples, 'queries': queries, 'catalog': catalog, 'synthetic': False}
+            state = {'partitions': partitions}
+            fake = lambda s, with_partitions=False: (data, (lambda: iter(state['partitions'])) if with_partitions else None, {'prepared_sha': 'x'})
+            plain, plain_binding = fr.apply_feat02(data, spec, 50)
+            self.assertNotIn('ctx', plain['rows'][0]); self.assertNotIn('ctx_manifest_sha256', plain_binding)     # no pin -> no ctx loaded
+            with mock.patch.object(fr.b1, 'real_inputs', fake):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(fr.main(['prepare-ctx', '--inputs', str(self._write(tmp / 'inputs.json', spec)), '--inputs-sha', file_sha256(tmp / 'inputs.json'),
+                                              '--output', str(tmp / 'ctx')]), 0)
+                self.assertEqual(json.loads(out.getvalue())['status'], 'ctx_prepared')
+                ctx_sha = file_sha256(tmp / 'ctx' / 'manifest.json')
+                manifest = json.loads((tmp / 'ctx' / 'manifest.json').read_text())
+                self.assertEqual((manifest['ctx_version'], manifest['fields'], manifest['history_manifest_sha256']), ('HIST_V2_CTX_V1', ['place', 'platform'], h2['manifest_sha256']))
+                self.assertEqual(manifest['binding']['inputs_sha256'], 'a' * 64)
+                args = ['--inputs', str(tmp / 'inputs.json'), '--inputs-sha', file_sha256(tmp / 'inputs.json'), '--manifest', str(tmp / 'ctx' / 'manifest.json'), '--manifest-sha', ctx_sha]
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(fr.main(['verify-ctx', *args]), 0)
+                self.assertEqual(json.loads(out.getvalue())['status'], 'ctx_verified')
+                spec_c = {**spec, 'ctx_manifest': str(tmp / 'ctx' / 'manifest.json'), 'ctx_sha256': ctx_sha}
+                fr.validate_inputs(spec_c, 'f3_f5_scene')
+                table = {(w, k): r for w, rows in partitions for k, r in enumerate(rows)}
+                for length in (50, 20):
+                    applied, binding = fr.apply_feat02(data, spec_c, length)
+                    self.assertEqual(binding['ctx_manifest_sha256'], ctx_sha)
+                    base, base_binding = fr.apply_feat02(data, spec, length)
+                    self.assertEqual({k: v for k, v in binding.items() if k != 'ctx_manifest_sha256'}, base_binding)
+                    for r, b in zip(applied['rows'] + applied['queries'], base['rows'] + base['queries']):
+                        self.assertEqual({k: v for k, v in r.items() if k != 'ctx'}, b)
+                        self.assertEqual(len(r['ctx']), len(r['history']))
+                        for pos, pair in zip(r['history_positions'], r['ctx']):
+                            self.assertEqual(pair, [table[tuple(pos)]['place'], table[tuple(pos)]['platform']])
+                # raw drift after prepare -> verify-ctx fails closed
+                mutated = copy.deepcopy(partitions)
+                pos = applied['rows'][-1]['history_positions'][-1]
+                mutated[pos[0]][1][pos[1]]['place'] = (mutated[pos[0]][1][pos[1]]['place'] + 1) % 256
+                state['partitions'] = mutated
+                with self.assertRaisesRegex(ValueError, 'raw ctx replay mismatch'):
+                    fr._ctx_command(argparse.Namespace(command='verify-ctx', inputs_sha='a' * 64, output=None, manifest=str(tmp / 'ctx' / 'manifest.json'), manifest_sha=ctx_sha), spec)
+                state['partitions'] = partitions
+                # wrong pins fail closed
+                with self.assertRaises(ValueError):
+                    fr._ctx_command(argparse.Namespace(command='verify-ctx', inputs_sha='a' * 64, output=None, manifest=str(tmp / 'ctx' / 'manifest.json'), manifest_sha='0' * 64), spec)
+                with self.assertRaises(ValueError):
+                    fr.apply_feat02(data, {**spec_c, 'ctx_sha256': '0' * 64}, 50)
+                with self.assertRaises(ValueError):
+                    fr.apply_feat02(data, {**spec_c, 'history_sha256': 'f' * 64}, 50)
+                with self.assertRaises(ValueError):
+                    fr._ctx_command(argparse.Namespace(command='verify-ctx', inputs_sha='a' * 64, output=None, manifest=str(tmp / 'ctx' / 'manifest.json'), manifest_sha=ctx_sha),
+                                    {**spec, 'history_sha256': 'f' * 64})
+                # an existing output directory is never overwritten
+                with self.assertRaises(FileExistsError):
+                    fr._ctx_command(argparse.Namespace(command='prepare-ctx', inputs_sha='a' * 64, output=str(tmp / 'ctx'), manifest=None, manifest_sha=None), spec)
+
+    @staticmethod
+    def _write(path, value):
+        Path(path).write_text(json.dumps(value)); return path
+
+    def test_f5_user_vectors_react_to_ctx_and_ignore_target_fields(self):
+        from vkgr import retrieval_feat02_run as fr
+        data = fr.synthetic_data(); rows, _ = fr._view(data, 50)
+        model = fr._model(data, small_config(feature='f3_f5_scene'), 'cpu'); model.eval()
+        batch = rows[:24]; width = max(len(r['history']) for r in batch)
+        base = model.users(*fr._tensors2(batch, data['idmap'], width, 'f3_f5_scene'))
+        same = model.users(*fr._tensors2([flip_non_history_fields(r) for r in batch], data['idmap'], width, 'f3_f5_scene'))
+        self.assertTrue(torch.equal(base, same))
+        moved = [{**r, 'ctx': [[(p + 1) % 24, q] for p, q in r['ctx']]} for r in batch]
+        self.assertFalse(torch.equal(base, model.users(*fr._tensors2(moved, data['idmap'], width, 'f3_f5_scene'))))
 
     def test_inputs_schema_requires_ctx_attr_pairs_and_required_if_used(self):
         from vkgr.retrieval_feat02_run import validate_inputs

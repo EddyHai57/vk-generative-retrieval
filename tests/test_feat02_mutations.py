@@ -1,4 +1,4 @@
-"""FEAT-02 mutation tests M1-M5: each deliberately wrong implementation must be caught by its named guard.
+"""FEAT-02 mutation tests M1-M8: each deliberately wrong implementation must be caught by its named guard.
 
 Every guard is first run on the unmodified code (must pass), then under ``mock.patch.object`` on a module-level seam
 (must raise AssertionError), then again after the patch is reverted (must pass).
@@ -13,6 +13,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_feat02_model as tm  # noqa: E402
 import test_feat02_run as tr  # noqa: E402
+import test_feat02_data as td  # noqa: E402
 
 
 def detected(case, module, name, replacement, guards):
@@ -66,6 +67,33 @@ class MutationTests(unittest.TestCase):
     def test_m5_week_gap_table_removed(self):
         from vkgr import retrieval_feat02 as m
         detected(self, m, 'weekgap_bucket', lambda gap, valid: torch.zeros_like(gap), [tm.guard_f4_formula, tm.guard_changing_history_week_changes_feature])
+
+    def test_m6_place_and_platform_columns_swapped(self):
+        """F5 reads the platform column as place and vice versa."""
+        from vkgr import retrieval_feat02 as m
+        original = m.scene_columns
+        detected(self, m, 'scene_columns', lambda side: tuple(reversed(original(side))), [tm.guard_f5_formula])
+
+    def test_m7_unseen_value_mapped_to_pad_instead_of_oov(self):
+        """Values outside the train table get id 0 (PAD) rather than 1 (OOV)."""
+        from vkgr import retrieval_feat02 as m
+        original = m.category_ids
+        detected(self, m, 'category_ids', lambda raw, table, valid: original(raw, table, valid) * (original(raw, table, valid) != 1), [tm.guard_f5_unseen_value_maps_to_oov_and_contributes_zero])
+
+    def test_m8_build_ctx_reads_the_target_row(self):
+        """The last ctx entry of every training example is replaced by the target row's place/platform (leak)."""
+        from vkgr import history_ctx
+        original = history_ctx.build_ctx
+
+        def mutated(partitions, history):
+            partitions = list(partitions); out = original(partitions, history)
+            table = {(w, k): r for w, rows in partitions for k, r in enumerate(rows)}
+            for j, row in enumerate(history['train']):
+                target = table[tuple(row['target_position'])]
+                if out['train'][j]:
+                    out['train'][j][-1] = [target['place'], target['platform']]
+            return out
+        detected(self, history_ctx, 'build_ctx', mutated, [td.guard_ctx_target_and_future_event_fields_cannot_change_features])
 
 
 if __name__ == '__main__':

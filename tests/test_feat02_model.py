@@ -18,7 +18,9 @@ AUDIT_WEEKGAP_EDGES = (1, 2, 3, 5, 9)         # buckets: 0 | 1 | 2 | 3-4 | 5-8 |
 CONTENT = torch.zeros(301, 64)
 SUPPORTED = list(range(1, 200))               # items 200..300 are unsupported
 # side columns a variant is allowed to read: [feedback_mask, timespent, duration, week, place, platform]
-USED_COLUMNS = {'f3': {1, 2}, 'f3_masked': {1, 2}, 'f3_f4_recency': {1, 2, 3}}
+USED_COLUMNS = {'f3': {1, 2}, 'f3_masked': {1, 2}, 'f3_f4_recency': {1, 2, 3}, 'f3_f5_scene': {1, 2, 4, 5}}
+AUDIT_PLACE_VALUES = tuple(range(24))         # train week 00-24 place values (audit: 24 values, 0..23)
+AUDIT_PLATFORM_VALUES = tuple(range(11))      # platform values 0..10
 
 
 def ensure(condition, message='guard failed'):
@@ -44,6 +46,21 @@ def model_inputs(seed=0, batch=6, width=12, items=300):
         side[j, :n, 2] = torch.tensor([[5, 9, 25, 60, 180][k] for k in torch.randint(0, 5, (n,), generator=g).tolist()])
         side[j, :n, 3] = torch.sort(torch.randint(0, 25, (n,), generator=g)).values
     return histories, side
+
+
+def scene_inputs(seed=0, **kwargs):
+    """model_inputs plus place/platform columns: mostly table values, some unseen ones (24+ / 11+), the rest in range."""
+    histories, side = model_inputs(seed, **kwargs); valid = histories != 0
+    g = torch.Generator().manual_seed(seed + 77)
+    place = torch.randint(0, 24, valid.shape, generator=g); platform = torch.randint(0, 11, valid.shape, generator=g)
+    place[0, :3] = torch.tensor([24, 200, 255]); platform[0, :3] = torch.tensor([11, 77, 255])
+    side[..., 4] = torch.where(valid, place, torch.zeros_like(place)); side[..., 5] = torch.where(valid, platform, torch.zeros_like(platform))
+    return histories, side
+
+
+def reference_category_id(value, values):
+    """Independent reference: 2 + index in the table, 1 for a value that is not in it (id 0 is PAD)."""
+    return 2 + list(values).index(value) if value in values else 1
 
 
 def build(feature, seed=42):
@@ -149,6 +166,43 @@ def guard_changing_history_week_changes_feature():
         ensure(not torch.equal(model.users(histories, changed), base), f'changing the week of history event {slot} left the feature unchanged')
 
 
+def guard_f5_formula():
+    from vkgr.retrieval_features import ratio_bucket, timespent_bucket
+    model = build('f3_f5_scene'); histories, side = scene_inputs(); valid = histories != 0
+    place_ids = torch.zeros_like(histories); platform_ids = torch.zeros_like(histories)
+    for j in range(len(histories)):
+        for k in range(int(valid[j].sum())):
+            place_ids[j, k] = reference_category_id(int(side[j, k, 4]), AUDIT_PLACE_VALUES)
+            platform_ids[j, k] = reference_category_id(int(side[j, k, 5]), AUDIT_PLATFORM_VALUES)
+    ensure(bool((place_ids == 1).any()) and bool((platform_ids == 1).any()) and bool((place_ids >= 2).any()), 'fixture must mix table and unseen values')
+    place = model.place_table(place_ids) * (place_ids >= 2).unsqueeze(-1); platform = model.platform_table(platform_ids) * (platform_ids >= 2).unsqueeze(-1)
+    t = model.timespent_bucket(timespent_bucket(side[..., 1], valid)); r = model.ratio_bucket(ratio_bucket(side[..., 1], side[..., 2], valid))
+    expected = (model.items(histories) + t + r + place + platform).sum(1) / valid.sum(1, keepdim=True)
+    ensure(torch.allclose(model.users(histories, side), expected, atol=1e-7, rtol=0), 'F5 is not mean(item + T + R + Place[place] + Platform[platform])')
+
+
+def guard_f5_unseen_value_maps_to_oov_and_contributes_zero():
+    from vkgr.retrieval_feat02 import PLACE_VALUES, PLATFORM_VALUES, category_ids
+    ensure(PLACE_VALUES == AUDIT_PLACE_VALUES and PLATFORM_VALUES == AUDIT_PLATFORM_VALUES, 'value tables not transcribed from the audit')
+    valid = torch.tensor([[1, 1, 1, 1, 1, 0]], dtype=torch.bool)
+    raw = torch.tensor([[0, 23, 24, 200, 255, 0]])
+    ids = category_ids(raw, PLACE_VALUES, valid)[0].tolist()
+    ensure(ids == [2, 25, 1, 1, 1, 0], f'place ids {ids}: table index + 2, unseen -> 1 (OOV), PAD -> 0')
+    ids = category_ids(torch.tensor([[0, 10, 11, 77, 255, 3]]), PLATFORM_VALUES, valid)[0].tolist()
+    ensure(ids == [2, 12, 1, 1, 1, 0], f'platform ids {ids}')
+    model = build('f3_f5_scene'); f3 = build('f3')
+    histories, side = model_inputs(); valid = histories != 0
+    side[..., 4] = torch.where(valid, torch.full_like(side[..., 4], 200), torch.zeros_like(side[..., 4]))
+    side[..., 5] = torch.where(valid, torch.full_like(side[..., 5], 99), torch.zeros_like(side[..., 5]))
+    base = model.users(histories, side)
+    ensure(torch.equal(base, f3.users(histories, side)), 'all-unseen scene must equal the F3 vector exactly')
+    with torch.no_grad():
+        model.place_table.weight[1] = 100.; model.platform_table.weight[1] = -100.      # the OOV rows are inert
+    ensure(torch.equal(model.users(histories, side), base), 'OOV row must contribute exactly zero')
+    loss = model.users(histories, side).sum(); loss.backward()
+    ensure(not bool(model.place_table.weight.grad.any()) and not bool(model.platform_table.weight.grad.any()), 'unseen values must not train any table row')
+
+
 class ScaffoldTests(unittest.TestCase):
     def test_constants_transcribed_from_audit(self):
         from vkgr import retrieval_feat02 as m
@@ -160,7 +214,7 @@ class ScaffoldTests(unittest.TestCase):
     def test_features_are_registered_in_order(self):
         from vkgr.retrieval_feat02 import FEATURES
         self.assertEqual(FEATURES, ('f3', 'f3_masked', 'f3_f4_recency', 'f3_f5_scene', 'f3_f6_author_content')[:len(FEATURES)])
-        self.assertEqual(FEATURES[:3], ('f3', 'f3_masked', 'f3_f4_recency'))
+        self.assertEqual(FEATURES[:4], ('f3', 'f3_masked', 'f3_f4_recency', 'f3_f5_scene'))
 
     def test_bucket_spec_sha256_is_stable_and_sensitive(self):
         from vkgr import retrieval_feat02 as m
@@ -215,14 +269,15 @@ class ScaffoldTests(unittest.TestCase):
                 other = side.clone(); high = 64 if column == 0 else 25 if column == 3 else 256
                 other[..., column] = torch.where(valid, torch.randint(0, high, valid.shape, generator=g), torch.zeros_like(side[..., column]))
                 self.assertTrue(torch.equal(model.users(histories, other), base), (feature, column))
-            perturb = {1: lambda c: 256 - c, 2: lambda c: 256 - c, 3: lambda c: torch.zeros_like(c)}   # keep values in range / monotone
+            perturb = {1: lambda c: 256 - c, 2: lambda c: 256 - c, 3: lambda c: torch.zeros_like(c), 4: lambda c: 255 - c, 5: lambda c: 255 - c}   # keep values in range / monotone
             for column in USED_COLUMNS[feature]:             # control: the columns a variant does use do reach the output
                 other = side.clone(); other[..., column] = torch.where(valid, perturb[column](side[..., column]), torch.zeros_like(side[..., column]))
                 self.assertFalse(torch.equal(model.users(histories, other), base), (feature, column))
 
     def test_param_report_matches_formula(self):
         from vkgr.retrieval_feat02 import FEATURES, expected_param_counts, parameter_report
-        literal = {'f3': (896, 768), 'f3_masked': (896, 768), 'f3_f4_recency': (896 + 960, 768 + 832)}
+        literal = {'f3': (896, 768), 'f3_masked': (896, 768), 'f3_f4_recency': (896 + 960, 768 + 832),
+                   'f3_f5_scene': (896 + 26 * 64 + 13 * 64, 768 + 24 * 64 + 11 * 64)}
         for feature in FEATURES:
             report = parameter_report(build(feature))
             self.assertEqual(report, expected_param_counts(feature), feature)
@@ -250,7 +305,8 @@ class ScaffoldTests(unittest.TestCase):
             pad = side.clone(); slot = (~valid).nonzero()[0]; pad[slot[0], slot[1], 1] = 5
             with self.assertRaises(ValueError):
                 model.users(histories, pad)                                 # PAD slot carries values
-            for column, value in ((0, 64), (1, 0), (1, 256), (2, 0), (2, 256)):
+            extra = ((4, 256), (4, -1), (5, 256), (5, -1)) if feature == 'f3_f5_scene' else ()
+            for column, value in ((0, 64), (1, 0), (1, 256), (2, 0), (2, 256), *extra):
                 bad = side.clone(); bad[..., column] = torch.where(valid, torch.full_like(bad[..., column], value), torch.zeros_like(bad[..., column]))
                 with self.assertRaises(ValueError, msg=(feature, column, value)):
                     model.users(histories, bad)
@@ -345,6 +401,61 @@ class F4RecencyTests(unittest.TestCase):
         self.assertEqual({k: (v['total'], v['trainable']) for k, v in report['by_table'].items()},
                          {'timespent_bucket': (512, 448), 'ratio_bucket': (384, 320), 'position_table': (512, 448), 'weekgap_table': (448, 384)})
         self.assertEqual((report['total'], report['trainable_effective']), (1856, 1600))
+
+
+class F5SceneTests(unittest.TestCase):
+    def test_f5_formula(self):
+        guard_f5_formula()
+
+    def test_f5_unseen_value_maps_to_oov_and_contributes_zero(self):
+        guard_f5_unseen_value_maps_to_oov_and_contributes_zero()
+
+    def test_f5_pad_contributes_zero_and_agent_column_is_not_in_the_side_tensor(self):
+        from vkgr.retrieval_feat02 import SIDE_WIDTH
+        model = build('f3_f5_scene'); histories, side = scene_inputs()
+        self.assertEqual(SIDE_WIDTH, 6)                                  # [mask, timespent, duration, week, place, platform]: no agent column
+        self.assertTrue(bool((histories == 0).any()), 'fixture needs PAD slots')
+        base = model.users(histories, side)
+        with torch.no_grad():
+            model.place_table.weight[0] = 5.; model.platform_table.weight[0] = 5.
+        self.assertTrue(torch.equal(model.users(histories, side), base), 'PAD slots must contribute exactly zero even if the PAD row were non-zero')
+
+    def test_f5_tables_sized_from_hardcoded_values(self):
+        from vkgr import retrieval_feat02 as m
+        model = build('f3_f5_scene')
+        self.assertEqual(tuple(model.place_table.weight.shape), (len(AUDIT_PLACE_VALUES) + 2, 64))
+        self.assertEqual(tuple(model.platform_table.weight.shape), (len(AUDIT_PLATFORM_VALUES) + 2, 64))
+        self.assertEqual((m.PLACE_VALUES, m.PLATFORM_VALUES), (AUDIT_PLACE_VALUES, AUDIT_PLATFORM_VALUES))
+        self.assertTrue(torch.all(model.place_table.weight[0] == 0) and torch.all(model.platform_table.weight[0] == 0))
+        self.assertEqual(model.place_table.padding_idx, 0)
+        first = m.bucket_spec_sha256()
+        with mock.patch.object(m, 'PLACE_VALUES', tuple(range(30))):
+            self.assertNotEqual(m.bucket_spec_sha256(), first)
+            self.assertEqual(tuple(build('f3_f5_scene').place_table.weight.shape), (32, 64))     # sized from the constant, not a literal
+        with mock.patch.object(m, 'PLATFORM_VALUES', tuple(range(12))):
+            self.assertNotEqual(m.bucket_spec_sha256(), first)
+            self.assertEqual(tuple(build('f3_f5_scene').platform_table.weight.shape), (14, 64))
+
+    def test_f5_param_count(self):
+        from vkgr.retrieval_feat02 import expected_param_counts, parameter_report
+        report = parameter_report(build('f3_f5_scene'))
+        self.assertEqual({k: (v['total'], v['trainable']) for k, v in report['by_table'].items()},
+                         {'timespent_bucket': (512, 448), 'ratio_bucket': (384, 320), 'place_table': (26 * 64, 24 * 64), 'platform_table': (13 * 64, 11 * 64)})
+        own = report['by_table']['place_table']['total'] + report['by_table']['platform_table']['total']
+        self.assertEqual(own, (len(AUDIT_PLACE_VALUES) + 2) * 64 + (len(AUDIT_PLATFORM_VALUES) + 2) * 64)
+        self.assertEqual((report['total'], report['trainable_effective']), (896 + 2496, 768 + 2240))
+        self.assertEqual(report, expected_param_counts('f3_f5_scene'))
+
+    def test_f5_leaves_f3_and_anchor_draws_untouched(self):
+        f3, f5 = build('f3'), build('f3_f5_scene')
+        for name in ('embedding.weight', 'timespent_bucket.weight', 'ratio_bucket.weight'):
+            self.assertTrue(torch.equal(dict(f5.named_parameters())[name], dict(f3.named_parameters())[name]), name)
+
+    def test_f5_category_ids_cover_every_uint8_value(self):
+        from vkgr.retrieval_feat02 import PLACE_VALUES, PLATFORM_VALUES, category_ids
+        valid = torch.ones(1, 256, dtype=torch.bool); raw = torch.arange(256).unsqueeze(0)
+        for values in (PLACE_VALUES, PLATFORM_VALUES):
+            self.assertEqual(category_ids(raw, values, valid)[0].tolist(), [reference_category_id(v, values) for v in range(256)])
 
 
 if __name__ == '__main__':
