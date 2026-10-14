@@ -158,6 +158,38 @@ class EntryTests(unittest.TestCase):
                     ba.run(*common, arch_config(**overrides), Path(tmp) / f'out-{label[:2]}', temporary=Path(tmp) / f's-{label[:2]}')
                 self.assertFalse((Path(tmp) / f'out-{label[:2]}').exists())
 
+    def test_r8_cli_train_with_batched_b1_then_serial_verify_end_to_end(self):
+        """The deployed path: `main(['train', ...])` under VKGR_DECODE=batched/1, then `main(['verify', ...])` with no VKGR_DECODE."""
+        import contextlib
+        import io
+        import os
+        from unittest import mock
+        from vkgr import generative_b1_arch as ba
+        from vkgr.data_audit import file_sha256
+        with tmpdir() as tmp:
+            _, receipt, manifest, sha = engineering_world(tmp)
+            config_path = Path(tmp) / 'cfg.json'
+            config_path.write_text(json.dumps(arch_config(), indent=1, sort_keys=True) + '\n')
+            common = ['--prepared', str(receipt['manifest_path']), '--prepared-sha', receipt['manifest_sha256'], '--history-manifest', str(manifest), '--history-sha', sha]
+
+            def cli(args, env):
+                clean = {k: v for k, v in os.environ.items() if not k.startswith('VKGR_')}
+                clean.update(env)
+                out, err = io.StringIO(), io.StringIO()
+                with mock.patch.dict(os.environ, clean, clear=True), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = ba.main(args)
+                return code, out.getvalue(), err.getvalue()
+            code, out, err = cli(['train', *common, '--config', str(config_path), '--config-sha', file_sha256(config_path), '--output', f'{tmp}/run', '--scratch', f'{tmp}/s1'],
+                                 {'VKGR_DECODE': 'batched', 'VKGR_DECODE_BATCH': '1'})
+            self.assertEqual(code, 0, err)
+            trained = json.loads(out.strip().splitlines()[-1])
+            self.assertEqual(trained['status'], 'complete')
+            manifest_value = json.loads((Path(tmp) / 'run' / 'manifest.json').read_text())
+            self.assertTrue(all(e['observations']['execution']['decode'] == 'batched' for e in manifest_value['epochs']))
+            code, out, err = cli(['verify', *common, '--manifest', f'{tmp}/run/manifest.json', '--manifest-sha', trained['manifest_sha256'], '--output', f'{tmp}/v', '--scratch', f'{tmp}/s2'], {})
+            self.assertEqual(code, 0, err)
+            self.assertEqual(json.loads(out.strip().splitlines()[-1])['status'], 'verified')
+
     def test_r6_committed_configs_are_the_two_registered_runs(self):
         from vkgr import generative_arch as ga
         from vkgr import generative_data as gd
