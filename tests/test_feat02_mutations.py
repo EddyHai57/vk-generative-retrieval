@@ -56,7 +56,12 @@ class MutationTests(unittest.TestCase):
             rank = (valid.long().cumsum(1) - 1).clamp_min(0)
             edges = torch.tensor(m.POSITION_EDGES, dtype=rank.dtype)
             return (torch.bucketize(rank.contiguous(), edges, right=True) + 1) * valid
-        detected(self, m, 'position_bucket', from_start, [tm.guard_position_bucket_boundaries, tm.guard_f4_formula])
+        detected(self, m, 'position_bucket', from_start, [tm.guard_position_bucket_boundaries])
+        # Mean pooling is permutation invariant: counting from the start yields the same multiset of position buckets as
+        # counting from the end, so the pooled user vector (and the formula guard) cannot tell them apart (plan risk R4).
+        # Only the per-slot boundary guard can; this documents why it is the named guard for M4.
+        with mock.patch.object(m, 'position_bucket', from_start):
+            tm.guard_f4_formula()
 
     def test_m5_week_gap_table_removed(self):
         from vkgr import retrieval_feat02 as m
