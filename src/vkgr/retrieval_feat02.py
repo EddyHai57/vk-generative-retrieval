@@ -4,6 +4,7 @@
   f3             equivalence control for the FEAT-01 F3 model (tests only, never submitted)
   f3_masked      F3 whose two bucket embeddings are added on *supported* history events only (not counted against the quota)
   f3_f4_recency  F3 + P[position-from-last bucket] + G[week-gap bucket], both anchored on the LAST history event
+  f3_f5_scene    F3 + Place[place id] + Platform[platform id] of each history event's own row (agent excluded)
 Side tensor per history slot: [feedback_mask, timespent, duration, week, place, platform]; PAD slots are all zero.
 A variant reads only its own columns; the others cannot change its output.
 Bucket edges are train-only audit constants (scripts/feat02_audit_constants.py, pre-registered grids + 2% merge rule).
@@ -17,18 +18,22 @@ from .retrieval_features import RATIO_BUCKETS, TIMESPENT_BUCKETS, TIMESPENT_EDGE
 from .retrieval_hp import embedding_report, init_embeddings
 from .retrieval_models import TwoTower
 
-FEATURES = ('f3', 'f3_masked', 'f3_f4_recency')
+FEATURES = ('f3', 'f3_masked', 'f3_f4_recency', 'f3_f5_scene')
 SIDE_WIDTH = 6
 EMBEDDING_DIM = 64
 MAX_WEEK = 24                                  # history events come from train weeks 0..24; validation queries have target week 25
 POSITION_EDGES = (1, 2, 4, 8, 16, 32)          # back index 0 | 1 | 2-3 | 4-7 | 8-15 | 16-31 | 32-49 (0 = most recent event)
 WEEKGAP_EDGES = (1, 2, 3, 5, 9)                # week(last event) - week: 0 | 1 | 2 | 3-4 | 5-8 | 9-24 (17+ merged: 1.94% < 2%)
+PLACE_VALUES = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)   # train weeks 00-24, ascending
+PLATFORM_VALUES = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+INERT_ROWS = {'place_table': 2, 'platform_table': 2}   # PAD + OOV rows contribute exactly zero; every other table has only PAD
 
 
 def bucket_spec_sha256():
     """Digest of every hard-coded bucket constant; stored in the run binding so a changed constant breaks verify."""
     spec = {'timespent_edges': list(TIMESPENT_EDGES), 'ratio_buckets': RATIO_BUCKETS, 'position_edges': list(POSITION_EDGES),
-            'weekgap_edges': list(WEEKGAP_EDGES), 'max_week': MAX_WEEK}
+            'weekgap_edges': list(WEEKGAP_EDGES), 'max_week': MAX_WEEK,
+            'place_values': list(PLACE_VALUES), 'platform_values': list(PLATFORM_VALUES)}
     return hashlib.sha256(json.dumps(spec, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
@@ -57,6 +62,18 @@ def weekgap_bucket(gap, valid):
     return (torch.bucketize(gap.contiguous(), edges, right=True) + 1) * valid
 
 
+def scene_columns(side):
+    """Raw (place, platform) columns of the 6-column side tensor."""
+    return side[..., 4], side[..., 5]
+
+
+def category_ids(raw, table, valid):
+    """Id of a raw uint8 value: 0 = PAD slot, 1 = value not in the train-defined ``table`` (OOV), else table index + 2."""
+    lookup = torch.ones(256, dtype=torch.long, device=raw.device)
+    lookup[torch.tensor(table, dtype=torch.long, device=raw.device)] = torch.arange(len(table), dtype=torch.long, device=raw.device) + 2
+    return lookup[raw.clamp(0, 255)] * valid
+
+
 class Feat02IDMean(TwoTower):
     def __init__(self, feature, content, supported_indices, max_len):
         super().__init__('id_mean', content, supported_indices)
@@ -76,6 +93,10 @@ class Feat02IDMean(TwoTower):
             self.position_table = torch.nn.Embedding(len(POSITION_EDGES) + 2, EMBEDDING_DIM, padding_idx=0)
             self.weekgap_table = torch.nn.Embedding(len(WEEKGAP_EDGES) + 2, EMBEDDING_DIM, padding_idx=0)
             return ('position_table', 'weekgap_table')
+        if self.feature == 'f3_f5_scene':
+            self.place_table = torch.nn.Embedding(len(PLACE_VALUES) + 2, EMBEDDING_DIM, padding_idx=0)
+            self.platform_table = torch.nn.Embedding(len(PLATFORM_VALUES) + 2, EMBEDDING_DIM, padding_idx=0)
+            return ('place_table', 'platform_table')
         return ()
 
     def _check(self, histories, side):
@@ -95,6 +116,10 @@ class Feat02IDMean(TwoTower):
                 raise ValueError('history week outside train weeks 0..24')
             if torch.any(valid & (week != torch.cummax(week.masked_fill(~valid, -1), 1).values)):
                 raise ValueError('history weeks must be non-decreasing')
+        if self.feature == 'f3_f5_scene':
+            for column in scene_columns(side):
+                if torch.any((column[valid] < 0) | (column[valid] > 255)):
+                    raise ValueError('place/platform outside uint8 [0,255]')
         return valid
 
     def users(self, histories, side=None):
@@ -109,6 +134,10 @@ class Feat02IDMean(TwoTower):
         if self.feature == 'f3_f4_recency':
             gap = week_gap(side[..., 3], valid)
             encoded = encoded + self.position_table(position_bucket(valid)) + self.weekgap_table(weekgap_bucket(gap, valid))
+        if self.feature == 'f3_f5_scene':
+            place, platform = scene_columns(side)
+            place_ids, platform_ids = category_ids(place, PLACE_VALUES, valid), category_ids(platform, PLATFORM_VALUES, valid)
+            encoded = encoded + self.place_table(place_ids) * (place_ids >= 2).unsqueeze(-1) + self.platform_table(platform_ids) * (platform_ids >= 2).unsqueeze(-1)
         return encoded.sum(1) / valid.sum(1, keepdim=True)
 
 
@@ -136,12 +165,12 @@ def make_feat02_model(feature, content, supported_indices, max_len):
 
 
 def _report(rows):
-    by_table = {name: {'total': n * EMBEDDING_DIM, 'trainable': (n - 1) * EMBEDDING_DIM} for name, n in rows.items()}
+    by_table = {name: {'total': n * EMBEDDING_DIM, 'trainable': (n - INERT_ROWS.get(name, 1)) * EMBEDDING_DIM} for name, n in rows.items()}
     return {'total': sum(v['total'] for v in by_table.values()), 'trainable_effective': sum(v['trainable'] for v in by_table.values()), 'by_table': by_table}
 
 
 def parameter_report(model):
-    """Parameters added on top of the item embedding. 'trainable' = total minus the rows fixed at zero (PAD).
+    """Parameters added on top of the item embedding. 'trainable' = total minus the rows fixed at zero (PAD; F5 tables also OOV).
     F3 convention: 896 total / 768 trainable (T + R); a variant's own tables are the by_table entries after those two."""
     rows = {name: module.weight.shape[0] for name, module in model.named_modules()
             if isinstance(module, torch.nn.Embedding) and name != 'embedding'}
@@ -155,4 +184,6 @@ def expected_param_counts(feature):
     rows = {'timespent_bucket': TIMESPENT_BUCKETS + 1, 'ratio_bucket': RATIO_BUCKETS + 1}
     if feature == 'f3_f4_recency':
         rows.update(position_table=len(POSITION_EDGES) + 2, weekgap_table=len(WEEKGAP_EDGES) + 2)
+    if feature == 'f3_f5_scene':
+        rows.update(place_table=len(PLACE_VALUES) + 2, platform_table=len(PLATFORM_VALUES) + 2)
     return _report(rows)

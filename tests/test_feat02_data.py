@@ -185,7 +185,7 @@ class CtxSidecarTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 history_ctx.build_ctx(partitions + [(25, partitions[0][1])], hist)
             with self.assertRaises(ValueError):
-                history_ctx.build_ctx(partitions + [(3, partitions[0][1])], hist)         # weeks must strictly increase
+                history_ctx.build_ctx(partitions + [(2, partitions[0][1])], hist)         # weeks must strictly increase
 
     def test_ctx_week_spread_up_to_24(self):
         """Real week range: 25 train weeks are accepted and the sidecar covers events from the last week too."""

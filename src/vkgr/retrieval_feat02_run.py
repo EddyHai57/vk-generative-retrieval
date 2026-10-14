@@ -1,4 +1,4 @@
-"""FEAT-02 P runner: id_mean + the F3 anchor + one more variable (F3-masked / F4 recency) over HIST_V2_SIDE_V1.
+"""FEAT-02 P runner: id_mean + the F3 anchor + one more variable (F3-masked / F4 recency / F5 scene) over HIST_V2_SIDE_V1.
 
 New version only: ``retrieval_b1_run`` (Batch1) and ``retrieval_feat01_run`` are imported and reused, never modified.
 Config schema ``p-feat02-run-v1`` has the field set of ``p-feat01-run-v1``; only schema, task_id and the ``feature``
@@ -15,9 +15,11 @@ import time
 from pathlib import Path
 
 from . import retrieval_b1_run as b1
+from . import history_ctx as hc
 from . import retrieval_feat01_run as f1
 from .data_audit import file_sha256
 from .history_side import SIDE_VERSION
+from .history_v2 import load_prepared
 from .retrieval_ablation_run import read_pinned, strict_json
 from .retrieval_feat02 import FEATURES, MAX_WEEK, SIDE_WIDTH, bucket_spec_sha256, make_feat02_model, parameter_report
 
@@ -66,16 +68,29 @@ def synthetic_data(seed=11):
         pos = positions(r['history'], span=j == 0)
         rows.append({**r, 'history_positions': pos, 'target_position': [rng.randrange(pos[-1][0], MAX_WEEK + 1), len(pos)]})
     queries = [{**q, 'history_positions': positions(q['history'])} for q in data['queries']]
+    ctx_rng = random.Random(seed + 3)
+
+    def scene(history):
+        """[place, platform] per event; about one in ten uses a value outside the train tables (OOV path)."""
+        return [[ctx_rng.randrange(24) if ctx_rng.random() > .1 else 200, ctx_rng.randrange(11) if ctx_rng.random() > .1 else 99] for _ in history]
+    rows = [{**r, 'ctx': scene(r['history'])} for r in rows]
+    queries = [{**q, 'ctx': scene(q['history'])} for q in queries]
     return {**data, 'rows': rows, 'queries': queries}
 
 
-_view = f1._view     # cuts history, history_positions and side to the last ``length`` events
+def _view(data, length):
+    """FEAT-01 view (history, history_positions, side) plus the scene ctx cut to the last ``length`` events."""
+    def cut(r):
+        return {**r, 'ctx': r['ctx'][-length:]} if 'ctx' in r else r
+    rows, queries = f1._view(data, length)
+    return [cut(r) for r in rows], [cut(q) for q in queries]
 
 
 def _tensors2(batch, idmap, width, feature):
     """Padded history ids and the 6-column side tensor [feedback_mask, timespent, duration, week, place, platform].
 
-    Only the history events' own fields are read; the week column is filled for the recency variant only.
+    Only the history events' own fields are read; the week column is filled for the recency variant only and
+    the place/platform columns for the scene variant only.
     """
     import torch
     histories = torch.zeros(len(batch), width, dtype=torch.long)
@@ -91,6 +106,11 @@ def _tensors2(batch, idmap, width, feature):
             if len(weeks) != n or any(type(w) is not int for w in weeks):
                 raise ValueError('history weeks misaligned or not integers')
             side[j, :n, 3] = torch.tensor(weeks, dtype=torch.long)
+        if feature == 'f3_f5_scene':
+            ctx = r.get('ctx')
+            if ctx is None or len(ctx) != n or any(len(c) != 2 or any(type(v) is not int for v in c) for c in ctx):
+                raise ValueError('scene ctx missing, misaligned or not integers')
+            side[j, :n, 4:6] = torch.tensor(ctx, dtype=torch.long)
     return histories, side
 
 
@@ -186,6 +206,8 @@ def binding_for2(data, config, rows, queries, model, device, inputs_binding):
                'bucket_spec_sha256': bucket_spec_sha256(), 'param_report': parameter_report(model)}
     if config['feature'] == 'f3_f4_recency':
         binding['weeks_sha256'] = b1._digest([[p[0] for p in r['history_positions']] for r in rows + queries])
+    if config['feature'] == 'f3_f5_scene':
+        binding['ctx_sha256'] = b1._digest([r['ctx'] for r in rows] + [q['ctx'] for q in queries])
     return binding
 
 
@@ -358,8 +380,16 @@ def validate_inputs(value, feature=None):
 
 
 def apply_feat02(data, spec, length):
-    """Overlay pinned history-v2 and the FEAT-01 side sidecar (week comes from history_positions, no new data)."""
-    return f1.apply_side(data, spec, length)
+    """Overlay pinned history-v2 and the FEAT-01 side sidecar (week comes from history_positions); with a ctx pin
+    also the HIST_V2_CTX_V1 sidecar (place/platform per history event), bound by its manifest sha."""
+    data, binding = f1.apply_side(data, spec, length)
+    if spec['ctx_manifest'] is None:
+        return data, binding
+    history = load_prepared(spec['history_manifest'], spec['history_sha256'], length)
+    ctx = hc.load_ctx(spec['ctx_manifest'], spec['ctx_sha256'], spec['history_sha256'], length, history)
+    data = {**data, 'rows': [{**r, 'ctx': c} for r, c in zip(data['rows'], ctx['train'])],
+            'queries': [{**q, 'ctx': c} for q, c in zip(data['queries'], ctx['validation'])]}
+    return data, {**binding, 'ctx_manifest_sha256': spec['ctx_sha256']}
 
 
 def main(argv=None):
@@ -370,11 +400,16 @@ def main(argv=None):
     for name in ('train', 'verify'):
         p = sub.add_parser(name); p.add_argument('--inputs', required=True); p.add_argument('--inputs-sha', required=True)
         p.add_argument('--config', required=True); p.add_argument('--config-sha', required=True); p.add_argument('--output'); p.add_argument('--manifest'); p.add_argument('--manifest-sha')
+    for name in ('prepare-ctx', 'verify-ctx'):
+        p = sub.add_parser(name); p.add_argument('--inputs', required=True); p.add_argument('--inputs-sha', required=True)
+        p.add_argument('--output'); p.add_argument('--manifest'); p.add_argument('--manifest-sha')
     args = parser.parse_args(argv)
     try:
         if args.command == 'synthetic-train':
             value = run_session(args.output, synthetic_data(), strict_json(Path(args.config).read_text()))
             print(json.dumps({'status': value['status'], 'manifest_sha256': value['manifest_sha256']})); return 0
+        if args.command in ('prepare-ctx', 'verify-ctx'):
+            return _ctx_command(args, validate_inputs(read_pinned(args.inputs, args.inputs_sha)))
         config = read_pinned(args.config, args.config_sha); validate_config(config)
         spec = validate_inputs(read_pinned(args.inputs, args.inputs_sha), config['feature'])
         import torch
@@ -391,6 +426,21 @@ def main(argv=None):
         print(json.dumps(verify_run(args.manifest, args.manifest_sha, data, config, 'cuda', check, inputs_binding))); return 0
     except (ValueError, KeyError, TypeError, OSError, RuntimeError) as exc:
         print(f'ERROR P-FEAT02 gate failed: {type(exc).__name__}: {exc}', file=sys.stderr); return 2
+
+
+def _ctx_command(args, spec):
+    """prepare-ctx writes HIST_V2_CTX_V1 from the raw train partitions; verify-ctx rebuilds it from raw and compares value by value."""
+    data, partitions, binding = b1.real_inputs(spec, with_partitions=True)
+    binding = {**binding, 'consumer': b1.source_identity(), 'inputs_sha256': args.inputs_sha}
+    if args.command == 'prepare-ctx':
+        receipt = hc.write_ctx(Path(args.output), spec['history_manifest'], spec['history_sha256'], partitions(), binding)
+        print(json.dumps({'status': 'ctx_prepared', 'manifest_sha256': receipt['manifest_sha256']})); return 0
+    history = load_prepared(spec['history_manifest'], spec['history_sha256'], 100)
+    rebuilt = hc.build_ctx(partitions(), history)
+    loaded = hc.load_ctx(args.manifest, args.manifest_sha, spec['history_sha256'], 100, history)
+    if loaded['train'] != rebuilt['train'] or loaded['validation'] != rebuilt['validation']:
+        raise ValueError('raw ctx replay mismatch')
+    print(json.dumps({'status': 'ctx_verified'})); return 0
 
 
 if __name__ == '__main__':

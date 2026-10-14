@@ -319,7 +319,7 @@ class Feat02RunTests(unittest.TestCase):
                 ctx_sha = file_sha256(tmp / 'ctx' / 'manifest.json')
                 manifest = json.loads((tmp / 'ctx' / 'manifest.json').read_text())
                 self.assertEqual((manifest['ctx_version'], manifest['fields'], manifest['history_manifest_sha256']), ('HIST_V2_CTX_V1', ['place', 'platform'], h2['manifest_sha256']))
-                self.assertEqual(manifest['binding']['inputs_sha256'], 'a' * 64)
+                self.assertEqual(manifest['binding']['inputs_sha256'], file_sha256(tmp / 'inputs.json'))
                 args = ['--inputs', str(tmp / 'inputs.json'), '--inputs-sha', file_sha256(tmp / 'inputs.json'), '--manifest', str(tmp / 'ctx' / 'manifest.json'), '--manifest-sha', ctx_sha]
                 out = io.StringIO()
                 with contextlib.redirect_stdout(out):
