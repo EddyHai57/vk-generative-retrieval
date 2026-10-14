@@ -6,6 +6,7 @@ needs ``discover -s tests``). Classes marked "server-safe" do not touch the G1 e
 import copy
 import hashlib
 import itertools
+import math
 import random
 import subprocess
 import tempfile
@@ -527,6 +528,157 @@ class SideDataTests(unittest.TestCase):
             self.assertEqual(attached.binding['queries_sha256'], ctx.binding['queries_sha256'])
             self.assertEqual(attached.examples.rows([0]), ctx.examples.rows([0]))
             self.assertIs(attached.codec, ctx.codec)
+
+
+def flip_outcomes(raw):
+    """Change every outcome field of a raw interaction row (what a leaking feature could read)."""
+    raw.update(timespent=255 if raw['timespent'] != 255 else 1, like=not raw['like'], **{n: not raw[n] for n in EXTRA_FEEDBACK})
+
+
+class TrainStepTests(unittest.TestCase):
+    """Local harness only (engineering world rows). One world per class: every test below only reads it."""
+
+    @classmethod
+    def setUpClass(cls):
+        from vkgr import generative_feat as gf
+        cls._tmp = tmpdir(); cls.addClassCleanup(cls._tmp.cleanup)
+        cls.world = side_world(cls._tmp.name)
+        cls.loaded, cls.ctx = v2_context(cls.world)
+        cls.pack = gf.load_side_pack(cls.world.side_manifest, cls.world.side_sha, cls.world.hist_sha, cls.loaded, cls.ctx, 50)
+        cls.rows = cls.ctx.examples.rows(list(range(len(cls.ctx.examples))))
+
+    def start(self, feature, seed=42):
+        from vkgr import generative_feat as gf
+        from vkgr import generative_training as gt
+        from vkgr.generative_hp import core_config
+        cfg = feat_config(feature); torch.manual_seed(seed)
+        model = gf.make_model_feat(self.ctx.codec, cfg, device='cpu')
+        return cfg, model, gt.make_optimizer(model, core_config(cfg)), gf.SIDTokensSide(self.ctx.codec, 50, self.pack)
+
+    def pack_from(self, partitions):
+        """Rebuild the sidecar from (possibly mutated) raw rows with the shared P producer and wrap it like the real loader does."""
+        from vkgr import generative_feat as gf
+        from vkgr import history_side, history_v2
+        w = self.world
+        side = history_side.build_side(partitions, history_v2.load_prepared(w.hist_manifest, w.hist_sha, 100), w.durations)
+        return gf.build_side_pack({split: [r[-50:] for r in rows] for split, rows in side.items()}, self.loaded, self.ctx, w.hist_sha, w.side_sha)
+
+    def test_side_tables_get_gradients_and_pad_rows_stay_zero(self):
+        from vkgr import generative_feat as gf
+        from vkgr import generative_training as gt
+        from vkgr.generative_data import sid_targets
+        for feature in ('f2_feedback', 'f3_watch_buckets'):
+            with self.subTest(feature=feature):
+                cfg, model, optimizer, tokens = self.start(feature)
+                tables = [getattr(model, n) for n in ('feedback', 'timespent_bucket', 'ratio_bucket') if hasattr(model, n)]
+                self.assertEqual(len(tables), 1 if feature == 'f2_feedback' else 2)
+                in_optimizer = {id(p) for g in optimizer.param_groups for p in g['params']}
+                self.assertTrue(all(id(t.weight) in in_optimizer for t in tables))
+                source, decoder, labels = sid_targets(self.rows, self.ctx.codec)
+                gt.full_vocab_ce(model(source, decoder, tokens.train_side(self.rows)), labels).backward()
+                for t in tables:  # the side tables really sit on the loss path; PAD rows never receive a gradient
+                    self.assertGreater(float(t.weight.grad.abs().sum()), 0.0)
+                    if t.padding_idx is not None:
+                        self.assertEqual(float(t.weight.grad[t.padding_idx].abs().sum()), 0.0)
+                model.zero_grad(set_to_none=True)
+                before = [t.weight.detach().clone() for t in tables]
+                result = gf.train_batch_feat(model, optimizer, self.rows, self.ctx, tokens, cfg, 'cpu')
+                self.assertEqual((result.examples, result.optimizer_steps), (len(self.rows), 1))
+                self.assertEqual(result.microbatch_sizes, (2,) * (len(self.rows) // 2) + ((len(self.rows) % 2,) if len(self.rows) % 2 else ()))
+                self.assertTrue(math.isfinite(result.loss_mean))
+                for t, old in zip(tables, before):
+                    self.assertFalse(torch.equal(t.weight, old))
+                    if t.padding_idx is not None:
+                        self.assertTrue(torch.equal(t.weight[t.padding_idx], torch.zeros(t.weight.shape[1])))
+
+    def test_side_tokenizer_layout(self):
+        from vkgr.generative_data import sid_targets
+        _, _, _, tokens = self.start('f2_feedback')
+        source, _, _ = sid_targets(self.rows, self.ctx.codec); side = tokens.train_side(self.rows)
+        self.assertEqual((side.dtype, side.shape[0], side.shape[2]), (torch.long, len(self.rows), 3))
+        self.assertEqual(source.shape[1], 4 * side.shape[1])
+        for b, row in enumerate(self.rows):
+            n = len(row['history'])
+            for k, item in enumerate(row['history']):
+                self.assertEqual(source[b, 4 * k:4 * k + 4].tolist(), self.ctx.codec.item(item))
+                self.assertEqual(side[b, k].tolist(), list(self.pack.train[row['example_id']][k]))
+            self.assertTrue(bool((source[b, 4 * n:] == 0).all()) and bool((side[b, n:] == 0).all()))  # right-padded together
+        self.assertGreater(len({tuple(map(tuple, self.pack.train[r['example_id']])) for r in self.rows}), 1)  # rows really differ
+        self.assertEqual(tokens.history(self.rows[0]['history']), self.ctx.codec.history(self.rows[0]['history']))  # plain SIDTokensL behaviour kept
+
+    def test_zero_frozen_side_steps_equal_anchor_steps(self):
+        """With the side tables zero and frozen, f2/f3 training IS the anchor training: same loss, same weights, bit for bit."""
+        from vkgr import generative_feat as gf
+        from vkgr import generative_training as gt
+        from vkgr.generative_hp import core_config, make_model_b1
+        for feature in ('f2_feedback', 'f3_watch_buckets'):
+            with self.subTest(feature=feature):
+                cfg, model, _, tokens = self.start(feature)
+                for name in ('feedback', 'timespent_bucket', 'ratio_bucket'):
+                    table = getattr(model, name, None)
+                    if table is not None:
+                        with torch.no_grad():
+                            table.weight.zero_()
+                        table.weight.requires_grad_(False)
+                optimizer = gt.make_optimizer(model, core_config(cfg))
+                none_cfg = feat_config('none'); torch.manual_seed(42)
+                plain = make_model_b1(self.ctx.codec, none_cfg, device='cpu'); plain_optimizer = gt.make_optimizer(plain, core_config(none_cfg))
+                for rows in (self.rows, self.rows[:-1], self.rows[1:]):
+                    got = gf.train_batch_feat(model, optimizer, rows, self.ctx, tokens, cfg, 'cpu')
+                    want = gt.train_effective_batch(plain, plain_optimizer, rows, self.ctx.codec, microbatch=cfg['microbatch'], device='cpu')
+                    self.assertEqual(got, want)
+                    state = model.state_dict()
+                    for name, value in plain.state_dict().items():
+                        self.assertTrue(torch.equal(value, state[name]), name)
+
+    def test_encoder_input_independent_of_target_row_fields(self):
+        """Anti-leakage (model layer): the raw target row and every later row of the user are flipped, the sidecar is REBUILT from the
+        flipped rows, and that example's encoder memory and training loss stay bit-identical. Reverse control: a past event changes both."""
+        import copy
+        from vkgr import generative_feat as gf
+        from vkgr import generative_training as gt
+        from vkgr.generative_data import sid_targets
+        from vkgr.generative_hp import core_config
+        self.assertEqual(self.pack_from(self.world.partitions).train, self.pack.train)  # the rebuild helper reproduces the real pack
+        codec = self.ctx.codec
+        def measure(feature, cfg, model, pack, row):
+            tokens = gf.SIDTokensSide(codec, 50, pack)
+            memory = model.encode(sid_targets([row], codec)[0], tokens.train_side([row]))[0].detach()
+            clone = copy.deepcopy(model)
+            loss = gf.train_batch_feat(clone, gt.make_optimizer(clone, core_config(cfg)), [row], self.ctx, tokens, cfg, 'cpu').loss_mean
+            return memory, loss
+        for feature in ('f2_feedback', 'f3_watch_buckets'):
+            cfg, model, _, _ = self.start(feature)
+            for e in self.world.examples:
+                row = self.rows[e['example_id']]; week, ordinal = e['target_position']
+                mutated = copy.deepcopy(self.world.partitions)
+                for wk, part in mutated:
+                    for k, raw in enumerate(part):
+                        if raw['user_id'] == e['user_id'] and (wk, k) >= (week, ordinal):
+                            flip_outcomes(raw)
+                (m1, l1), (m2, l2) = measure(feature, cfg, model, self.pack, row), measure(feature, cfg, model, self.pack_from(mutated), row)
+                with self.subTest(feature=feature, example=e['example_id']):
+                    self.assertTrue(torch.equal(m1, m2)); self.assertEqual(l1, l2)
+            e = next(x for x in self.world.examples if len(self.loaded['train'][x['example_id']]['history_positions']) >= 2)
+            row = self.rows[e['example_id']]; week, ordinal = self.loaded['train'][e['example_id']]['history_positions'][-1]
+            mutated = copy.deepcopy(self.world.partitions); flip_outcomes(dict(mutated)[week][ordinal])
+            (m1, l1), (m3, l3) = measure(feature, cfg, model, self.pack, row), measure(feature, cfg, model, self.pack_from(mutated), row)
+            with self.subTest(feature=feature, control='past event'):
+                self.assertFalse(torch.equal(m1, m3)); self.assertNotEqual(l1, l3)
+
+    def test_train_rows_misaligned_side_rejected(self):
+        from vkgr import generative_feat as gf
+        cfg, model, optimizer, tokens = self.start('f2_feedback')
+        row = next(r for r in self.rows if len(r['history']) > 1)
+        cases = {'history shorter than its side row': {**row, 'history': row['history'][:-1]},
+                 'missing example_id': {k: v for k, v in row.items() if k != 'example_id'},
+                 'example_id past the pack': {**row, 'example_id': len(self.pack.train)},
+                 'bool example_id': {**row, 'example_id': True}}
+        before = {k: v.clone() for k, v in model.state_dict().items()}
+        for name, bad in cases.items():
+            with self.subTest(case=name), self.assertRaises(ValueError):
+                gf.train_batch_feat(model, optimizer, [bad], self.ctx, tokens, cfg, 'cpu')
+        self.assertTrue(all(torch.equal(v, before[k]) for k, v in model.state_dict().items()))  # a rejected batch never updates anything
 
 
 if __name__ == '__main__':
