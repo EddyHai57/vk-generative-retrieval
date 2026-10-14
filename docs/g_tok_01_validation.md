@@ -88,6 +88,19 @@ python -m vkgr.sid_tok_run compare --bundle <T1 manifest> --sha <SHA> [--bundle 
     --catalog <CATALOG> --catalog-sha <SHA> --output <OUT>
 ```
 
+G 训练入口（命令里的路径与 sha 全部是占位符；bundle 的 sha 不写进 config，走命令行）：
+```
+python -m vkgr.generative_tok_run train --prepared <PREPARED> --prepared-sha <SHA> \
+    --history-manifest <HISTORY> --history-sha <SHA> --sid-manifest <OUT>/run_manifest.json --sid-sha <SHA> \
+    --content <CONTENT> --content-sha <SHA> --config <G_CONFIG> --config-sha <SHA> \
+    --output <RUN_OUT> --scratch <RUN_SCRATCH>
+python -m vkgr.generative_tok_run verify --prepared <PREPARED> --prepared-sha <SHA> \
+    --history-manifest <HISTORY> --history-sha <SHA> --sid-manifest <OUT>/run_manifest.json --sid-sha <SHA> \
+    --content <CONTENT> --content-sha <SHA> --manifest <RUN_OUT>/manifest.json --manifest-sha <SHA> \
+    --output <VERIFY_OUT> --scratch <VERIFY_SCRATCH>
+```
+执行顺序固定为：拟合（fit）→ 审计（门禁与 `verify`、`compare`）→ 训练（train）→ 逐条解码复核（verify）。只有通过全部硬门禁的 tokenizer 才提交训练；失败的只记录，不重拟合。三个冻结点：F-A 预注册追加进冻结卡并通过冻结检查（任何拟合之前）；F-B 代码评审通过后冻结；F-C 某 tokenizer 拟合并审计通过后，其 bundle 的 `run_manifest.json` sha 钉进训练提交，此后不再重拟合。训练可用批量解码入口（环境变量 `VKGR_DECODE=batched`、`VKGR_DECODE_BATCH=1`，仅历史长度不超过 50）；verify 一律用逐条解码。
+
 退出码：0 成功；1 参数、输入或校验错误（此时没有任何输出目录）；3 门禁失败（输出目录里只有 `failure.json`）。`<OUT>` 必须是不存在的新目录。
 
 ### 7. UNKNOWN 清单
@@ -96,7 +109,7 @@ python -m vkgr.sid_tok_run compare --bundle <T1 manifest> --sha <SHA> [--bundle 
 
 ### 8. 机器可读预注册块
 
-下面一段 JSON 包含所有冻结常量，`fit_config` 必须与 `configs/gtok01/g-tok-01.json` 逐字段相同（FEAT-005 会把它变成测试）。
+下面一段 JSON 包含所有冻结常量。`tests/test_gtok01_prereg.py` 检查四处一致：`sid_rqvae.PREREG`、`configs/gtok01/g-tok-01.json`、三份 G 训练 config、本块；`fit_config` 必须与 config 文件逐字段相同，`g_runs` 列出三份训练 config 及其 SID 标签。
 
 <!-- gtok01-prereg:begin -->
 ```json
@@ -147,6 +160,11 @@ python -m vkgr.sid_tok_run compare --bundle <T1 manifest> --sha <SHA> [--bundle 
     "float_rel_tol": 1e-09,
     "groups": {"H": ["H1", "H2", "H3", "H4", "H5", "H6"], "R": ["R1", "R2", "R3", "R4"], "B": ["B1"]}
   },
+  "g_runs": {
+    "T1": {"config": "configs/gtok01/g-tok-t1-rqvae-b256-s42.json", "sid": "SID_RQVAE_B256D3_S42"},
+    "T2": {"config": "configs/gtok01/g-tok-t2-rqvae-b16-s42.json", "sid": "SID_RQVAE_B16D3_S42"},
+    "T3": {"config": "configs/gtok01/g-tok-t3-bhkm-b256-s42.json", "sid": "SID_BHKM_B256D3_S42"}
+  },
   "baseline": {
     "label": "T0",
     "sid_version": "SID_BHKM_B16D3_S42",
@@ -157,3 +175,7 @@ python -m vkgr.sid_tok_run compare --bundle <T1 manifest> --sha <SHA> [--bundle 
 }
 ```
 <!-- gtok01-prereg:end -->
+### 9. 结果
+本文件不含任何结果。所有指标、run 状态与排名只写在项目的 `experiment_log`；这里不复制数字，以免两处漂移。
+### 10. 冻结与部署记录
+冻结时间、四份 config 的 sha256 与机器可读冻结块记录在冻结实验卡的附录里；代码 commit 在部署时以追加一行的方式记录，不修改冻结块。
