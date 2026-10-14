@@ -67,7 +67,7 @@ def build_side_pack(side, loaded, context, history_manifest_sha, side_manifest_s
             if split == 'train' and row.get('example_id') != ordinal:
                 raise ValueError('side/example identity')
             history = row['history']
-            if history != ref['history'] or type(line) is not list or len(line) != len(history):
+            if history != ref['history'] or row['history_positions'] != ref['history_positions'] or type(line) is not list or len(line) != len(history):
                 raise ValueError('side/history alignment')
             for item, event in zip(history, line):
                 _check_event(event)

@@ -508,6 +508,28 @@ class SideDataTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         build(bad)
 
+    def test_pack_rejects_history_prepare_that_disagrees_with_context(self):
+        """The sidecar is bound to the history-v2 prepare; the training context must be built from that same prepare, items AND positions."""
+        from vkgr import generative_feat as gf
+        from vkgr import history_side
+        with tmpdir() as tmp:
+            w = side_world(tmp)
+            loaded, ctx = v2_context(w)
+            side = history_side.load_side(w.side_manifest, w.side_sha, w.hist_sha, 50, loaded)
+            gf.build_side_pack(side, loaded, ctx, w.hist_sha, w.side_sha)  # the consistent prepare is accepted
+            def forge(split, index, **fields):
+                rows = [dict(r, **fields) if i == index else r for i, r in enumerate(loaded[split])]
+                return {**loaded, split: rows}
+            for split in ('train', 'validation'):
+                index = next(i for i, r in enumerate(loaded[split]) if len(r['history']) > 1 and r['history'] != r['history'][::-1])
+                row = loaded[split][index]
+                shifted = [list(p) for p in row['history_positions']]; shifted[-1][1] += 1
+                cases = {'items reordered': forge(split, index, history=row['history'][::-1]),
+                         'positions moved': forge(split, index, history_positions=shifted)}
+                for name, forged in cases.items():
+                    with self.subTest(split=split, case=name), self.assertRaisesRegex(ValueError, 'alignment'):
+                        gf.build_side_pack(side, forged, ctx, w.hist_sha, w.side_sha)
+
     def test_pack_binding_and_attached_context(self):
         from vkgr import generative_feat as gf
         from vkgr import history_side
