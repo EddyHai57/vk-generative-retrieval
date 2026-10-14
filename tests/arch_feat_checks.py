@@ -90,6 +90,19 @@ def check_base_params_equal_plain(codec):
         ok(model.init_report['arch'] == plain(codec).init_report['arch'], f'{feature}: arch report differs from GARCH-01')
 
 
+def check_side_tables_follow_base_init(codec):
+    """Side-table values are the draws that follow the GARCH-01 initialisation (GFEAT-01 order), and building an f2/f3 model leaves
+    the global random stream where feature=none leaves it (dropout masks during training are then the control's)."""
+    from vkgr import generative_arch_feat as gaf
+    for feature, tables in SIDE_TABLES.items():
+        ref = plain(codec); gaf.TigerArchModelSide.add_side_tables(ref, feature)  # GFEAT-01's draw, in the global stream after base init
+        model = build(codec, feature)
+        ok(all(torch.equal(getattr(model, t).weight, getattr(ref, t).weight) for t in tables), f'{feature}: side tables are not the draws after the base init')
+        plain(codec); after_none = torch.rand(16)
+        build(codec, feature); after_side = torch.rand(16)
+        ok(torch.equal(after_none, after_side), f'{feature}: building the side tables moved the global random stream')
+
+
 # ---- injection: encoder token space, before x sqrt(d), broadcast onto the 4 SID tokens of the item ------------
 def check_injection(codec, feature):
     """embed_source == (E[token] + side_vector(item of token)) * sqrt(d) + position, written out token by token."""

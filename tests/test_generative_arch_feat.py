@@ -44,6 +44,9 @@ class ModelTests(unittest.TestCase):
     def test_base_parameters_keep_the_garch01_random_stream(self):
         fc.check_base_params_equal_plain(self.codec)
 
+    def test_side_tables_follow_base_init_and_keep_the_global_stream(self):
+        fc.check_side_tables_follow_base_init(self.codec)
+
     def test_side_table_shapes_counts_and_pad_rows(self):
         import torch
         base = sum(p.numel() for p in fc.plain(self.codec).parameters()); d = fc.SHAPE['d_model']
