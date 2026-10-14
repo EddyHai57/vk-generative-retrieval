@@ -1,0 +1,72 @@
+{
+ "anchor_config": "configs/feat02/p-feat02-f4-recency-s42.json",
+ "anchor_config_sha256": "bead30cb6d635e7b2a204f0006f67ef1c4dd9c61d70193bedf2ec2061decc7ea",
+ "enumeration_order": [
+  "anchor",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "H7"
+ ],
+ "groups": {
+  "dim": [
+   "H3",
+   "H4"
+  ],
+  "learning_rate": [
+   "H5",
+   "H6"
+  ],
+  "temperature": [
+   "H1",
+   "H2"
+  ]
+ },
+ "h7_config_committed_before_enqueue": true,
+ "h7_config_path": "configs/php01/p-php01-h7-combo-s42.json",
+ "knobs": {
+  "H1": {
+   "field": "temperature",
+   "value": 0.1
+  },
+  "H2": {
+   "field": "temperature",
+   "value": 0.25
+  },
+  "H3": {
+   "field": "dim",
+   "value": 32
+  },
+  "H4": {
+   "field": "dim",
+   "value": 128
+  },
+  "H5": {
+   "field": "learning_rate",
+   "value": 0.002
+  },
+  "H6": {
+   "field": "learning_rate",
+   "value": 0.0005
+  }
+ },
+ "min_delta_hits": 6,
+ "min_distinct_winning_knobs": 2,
+ "n_queries": 2520,
+ "schema": "p-php01-h7-rule-v1",
+ "selection": [
+  "recall@50",
+  "ndcg@50",
+  "enumeration_order"
+ ],
+ "task": "P-HP-01",
+ "threshold_recall50": 0.002,
+ "winner_requires": [
+  "status_complete",
+  "verify_verified",
+  "seed_42"
+ ]
+}
