@@ -49,6 +49,7 @@ def capacity_table(n, branching, depth):
         raise ValueError('invalid capacity inputs')
     level = Counter({n: 1})
     distinct = []
+    level_nodes = []
     for _ in range(depth):
         following = Counter()
         widest = 0
@@ -61,13 +62,28 @@ def capacity_table(n, branching, depth):
             following[quotient] += count * (k - remainder)
         distinct.append(widest)
         level = following
+        level_nodes.append(sum(level.values()))
     leaves = sum(level.values())
     suffix = max(level)
-    return {'items': n, 'leaves': leaves, 'distinct': distinct, 'suffix_vocabulary': suffix,
+    return {'items': n, 'leaves': leaves, 'distinct': distinct, 'level_nodes': level_nodes, 'suffix_vocabulary': suffix,
             'vocab_size': 2 + depth * branching + suffix, 'leaf_sizes': dict(sorted(level.items())),
             'semantic_collision_groups': sum(c for s, c in level.items() if s > 1),
             'semantic_collision_items': sum(s * c for s, c in level.items() if s > 1),
             'singleton_leaves': level.get(1, 0), 'items_needing_suffix': n - leaves}
+
+
+def prereg_block(n, branching, depth):
+    """The audit lookups a balanced k-means mapping must reproduce, derived from the capacity rule (gate B2)."""
+    t = capacity_table(n, branching, depth)
+    block = {'items': n, 'full_sid_collisions': 0, 'leaves.count': t['leaves'], 'leaves.max': t['suffix_vocabulary'],
+             'leaves.singletons': t['singleton_leaves']}
+    block.update({f'positions.{d}.distinct': t['distinct'][d] for d in range(depth)})
+    block[f'positions.{depth}.distinct'] = t['suffix_vocabulary']
+    block.update({f'prefix_groups.{d + 1}': t['level_nodes'][d] for d in range(depth)})
+    block.update({'suffix_vocabulary': t['suffix_vocabulary'], 'vocab_size': t['vocab_size'],
+                  'semantic_collision_groups': t['semantic_collision_groups'], 'semantic_collision_items': t['semantic_collision_items'],
+                  'items_needing_suffix': t['items_needing_suffix']})
+    return block
 
 
 def _leaf_counts_d(sids, depth):

@@ -65,6 +65,17 @@ class FrozenBlock(unittest.TestCase):
             'items_needing_suffix': t['items_needing_suffix']}
         self.assertEqual(ad.PREREG_BHKM_B16D4, expected)
 
+    def test_prereg_block_function_reproduces_the_frozen_literal(self):
+        self.assertEqual(ad.prereg_block(N, 16, 4), ad.PREREG_BHKM_B16D4)
+
+    def test_prereg_block_for_a_small_tree_by_hand(self):
+        # 12 items, b=2, depth 2: 6/6 then 3/3 each -> 4 leaves of size 3, suffix values 0..2
+        block = ad.prereg_block(12, 2, 2)
+        self.assertEqual(block, {'items': 12, 'full_sid_collisions': 0, 'leaves.count': 4, 'leaves.max': 3, 'leaves.singletons': 0,
+                                 'positions.0.distinct': 2, 'positions.1.distinct': 2, 'positions.2.distinct': 3,
+                                 'prefix_groups.1': 2, 'prefix_groups.2': 4, 'suffix_vocabulary': 3, 'vocab_size': 2 + 4 + 3,
+                                 'semantic_collision_groups': 4, 'semantic_collision_items': 12, 'items_needing_suffix': 8})
+
     def test_the_numbers_of_the_design_sheet(self):
         block = ad.PREREG_BHKM_B16D4
         self.assertEqual((block['leaves.count'], block['suffix_vocabulary'], block['vocab_size']), (65536, 2, 68))

@@ -14,7 +14,7 @@ class Mutants(unittest.TestCase):
     def test_unmutated_selection_is_green(self):
         result = run_ids(ALL)
         self.assertTrue(result.wasSuccessful(), result.failures + result.errors)
-        self.assertGreaterEqual(result.testsRun, 27)
+        self.assertGreaterEqual(result.testsRun, 29)
 
     def kill(self, old, new, ids=None, count=1):
         with mutated(ad, old, new, count):
@@ -57,6 +57,12 @@ class Mutants(unittest.TestCase):
     def test_M28_suffix_canonical_ignores_the_last_semantic_digit(self):
         self.kill('tuple(sids[:, j] for j in reversed(range(depth)))', 'tuple(sids[:, j] for j in reversed(range(depth - 1)))',
                   [A + 'HandComputedDepthFour', A + 'DepthThreeEqualsFrozenAudit'])
+
+    def test_M29_prereg_block_suffix_position_is_fixed_at_two(self):
+        self.kill("block[f'positions.{depth}.distinct'] = t['suffix_vocabulary']", "block[f'positions.{depth}.distinct'] = 2", [P + 'FrozenBlock'])
+
+    def test_M30_prereg_block_counts_nodes_before_the_split(self):
+        self.kill("level_nodes.append(sum(level.values()))", "level_nodes.append(sum(level.values()) - 1)", [P + 'FrozenBlock'])
 
 
 if __name__ == '__main__':
