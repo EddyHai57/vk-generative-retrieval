@@ -739,25 +739,33 @@ class DecodeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 gfe.decode_history_side(model, self.codec, histories[0], sides[0][:-1], 20)
 
-    def test_batched_side_decode_equals_serial(self):
+    def test_batch1_side_decode_equals_serial(self):
+        """batch=1 (the only registered size) is bit-equal to the serial decode: items order and the full audit dict."""
         from vkgr import generative_feat_eval as gfe
         histories, sides = self.queries(24, 50, 7)
         for feature in ('f2_feedback', 'f3_watch_buckets'):
             for seed, scale in ((42, None), (1, 4.), (2, .01)):
                 model = self.model(feature, seed, scale)
                 for beam in (5, 20, 100):
-                    expected = [gfe.decode_history_side(model, self.codec, h, s, beam) for h, s in zip(histories, sides)]
-                    for size in (1, 2, 5, 64):
-                        with self.subTest(feature=feature, seed=seed, beam=beam, batch=size):
-                            self.assertEqual(gfe.decode_histories_batched_side(model, self.codec, histories, sides, beam, size), expected)
-        model = self.model('f2_feedback')
-        for bad in (0, 257, 1.5, True):
-            with self.subTest(bad=bad), self.assertRaises(ValueError):
-                gfe.decode_histories_batched_side(model, self.codec, histories[:2], sides[:2], 20, bad)
+                    with self.subTest(feature=feature, seed=seed, beam=beam):
+                        expected = [gfe.decode_history_side(model, self.codec, h, s, beam) for h, s in zip(histories, sides)]
+                        self.assertEqual(gfe.decode_histories_batched_side(model, self.codec, histories, sides, beam, 1), expected)
+                        self.assertEqual(gfe.decode_histories_batched_side(model, self.codec, histories, sides, beam), expected)
+
+    def test_batch_larger_than_one_and_misaligned_side_rejected(self):
+        """INFRA-02b: a decoder call that mixes several queries is not bit-equal to the serial one (also on CPU, even for the frozen
+        plain model: logits differ in the last bits and near-ties swap neighbours), so it is refused instead of used."""
+        from vkgr import generative_feat_eval as gfe
+        histories, sides = self.queries(4, 50, 7); model = self.model('f2_feedback')
+        for bad in (0, 2, 5, 64, 256, 257, 1.5, True, None, '1'):
+            with self.subTest(batch=bad), self.assertRaises(ValueError):
+                gfe.decode_histories_batched_side(model, self.codec, histories, sides, 20, bad)
         with self.assertRaises(ValueError):
-            gfe.decode_histories_batched_side(model, self.codec, histories[:2], sides[:1], 20, 2)
+            gfe.decode_histories_batched_side(model, self.codec, histories[:2], sides[:1], 20, 1)
         with self.assertRaises(ValueError):
-            gfe.decode_histories_batched_side(model, self.codec, histories[:2], [sides[0][:-1], sides[1]], 20, 2)
+            gfe.decode_histories_batched_side(model, self.codec, histories[:2], [sides[0][:-1], sides[1]], 20, 1)
+        with self.assertRaises(ValueError):
+            gfe.decode_histories_batched_side(model, self.codec, histories, sides, 0, 1)
 
     def test_side_changes_decode_output(self):
         """Guards against a decode path that silently drops the side tensor."""
@@ -767,8 +775,8 @@ class DecodeTests(unittest.TestCase):
         for feature in ('f2_feedback', 'f3_watch_buckets'):
             model = self.model(feature, 1, 4.)
             with self.subTest(feature=feature):
-                a = gfe.decode_histories_batched_side(model, self.codec, histories, sides, 100, 8)
-                b = gfe.decode_histories_batched_side(model, self.codec, histories, other, 100, 8)
+                a = gfe.decode_histories_batched_side(model, self.codec, histories, sides, 100, 1)
+                b = gfe.decode_histories_batched_side(model, self.codec, histories, other, 100, 1)
                 self.assertNotEqual(a, b)
                 self.assertEqual(b, [gfe.decode_history_side(model, self.codec, h, s, 100) for h, s in zip(histories, other)])
 
@@ -834,12 +842,11 @@ class EvaluateSideTests(unittest.TestCase):
             model, _ = self.model(feature); tag = feature[:2]
             for shard in (1, 3, 64):
                 serial = gfe.evaluate_queries_side(model, self.context, self.sides, output=self.out(f'{tag}-ps-{shard}'), checkpoint_sha256=self.CK, shard_size=shard)
-                for size in (1, 2, 64):
-                    with self.subTest(feature=feature, shard=shard, batch=size):
-                        batched = gfe.evaluate_queries_side(model, self.context, self.sides, output=self.out(f'{tag}-pb-{shard}-{size}'), checkpoint_sha256=self.CK,
-                                                            shard_size=shard, batch_size=size)
-                        self.assertEqual(gs.evaluation_projection(self.out(f'{tag}-ps-{shard}')), gs.evaluation_projection(self.out(f'{tag}-pb-{shard}-{size}')))
-                        self.assertEqual(batched['manifest']['computation_sha256'], serial['manifest']['computation_sha256'])
+                with self.subTest(feature=feature, shard=shard):
+                    batched = gfe.evaluate_queries_side(model, self.context, self.sides, output=self.out(f'{tag}-pb-{shard}'), checkpoint_sha256=self.CK,
+                                                        shard_size=shard, batch_size=1)
+                    self.assertEqual(gs.evaluation_projection(self.out(f'{tag}-ps-{shard}')), gs.evaluation_projection(self.out(f'{tag}-pb-{shard}')))
+                    self.assertEqual(batched['manifest']['computation_sha256'], serial['manifest']['computation_sha256'])
 
     def test_evaluate_side_depends_on_side(self):
         """The evaluation really consumes the side tensor (the binding to the side data is checked at the entry level)."""
@@ -859,13 +866,13 @@ class EvaluateSideTests(unittest.TestCase):
         illegal = ([10 ** 9], {'invalid': 0, 'deadend': 0, 'collision': 0, 'max_active': 1})
         with patch.object(gfe, 'decode_histories_batched_side', side_effect=lambda m, t, h, s, b, n: [illegal] * len(h)):
             with self.assertRaisesRegex(ValueError, 'decoded candidate/audit gate'):
-                gfe.evaluate_queries_side(model, self.context, self.sides, output=self.out('gate-b'), checkpoint_sha256=self.CK, batch_size=4)
+                gfe.evaluate_queries_side(model, self.context, self.sides, output=self.out('gate-b'), checkpoint_sha256=self.CK, batch_size=1)
         self.assertFalse((self.out('gate-b') / 'manifest.json').exists())
         with patch.object(gfe, 'decode_history_side', side_effect=lambda m, c, h, s, b: illegal):
             with self.assertRaisesRegex(ValueError, 'decoded candidate/audit gate'):
                 gfe.evaluate_queries_side(model, self.context, self.sides, output=self.out('gate-s'), checkpoint_sha256=self.CK)
         self.assertFalse((self.out('gate-s') / 'manifest.json').exists())
-        for name, kwargs, target in (('serial', {}, 'decode_history_side'), ('batched', {'batch_size': 2}, 'decode_histories_batched_side')):
+        for name, kwargs, target in (('serial', {}, 'decode_history_side'), ('batched', {'batch_size': 1}, 'decode_histories_batched_side')):
             events = []; real = getattr(gfe, target)
             def spy(*args, real=real, target=target):
                 events.append(('decode',)); return real(*args)
@@ -884,11 +891,20 @@ class EvaluateSideTests(unittest.TestCase):
                  'row shorter than the query history': [self.sides[0][:-1]] + self.sides[1:],
                  'row longer than the query history': [self.sides[0] + [self.sides[0][0]]] + self.sides[1:]}
         for name, bad in cases.items():
-            for mode, kwargs in (('serial', {}), ('batched', {'batch_size': 2})):
+            for mode, kwargs in (('serial', {}), ('batched', {'batch_size': 1})):
                 out = self.out(f'mis-{mode}-{name.replace(" ", "-")}')
                 with self.subTest(case=name, mode=mode), self.assertRaises(ValueError):
                     gfe.evaluate_queries_side(model, self.context, bad, output=out, checkpoint_sha256=self.CK, **kwargs)
                 self.assertFalse(out.exists())  # nothing is published for a misaligned side
+
+    def test_evaluate_rejects_batch_larger_than_one(self):
+        from vkgr import generative_feat_eval as gfe
+        model, _ = self.model('f2_feedback')
+        for bad in (0, 2, 64, 1.5, True):
+            out = self.out(f'bad-batch-{bad}')
+            with self.subTest(batch=bad), self.assertRaises(ValueError):
+                gfe.evaluate_queries_side(model, self.context, self.sides, output=out, checkpoint_sha256=self.CK, batch_size=bad)
+            self.assertFalse(out.exists())
 
 
 if __name__ == '__main__':
