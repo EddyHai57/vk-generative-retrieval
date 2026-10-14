@@ -1,0 +1,221 @@
+{
+  "content": {
+    "dim": 64,
+    "feature_array_sha256": "766317a88353dcda241d7579aee6da73b5ad8ea0a627470e2ac8a68c99530c84"
+  },
+  "prereg_r": {
+    "arm_order": [
+      "l1",
+      "l2",
+      "l3",
+      "l4"
+    ],
+    "arms": {
+      "l1": {
+        "dead_window": 500,
+        "eps": 1e-07,
+        "initial_accumulator_value": 0.1,
+        "lr": 0.4,
+        "optimizer": "adagrad",
+        "reset": true,
+        "reset_check_every": 100,
+        "reset_until": 270000,
+        "rng_reset_offset": 7919
+      },
+      "l2": {
+        "dead_window": 500,
+        "eps": 1e-07,
+        "initial_accumulator_value": 0.1,
+        "lr": 0.1,
+        "optimizer": "adagrad",
+        "reset": true,
+        "reset_check_every": 100,
+        "reset_until": 270000,
+        "rng_reset_offset": 7919
+      },
+      "l3": {
+        "dead_window": 500,
+        "eps": 1e-07,
+        "initial_accumulator_value": 0.1,
+        "lr": 0.025,
+        "optimizer": "adagrad",
+        "reset": true,
+        "reset_check_every": 100,
+        "reset_until": 270000,
+        "rng_reset_offset": 7919
+      },
+      "l4": {
+        "betas": [
+          0.9,
+          0.999
+        ],
+        "dead_window": 500,
+        "eps": 1e-08,
+        "lr": 0.001,
+        "optimizer": "adam",
+        "reset": true,
+        "reset_check_every": 100,
+        "reset_until": 270000,
+        "rng_reset_offset": 7919,
+        "weight_decay": 0.0
+      },
+      "p0": {
+        "eps": 1e-07,
+        "initial_accumulator_value": 0.1,
+        "lr": 0.4,
+        "optimizer": "adagrad",
+        "reset": false
+      }
+    },
+    "diag_every_after": 1000,
+    "diag_fine_steps": [
+      0,
+      1,
+      2,
+      3,
+      5,
+      10,
+      20,
+      50,
+      100,
+      200,
+      300,
+      500,
+      750,
+      1000,
+      1250,
+      1500,
+      1750,
+      2000,
+      2500,
+      3000,
+      4000,
+      5000
+    ],
+    "diag_subset_rows": 8192,
+    "diag_subset_seed": 42,
+    "probe_steps": 30000,
+    "probe_wall_cap_seconds": 3000,
+    "reset": {
+      "dead_window": 500,
+      "reset_check_every": 100,
+      "reset_until": 270000,
+      "rng_reset_offset": 7919
+    },
+    "usage_diag_every": 2000
+  },
+  "recipe": "gtok01r",
+  "rqvae": {
+    "batch_size": 1024,
+    "beta": 0.25,
+    "check_every": 100,
+    "content_dim": 64,
+    "encoder_hidden": [
+      512,
+      256,
+      128
+    ],
+    "eps": 1e-07,
+    "eval_every": 10000,
+    "initial_accumulator_value": 0.1,
+    "kmeans_iters": 10,
+    "latent_dim": 32,
+    "levels": 3,
+    "log_every": 1000,
+    "lr": 0.4,
+    "max_steps": 300000,
+    "optimizer": "adagrad",
+    "probe_from": 500,
+    "probe_step": 2000,
+    "seed": 42,
+    "usage_diag_every": 2000,
+    "usage_gate_num_den": [
+      4,
+      5
+    ],
+    "wall_cap_seconds": 7200
+  },
+  "schema": "g-tok-01r-fit-v1",
+  "select_r": {
+    "a2_from_step": 20000,
+    "a2_to_step": 30000,
+    "d_points": [
+      20000,
+      22000,
+      24000,
+      26000,
+      28000,
+      30000
+    ],
+    "e_r2_min": 0.05,
+    "i1_dead_frac": 0.99,
+    "i1_max_step": 3000,
+    "i1_usage_max": 3,
+    "i1_z_std_min": 0.001,
+    "i2_rel_tol": 0.001,
+    "i2_step": 30000,
+    "i4_norm_range": [
+      0.99,
+      1.01
+    ],
+    "old_fit_wall_seconds": {
+      "T1": 4354,
+      "T2": 4302
+    },
+    "p0_final_usage_max": 3,
+    "p0_loss_tol": 0.001,
+    "p0_loss_windows": {
+      "T1": [
+        0.8199,
+        1.01,
+        0.8115
+      ],
+      "T2": [
+        0.8754,
+        0.8116,
+        0.8115
+      ]
+    },
+    "p0_usage_ref": [
+      1,
+      1,
+      2
+    ],
+    "p0_usage_slack": 1,
+    "preflight_limit_seconds": 6000,
+    "usage_log_steps": [
+      2000,
+      4000,
+      6000,
+      8000,
+      10000,
+      12000,
+      14000,
+      16000,
+      18000,
+      20000,
+      22000,
+      24000,
+      26000,
+      28000,
+      30000
+    ],
+    "variant_K": {
+      "T1": 256,
+      "T2": 16
+    }
+  },
+  "task_id": "G-TOK-01",
+  "variants": {
+    "T1": {
+      "codebook_size": 256,
+      "kind": "rqvae",
+      "sid_version": "SID_RQVAE_B256D3_S42"
+    },
+    "T2": {
+      "codebook_size": 16,
+      "kind": "rqvae",
+      "sid_version": "SID_RQVAE_B16D3_S42"
+    }
+  }
+}
