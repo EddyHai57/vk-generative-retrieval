@@ -34,10 +34,6 @@ class TestT3Whitelist(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unregistered sid_version'):
             sid_v2d._spec_d('SID_BHKM_B256D3_S42', engineering=False)
 
-    def test_t3_rejected_in_engineering_context_before_green(self):
-        """RED: T3 should be rejected by _spec_d in engineering context before GREEN."""
-        with self.assertRaisesRegex(ValueError, 'unregistered sid_version'):
-            sid_v2d._spec_d('SID_BHKM_B256D3_S42', engineering=True)
 
     def test_t3_in_engineering_versions_after_green(self):
         """GREEN: T3 should be in ENGINEERING_SID_VERSIONS after adding."""
