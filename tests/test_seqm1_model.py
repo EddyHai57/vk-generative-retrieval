@@ -512,6 +512,15 @@ def guard_pure_identity():
     ensure(pure.parts(h, s).m is None, 'pure: parts().m is None unless with_anchor=True')
 
 
+def guard_order_ids_count_from_the_latest_event():
+    """M8 guard (L3 part): O row = back index + 1 counted from the MOST RECENT event; adding an older event leaves the recent rows alone."""
+    from vkgr.retrieval_seqm1 import order_ids
+    h = torch.tensor([[1, 2, 3, 0, 0], [4, 5, 6, 7, 8]])
+    ensure(order_ids(h != 0).tolist() == [[3, 2, 1, 0, 0], [5, 4, 3, 2, 1]], 'order ids are not back index + 1 with PAD 0')
+    recent = torch.tensor([[5, 6, 7, 0]]); older = torch.tensor([[9, 5, 6, 7]])
+    ensure(order_ids(recent != 0)[0, :3].tolist() == order_ids(older != 0)[0, 1:].tolist(), 'recent events change their O row when an older event is appended')
+
+
 # ---------------------------------------------------------------- tests
 
 class ZeroStepTests(unittest.TestCase):
@@ -572,13 +581,10 @@ class MaskPaddingTests(unittest.TestCase):
     def test_back_index_ids(self):
         from vkgr.retrieval_seqm1 import order_ids
         h, _ = make_batch([1, 3, 5], 5, 3)
-        ids = order_ids(h != 0)
-        self.assertEqual(ids.tolist(), [[1, 0, 0, 0, 0], [3, 2, 1, 0, 0], [5, 4, 3, 2, 1]])
+        self.assertEqual(order_ids(h != 0).tolist(), [[1, 0, 0, 0, 0], [3, 2, 1, 0, 0], [5, 4, 3, 2, 1]])
 
     def test_appending_an_older_event_keeps_recent_order_rows(self):
-        from vkgr.retrieval_seqm1 import order_ids
-        h = torch.tensor([[5, 6, 7, 0]]); older = torch.tensor([[9, 5, 6, 7]])
-        self.assertEqual(order_ids(h != 0)[0, :3].tolist(), order_ids(older != 0)[0, 1:].tolist())
+        guard_order_ids_count_from_the_latest_event()
 
 
 class ReadoutTests(unittest.TestCase):
