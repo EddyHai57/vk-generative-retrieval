@@ -62,7 +62,7 @@ class ConfigTests(unittest.TestCase):
         for key, replacement in bad.items():
             with self.subTest(key=key):
                 self.assertRaises(ValueError, g6.validate_config, dict(value, **{key: replacement}))
-        for label in (REPLAY, 'SID_RQVAE_B256D3_S42', 'SID_RQVAE_B16D4_S42', 'SID_BHKM_B256D3_S42'):
+        for label in (REPLAY, 'SID_RQVAE_B256D3_S42', 'SID_RQVAE_B16D4_S42'):
             with self.subTest(label=label):
                 self.assertRaises(ValueError, g6.validate_config, dict(value, sid=label))
         for broken in ({k: v for k, v in value.items() if k != 'sid'}, dict(value, extra=1), dict(value, seed=42.0), dict(value, dropout=1)):

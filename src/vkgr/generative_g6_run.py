@@ -12,6 +12,9 @@ INIT_EMB_N002, BUDGET_E100_MIN5_P3, beam 100), with these differences:
     ``g-g6-checkpoint-v1``: the b1 / arch / tok verifiers refuse these manifests and vice versa (fail-closed);
   * evaluation workers must be 1 (sharded workers rebuild the model with the frozen factory) and batched decode only with batch size 1
     (batch > 1 is not bit-equal on GPU).
+GTOK-01B adds one explicitly registered SIDMAP_V2 path: configs whose ``sid`` is in ``V2_SID_VERSIONS`` (formal: only T3 =
+SID_BHKM_B256D3_S42) are loaded with ``sid_v2.load_bundle`` and adapted to a depth-3 codec (200-row position table); every other label
+keeps the SIDMAP_V2D loader unchanged. No frozen file is edited.
 """
 import argparse
 import json
@@ -35,6 +38,7 @@ from . import generative_training as gt
 from . import history_v2
 from . import sid_depth as sd
 from . import sid_depth_beam as sdb
+from . import sid_v2
 from . import sid_v2d
 from . import tiger
 from .data_audit import canonical_bytes, file_sha256
@@ -48,6 +52,9 @@ TASK_ID = 'G-HP-01-G6'
 MANIFEST_SCHEMA = 'g-g6-train-manifest-v1'
 MANIFEST_KIND = 'g_g6_train'
 CHECKPOINT_SCHEMA = 'g-g6-checkpoint-v1'
+V2_SID_VERSIONS = ('SID_BHKM_B256D3_S42',)  # GTOK-01B: formal depth-3 SIDMAP_V2 bundles this runner accepts (sid_v2.load_bundle)
+V2_ENGINEERING_SID_VERSIONS = V2_SID_VERSIONS + ('SID_V2_REPLAY_BHKM_B16D3',)
+V2_DEPTH = 3
 BUDGET = b1.BUDGET
 SEEDS = ga.SEEDS
 CONTENT_DIM = 64
@@ -69,6 +76,10 @@ def default_config():
     return value
 
 
+def _v2_labels(engineering):
+    return V2_ENGINEERING_SID_VERSIONS if engineering else V2_SID_VERSIONS
+
+
 def validate_config(value, engineering=False):
     base = default_config()
     if type(value) is not dict or set(value) != set(base):
@@ -77,6 +88,7 @@ def validate_config(value, engineering=False):
     if any(value[k] != base[k] or type(value[k]) is not type(base[k]) for k in fixed):
         raise ValueError('frozen G6 field changed')
     allowed = sid_v2d.ENGINEERING_SID_VERSIONS if engineering else sid_v2d.SID_VERSIONS
+    allowed = allowed + _v2_labels(engineering)
     if type(value['sid']) is not str or value['sid'] not in allowed:
         raise ValueError('unregistered SIDMAP_V2D label for this context')
     if any(type(value[k]) is not int for k in ga.INT_KEYS) or any(type(value[k]) is not float for k in ('dropout', 'learning_rate')):
@@ -127,8 +139,8 @@ def _source(root):
     return {'files': files, 'source_sha256': _digest(files), 'git': gd._git(root)}
 
 
-def _load_sid(sid_manifest, sid_sha, content_path, content_sha, catalog, engineering, expected_content_digest=sid_v2d.CONTENT_V1_FEATURE_SHA256):
-    """Pinned content rows + fail-closed bundle load. Formal contexts accept only CONTENT_V1 and formal bundles."""
+def _content_rows(content_path, content_sha, catalog, engineering, expected_content_digest):
+    """Pinned content rows (one per catalog item, PAD row dropped) and the catalog ids; formal contexts accept only CONTENT_V1."""
     if type(engineering) is not bool:
         raise ValueError('engineering flag must be a bool')
     if not engineering and expected_content_digest != sid_v2d.CONTENT_V1_FEATURE_SHA256:
@@ -139,8 +151,29 @@ def _load_sid(sid_manifest, sid_sha, content_path, content_sha, catalog, enginee
             or len(array) != len(ids) + 1 or not np.isfinite(array).all() or np.any(array[0] != 0):
         raise ValueError('content must be a finite float32 [N+1, 64] array with a zero PAD row, one row per catalog item')
     rows = np.ascontiguousarray(array[1:], dtype=np.float32)
+    return ids, rows
+
+
+def _load_sid(sid_manifest, sid_sha, content_path, content_sha, catalog, engineering, expected_content_digest=sid_v2d.CONTENT_V1_FEATURE_SHA256):
+    """Pinned content rows + fail-closed bundle load. Formal contexts accept only CONTENT_V1 and formal bundles."""
+    ids, rows = _content_rows(content_path, content_sha, catalog, engineering, expected_content_digest)
     return sid_v2d.load_bundle_d(sid_manifest, sid_sha, catalog_ids=ids, content=rows, expected_content_digest=expected_content_digest,
                                  engineering=engineering)
+
+
+def _as_depth3(loaded):
+    """A verified SIDMAP_V2 load as the depth-3 codec the G6 context requires (same ids/sids/branching; info gains depth 3)."""
+    catalog = loaded.codec.catalog
+    codec = sid_v2d.build_codec_d(np.array(catalog.ids, dtype=np.uint32), np.array(catalog.sids, dtype=np.uint32), loaded.info['branching'],
+                                  V2_DEPTH, catalog_ids=catalog.ids)
+    return sid_v2.LoadedSID(codec, loaded.manifest, {**loaded.info, 'depth': V2_DEPTH})
+
+
+def _load_sid_v2(sid_manifest, sid_sha, content_path, content_sha, catalog, engineering, expected_content_digest=sid_v2d.CONTENT_V1_FEATURE_SHA256):
+    """GTOK-01B: pinned content rows + fail-closed SIDMAP_V2 load (``sid_v2.load_bundle``), adapted to depth 3."""
+    ids, rows = _content_rows(content_path, content_sha, catalog, engineering, expected_content_digest)
+    loaded = sid_v2.load_bundle(sid_manifest, sid_sha, catalog_ids=ids, content=rows, expected_content_digest=expected_content_digest, engineering=engineering)
+    return _as_depth3(loaded)
 
 
 def _contexts(root, prepared_path, prepared_sha, history_manifest, history_sha, sid_manifest, sid_sha, content_path, content_sha, config,
@@ -151,7 +184,8 @@ def _contexts(root, prepared_path, prepared_sha, history_manifest, history_sha, 
     engineering = base.binding.get('engineering') is True and base.binding.get('synthetic') is True
     validate_config(config, engineering)
     loaded = history_v2.load_prepared(history_manifest, history_sha, config['history_len'])
-    sid = _load_sid(sid_manifest, sid_sha, content_path, content_sha, base.catalog, engineering, expected_content_digest)
+    loader = _load_sid_v2 if config['sid'] in _v2_labels(engineering) else _load_sid
+    sid = loader(sid_manifest, sid_sha, content_path, content_sha, base.catalog, engineering, expected_content_digest)
     if sid.info['sid_version'] != config['sid']:
         raise ValueError('config sid differs from the bundle sid_version')
     return build_g6_context(base, loaded, HISTORY_LENGTH, sid), engineering, sid
