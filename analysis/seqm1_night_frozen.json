@@ -1,0 +1,37 @@
+{
+  "approval_ref": "decision_log 2026-10-16 night Opus review sections 1-2",
+  "approval_sections_sha256": "70429cd764cc3ce9e6d712bd27b49be7c5b52f873dc6548308fdea0ee05baffa",
+  "arms": [
+    "mean",
+    "last",
+    "attn",
+    "bi",
+    "pure"
+  ],
+  "config_sha256": {
+    "p-seqm1-attn-s2024": "ea46a5c37d4f9264df69f6a9bc10b158c9fcb2264d3e5e5a028ee728957570b2",
+    "p-seqm1-attn-s2025": "8630b0a44dad0d60ecb4c5fe82ae404324f12d38ceda46bbab0677f5bbd54d54",
+    "p-seqm1-attn-s42": "c926d551cfc286f01d6ada490cef309d3d54f32e9f5a8d18104ceda20644af67",
+    "p-seqm1-bi-s2024": "aab45c7afa4021e2ddb57a112a54da3d06f6ebbe5652bdc773d1696f3b17058b",
+    "p-seqm1-bi-s2025": "f20ee82a7f7b2769b47c6ef1dcf0c1627b90b502e46cfae6228870405dfecad2",
+    "p-seqm1-bi-s42": "edde9a01dffe2838adccb72e7afb6479306b7dcc1ff15484eec8867114159f4b",
+    "p-seqm1-last-s2024": "da6994842ccc0177535a118ccd9716665d22865f5c954948413e9f9512fd604a",
+    "p-seqm1-last-s2025": "14c4c0917ffe4ad047cb23c92f1fe9b829ba990be48d6768df40c9e9abb5e46c",
+    "p-seqm1-last-s42": "0cfe43b8d9ff270a99a0304d2bd0f76d5b29653f66e6cf63c7f427e580f92793",
+    "p-seqm1-mean-s2024": "3e1e40f200c3a09a39e15048df33657bbb54080a7da33d604d92c41518a5dde5",
+    "p-seqm1-mean-s2025": "e4f8f612991ee960b496067b905cb57bb46d7d2b9e4c4af9026004a53e8713f3",
+    "p-seqm1-mean-s42": "e88dc757ff4085af020efc1f070ebba8df54876e85adf68120dff730f983b621",
+    "p-seqm1-pure-s2024": "12543bfa1b7e710f6161db84e811df02e7b4bb983a571d48d24b795546d1d39e",
+    "p-seqm1-pure-s2025": "922564d5ad82f7e34960b7d0373428106c7d4ff6d7c8510c77227acf4843c287",
+    "p-seqm1-pure-s42": "4f9b209ebaaadda2827ea97e1c85a388ab9b8a6f9b6150afffbc90fe732d162f"
+  },
+  "max_driver_hours": 48,
+  "model_commit": "0ca61bc35ad68bd79b86103b54e470445cbab07f",
+  "poll_seconds": 900,
+  "schema": "seqm1-night-frozen-v1",
+  "seeds": [
+    42,
+    2024,
+    2025
+  ]
+}
