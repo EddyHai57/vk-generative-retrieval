@@ -1,13 +1,13 @@
 """FEAT-04a P runner: id_mean + the F4-T010 anchor (N1 logQ, F3, F4, temperature 0.10) + one more variable, over HIST_V2_SIDE_V1.
 
-``f4_recency_pool`` (A = Q2-T010) is the real variant; ``f4_control`` is the equivalence fixture of the anchor (synthetic runs only, never a real run).
+``f4_recency_pool`` (A = Q2-T010) and ``f4_hist_author_content`` (B = F6-hist) are the real variants; ``f4_control`` is the equivalence fixture of the anchor (synthetic runs only, never a real run).
 New file only (K1): the FEAT-02/FEAT-03/P-HP-01 runners stay byte-identical. ``train_step / export_vectors_side4a / evaluate_model / binding_for4a /
 _model4a / run_session / verify_run`` are copies of the FEAT-03 functions with ``_tensors3 -> _tensors4a`` and ``make_feat03_model -> make_feat04a_model``;
 the copy is guarded by three equivalence tests (T0.10 control == P-HP-01 H1, T0.15 A == FEAT-03 Q2, T0.15 control == FEAT-03 control).
 The temperature is the only difference of the config contract to FEAT-03: the frozen B1 validator pins 0.15, so (like P-HP-01) it is projected back before
 the frozen validator runs; real runs accept 0.1 only. Seams are resolved through the modules (K2): ``fr.<name>``, ``f3.<name>``, ``m4.<name>``.
 Config schema ``p-feat04a-run-v1`` has the FEAT-03 field set; only schema, task_id and the ``feature`` values differ.
-Inputs: the ``p-feat02-inputs-v1`` spec (validated by ``validate_inputs4a``: a pin that is not used must be null).
+Inputs: the ``p-feat02-inputs-v1`` spec (validated by ``validate_inputs4a``: a pin that is not used must be null; B needs the attr sidecar pins).
 CLI: ``synthetic-train [--device]``, ``synthetic-verify [--device]``, ``train``, ``verify``, ``preflight`` (read-only, CPU, never writes a run directory).
 """
 import argparse
@@ -24,6 +24,7 @@ from . import retrieval_feat01_run as f1
 from . import retrieval_feat02_run as fr
 from . import retrieval_feat03 as f3
 from . import retrieval_feat04a as m4
+from . import item_attr as ia
 from .data_audit import file_sha256
 from .history_side import SIDE_VERSION
 from .retrieval_ablation_run import read_pinned, strict_json
@@ -118,6 +119,12 @@ def export_vectors_side4a(model, catalog, queries, idmap, batch_size, width, fea
 
 # ---------------------------------------------------------------- diagnostics
 
+def history_unsupported_visible_fraction(queries, support):
+    """B diagnostic: mean over validation queries of (unsupported valid history events / valid history events). Uses the history item ids and the
+    train-defined support set only; verify recomputes it from the pinned data."""
+    return sum(sum(1 for i in q['history'] if i not in support) / len(q['history']) for q in queries) / len(queries)
+
+
 def evaluate_model(model, data, queries, config, check=None):
     from .retrieval_experiment import evaluate_vectors
     width = 50 if config['history_len'] <= 50 else config['history_len']
@@ -131,6 +138,8 @@ def evaluate_model(model, data, queries, config, check=None):
                    'item_norm_stats': fr.item_norm_stats(norms, data['catalog'], data['support'])}
     if config['feature'] == m4.A_FEATURE:
         diagnostics['recency_logits'] = {'position': model.recency_logit_pos.detach().cpu().tolist(), 'weekgap': model.recency_logit_gap.detach().cpu().tolist()}
+    if config['feature'] == m4.B_FEATURE:
+        diagnostics['history_unsupported_visible_fraction'] = history_unsupported_visible_fraction(queries, data['support'])
     return result, diagnostics
 
 
@@ -143,13 +152,23 @@ def binding_for4a(data, config, rows, queries, model, device, inputs_binding):
                'weeks_sha256': b1._digest([[p[0] for p in r['history_positions']] for r in rows + queries]),
                'bucket_spec_sha256': f3.bucket_spec3_sha256(), 'bucket_spec4a_sha256': m4.bucket_spec4a_sha256(config['feature']),
                'param_report': m4.parameter_report4a(model)}
+    if config['feature'] == m4.B_FEATURE:
+        binding['attr_sha256'] = b1._digest([data['author_index'].tolist(), data['author_vocab']])
+        binding['author_vocab_sha256'] = ia.vocab_digest(data['author_vocab'])
     return binding
 
 
 def _model4a(data, config, device):
     from .training import seed_all
     seed_all(config['seed'])
-    return m4.make_feat04a_model(config['feature'], data['content'], data['supported_indices'], config['history_len'], config['seed']).to(device)
+    if config['feature'] != m4.B_FEATURE:
+        return m4.make_feat04a_model(config['feature'], data['content'], data['supported_indices'], config['history_len'], config['seed']).to(device)
+    if 'author_index' not in data or 'author_vocab' not in data:
+        raise ValueError('B needs the pinned ITEM_ATTR_V1 sidecar (author_index/author_vocab)')
+    if not data.get('synthetic') and len(data['author_vocab']) != fr.AUTHOR_VOCAB_SIZE:
+        raise ValueError('author vocabulary differs from the hard-coded audit size')
+    return m4.make_feat04a_model(config['feature'], data['content'], data['supported_indices'], config['history_len'], config['seed'],
+                                 author_index=data['author_index'], vocab_size=len(data['author_vocab'])).to(device)
 
 
 def run_session(output, data, config, device='cpu', check=None, inputs_binding=None):
@@ -267,6 +286,8 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
             raise ValueError('target support slice metrics not reproducible from stored predictions')
         if fr.top50_unsupported_share(predictions, data['support']) != stored.get('top50_unsupported_share'):
             raise ValueError('top50 unsupported share not reproducible from stored predictions')
+        if config['feature'] == m4.B_FEATURE and stored.get('history_unsupported_visible_fraction') != history_unsupported_visible_fraction(queries, data['support']):
+            raise ValueError('history unsupported visible fraction not reproducible from the pinned data')
         primary = recomputed['all']
         if stop.observe(epoch, primary['recall@50'], primary['ndcg@50']):
             expected_best = (epoch, step)
@@ -300,13 +321,16 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
 def validate_inputs4a(value, feature):
     """p-feat02-inputs-v1 (schema, sha, half-pin checks delegated) plus the rule 'a pin that is used must be set, a pin that is not used must be null'.
 
-    A and the control use no ctx/attr sidecar: all four pins null.
+    A and the control use no ctx/attr sidecar: all four pins null. B uses the attr sidecar only: ctx pins null, attr pins set.
     """
     if feature not in m4.FEATURES4A:
         raise ValueError('unregistered FEAT-04a variant')
     fr.validate_inputs(value, None)
-    if any(value[key] is not None for pair in fr.PIN_PAIRS for key in pair):
-        raise ValueError('this FEAT-04a variant uses no ctx/attr sidecar: all four pins must be null')
+    if any(value[key] is not None for key in ('ctx_manifest', 'ctx_sha256')):
+        raise ValueError('FEAT-04a uses no ctx sidecar: both ctx pins must be null')
+    wants_attr = feature == m4.B_FEATURE
+    if any((value[key] is not None) != wants_attr for key in ('attr_manifest', 'attr_sha256')):
+        raise ValueError('the attr sidecar pins are required by B and must be null for the other variants')
     return value
 
 
@@ -353,6 +377,8 @@ def preflight_check(data, config, spec=None, inputs_binding=None, train_sample=5
                 raise ValueError(f'{name} user vectors have the wrong shape or are not finite')
             if feature == m4.A_FEATURE and not torch.equal(users, control_users):
                 raise ValueError(f'{name}: A does not start at the anchor (user vectors differ from the control)')
+            if feature == m4.B_FEATURE and name == 'validation' and torch.equal(users, control_users):
+                raise ValueError('B user vectors equal the anchor control for every validation query (the history side is inactive)')
             checked[name] = len(batch)
         moved = []
         for q in queries:

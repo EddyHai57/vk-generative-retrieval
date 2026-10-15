@@ -26,7 +26,7 @@ from test_feat02_run import flip_non_history_fields  # noqa: E402
 from test_feat03_run import craft_row  # noqa: E402
 
 ensure = tm.ensure
-CONTROL, A = 'f4_control', 'f4_recency_pool'
+CONTROL, A, B = 'f4_control', 'f4_recency_pool', 'f4_hist_author_content'
 ROOT = Path(__file__).resolve().parents[1]
 TIMING = ('training_seconds', 'evaluation_seconds')
 CUDA_MESSAGE = 'ERROR P-FEAT04A gate failed: ValueError: actual CUDA environment required'
@@ -87,13 +87,14 @@ def guard_s_config_registry():
     """Real path: T=0.1 (float), lr=0.001 (float), seed in {42,2024,2025}, feature in the real features only. Synthetic: T in {0.1, 0.15}, control allowed."""
     m = r4()
     for seed in (42, 2024, 2025):
-        m.validate_config(real_config(seed=seed))
+        for feature in (A, B):
+            m.validate_config(real_config(seed=seed, feature=feature))
     for bad in ({'temperature': 0.15}, {'temperature': 0.07}, {'temperature': 1}, {'feature': CONTROL}, {'learning_rate': 0.0005}, {'learning_rate': 0.0003}, {'seed': 7},
                 {'logq': False}, {'extra_uniform': 128}, {'init': 'legacy'}, {'history_len': 20}, {'max_epochs': 30}, {'schema': 'p-feat03-run-v1'}, {'task_id': 'FEAT-03'}, {'unknown': 1}):
         ensure(rejects(lambda bad=bad: m.validate_config(real_config(**bad))), f'real config {bad} must be rejected')
     ensure(rejects(lambda: m.validate_config({k: v for k, v in real_config().items() if k != 'feature'})), 'missing field must be rejected')
     for temperature in (0.1, 0.15):
-        for feature in (CONTROL, A):
+        for feature in (CONTROL, A, B):
             m.validate_config(config4(feature=feature, temperature=temperature), synthetic=True)
     ensure(rejects(lambda: m.validate_config(config4(temperature=0.2), synthetic=True)), 'synthetic T=0.2 must be rejected')
     ensure(rejects(lambda: m.validate_config(config4(feature='nope'), synthetic=True)), 'unknown feature must be rejected')
@@ -119,7 +120,8 @@ def _independent_loss(config, temperature):
     from vkgr import retrieval_feat04a as m4
     from vkgr.retrieval_negatives import masked_ce_logq
     data, rows, batch, frequency = _first_batch(config)
-    model = m4.make_feat04a_model(config['feature'], data['content'], data['supported_indices'], 50, config['seed']); model.train()
+    extra = {'author_index': data['author_index'], 'vocab_size': len(data['author_vocab'])} if config['feature'] == B else {}
+    model = m4.make_feat04a_model(config['feature'], data['content'], data['supported_indices'], 50, config['seed'], **extra); model.train()
     columns, labels, mask, negatives, pool_size = b1._columns(batch, data, config, random.Random(0), None)
     histories, side = fr2()._tensors2(batch, data['idmap'], max(len(r['history']) for r in batch), 'f3_f4_recency')
     log_q = b1._log_q(batch, negatives, pool_size, config, frequency)
@@ -130,7 +132,7 @@ def _independent_loss(config, temperature):
 def guard_s_temperature_plumbing():
     """The first-step loss uses the temperature of the config (0.1 and 0.15), not a constant."""
     from vkgr.retrieval_training import SamplerStats
-    for feature in (CONTROL, A):
+    for feature in (CONTROL, A, B):
         for temperature in (0.1, 0.15):
             config = config4(feature=feature, temperature=temperature); data, rows, batch, frequency = _first_batch(config)
             model = r4()._model4a(data, config, 'cpu')
@@ -303,6 +305,25 @@ def guard_l7_source_has_no_target_access():
             ensure(name not in body, f'{fn.__qualname__}: diagnostic function {name} on the feature path')
 
 
+def guard_b_candidate_unsupported_zero_in_evaluation():
+    """B leaves the candidate tower alone: a short synthetic run never retrieves an unsupported item (top50_unsupported_share == 0 at every epoch)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        value = r4().run_session(Path(tmp) / 'run', fr2().synthetic_data(), config4(feature=B, max_epochs=3, min_epochs=2))
+        ensure(all(e['diagnostics']['top50_unsupported_share'] == 0 for e in value['evaluations']), 'B retrieved an unsupported candidate')
+        data = fr2().synthetic_data(); model = model4(data, B)
+        unsupported = torch.tensor([data['idmap'][i] for i in data['catalog'] if i not in data['support']])
+        ensure(len(unsupported) > 0 and bool((model.items(unsupported).abs().sum(1) == 0).all()), 'unsupported candidates must have zero vectors')
+
+
+def guard_b_binding_has_attr_sha():
+    """The B binding carries attr_sha256 and author_vocab_sha256; A and the control do not."""
+    data = fr2().synthetic_data(); rows, queries = fr2()._view(data, 50)
+    for feature in (CONTROL, A, B):
+        model = r4()._model4a(data, config4(feature=feature), 'cpu')
+        binding = r4().binding_for4a(data, config4(feature=feature), rows, queries, model, 'cpu', None)
+        ensure(('attr_sha256' in binding) == (feature == B) and ('author_vocab_sha256' in binding) == (feature == B), f'{feature}: attr keys in the binding')
+
+
 # ---------------------------------------------------------------- CLI helpers
 
 def run_cli(argv):
@@ -315,8 +336,8 @@ def run_cli(argv):
 GOOD_SPEC = {'schema': 'p-feat02-inputs-v1', 'prepared': '/a', 'holdout': '/b', 'raw_root': '/c', 'history_manifest': '/d/manifest.json',
              'history_sha256': 'a' * 64, 'side_manifest': '/e/manifest.json', 'side_sha256': 'b' * 64, 'items_metadata_sha256': 'c' * 64,
              'ctx_manifest': None, 'ctx_sha256': None, 'attr_manifest': None, 'attr_sha256': None, 'disk_cap_bytes': 1 << 30, 'test_gate': 'closed_hash_only'}
-VARIANTS = (A,)
-RUNNABLE = (CONTROL, A)
+GOOD_SPEC_B = {**GOOD_SPEC, 'attr_manifest': '/f/manifest.json', 'attr_sha256': 'd' * 64}
+RUNNABLE = (CONTROL, A, B)
 
 
 class ConfigAndInputsTests(unittest.TestCase):
@@ -336,9 +357,16 @@ class ConfigAndInputsTests(unittest.TestCase):
         m = r4()
         m.validate_inputs4a(dict(GOOD_SPEC), A)
         m.validate_inputs4a(dict(GOOD_SPEC), CONTROL)
+        m.validate_inputs4a(dict(GOOD_SPEC_B), B)
         for bad_pin in ({'ctx_manifest': '/f/manifest.json', 'ctx_sha256': 'd' * 64}, {'attr_manifest': '/f/manifest.json', 'attr_sha256': 'd' * 64}):
             with self.assertRaises(ValueError):
                 m.validate_inputs4a({**GOOD_SPEC, **bad_pin}, A)
+            with self.assertRaises(ValueError):
+                m.validate_inputs4a({**GOOD_SPEC, **bad_pin}, CONTROL)
+        with self.assertRaises(ValueError):
+            m.validate_inputs4a(dict(GOOD_SPEC), B)                                                  # B needs the attr pins
+        with self.assertRaises(ValueError):
+            m.validate_inputs4a({**GOOD_SPEC_B, 'ctx_manifest': '/g/manifest.json', 'ctx_sha256': 'e' * 64}, B)
         with self.assertRaises(ValueError):
             m.validate_inputs4a({**GOOD_SPEC, 'schema': 'p-feat01-inputs-v1'}, A)
         with self.assertRaises(ValueError):
@@ -437,12 +465,29 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual((binding['task'], binding['feature'], binding['temperature'], binding['side_version']), ('P-FEAT04A', feature, 0.1, 'HIST_V2_SIDE_V1'))
                 self.assertEqual(binding['bucket_spec_sha256'], f3.bucket_spec3_sha256())
                 self.assertEqual(binding['bucket_spec4a_sha256'], m4.bucket_spec4a_sha256(feature))
-                self.assertEqual(binding['param_report'], m4.expected_param_counts4a(feature))
+                self.assertEqual(binding['param_report'], m4.expected_param_counts4a(feature, len(data['author_vocab'])))
+                self.assertEqual('history_unsupported_visible_fraction' in value['evaluations'][0]['diagnostics'], feature == B)
+                if feature == B:
+                    self.assertEqual(binding['bucket_spec4a_sha256'], m4.bucket_spec4a_sha256(B))
+                    expected = r4().history_unsupported_visible_fraction(fr2()._view(data, 50)[1], data['support'])
+                    self.assertEqual([e['diagnostics']['history_unsupported_visible_fraction'] for e in value['evaluations']], [expected] * len(value['evaluations']))
+                    self.assertTrue(0.0 < expected < 1.0)
+                    self.assertTrue(all(e['diagnostics']['top50_unsupported_share'] == 0 for e in value['evaluations']))
                 self.assertIn('weeks_sha256', binding); self.assertIn('side_sha256', binding)
-                self.assertNotIn('attr_sha256', binding); self.assertNotIn('ctx_sha256', binding)
+                self.assertEqual(('attr_sha256' in binding, 'author_vocab_sha256' in binding), (feature == B, feature == B)); self.assertNotIn('ctx_sha256', binding)
                 self.assertEqual(binding['execution']['device'], 'cpu')
                 self.assertEqual(r4().verify_run(run / 'manifest.json', value['manifest_sha256'], data, config)['status'], 'verified')
                 other = CONTROL if feature != CONTROL else A
+                if feature == B:
+                    forged_vocab = {**data, 'author_vocab': data['author_vocab'][:-1] + [data['author_vocab'][-1] + 1]}
+                    with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                        r4().verify_run(run / 'manifest.json', value['manifest_sha256'], forged_vocab, config)
+                    from vkgr.data_audit import file_sha256
+                    from vkgr.retrieval_ablation_run import strict_json
+                    forged = strict_json((run / 'manifest.json').read_text()); forged['evaluations'][0]['diagnostics']['history_unsupported_visible_fraction'] += 0.01
+                    (run / 'forged.json').write_text(json.dumps(forged))
+                    with self.assertRaises(ValueError):
+                        r4().verify_run(run / 'forged.json', file_sha256(run / 'forged.json'), data, config)
                 with self.assertRaises(ValueError):
                     r4().verify_run(run / 'manifest.json', value['manifest_sha256'], data, {**config, 'feature': other})
                 with self.assertRaises(ValueError):
@@ -481,10 +526,22 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'diagnostics'):
                 r4().verify_run(run / 'forged.json', file_sha256(run / 'forged.json'), data, config)
 
-    def test_control_run_has_no_logit_diagnostics(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            value = r4().run_session(Path(tmp) / 'run', fr2().synthetic_data(), config4(feature=CONTROL))
-            self.assertNotIn('recency_logits', value['evaluations'][0]['diagnostics'])
+    def test_control_and_b_runs_have_no_logit_diagnostics(self):
+        for feature in (CONTROL, B):
+            with tempfile.TemporaryDirectory() as tmp:
+                value = r4().run_session(Path(tmp) / 'run', fr2().synthetic_data(), config4(feature=feature))
+                self.assertNotIn('recency_logits', value['evaluations'][0]['diagnostics'])
+
+    def test_b_candidate_side_and_binding_guards(self):
+        guard_b_candidate_unsupported_zero_in_evaluation()
+        guard_b_binding_has_attr_sha()
+
+    def test_b_needs_the_attr_sidecar_and_the_audited_vocabulary(self):
+        data = fr2().synthetic_data()
+        with self.assertRaises(ValueError):
+            r4()._model4a({k: v for k, v in data.items() if k != 'author_index'}, config4(feature=B), 'cpu')
+        with self.assertRaises(ValueError):                                                          # real data: the vocabulary size is hard-coded
+            r4()._model4a({**data, 'synthetic': False}, config4(feature=B), 'cpu')
 
     def test_nonfinite_gradient_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -591,6 +648,31 @@ class PreflightTests(unittest.TestCase):
         self.assertIn('binding_sha256', report); self.assertEqual(report['param_report']['by_table']['recency_logit_pos']['total'], 7)
         json.dumps(report)
 
+    def test_preflight_check_passes_on_synthetic_data_for_b(self):
+        data = fr2().synthetic_data(); report = r4().preflight_check(data, config4(feature=B), GOOD_SPEC_B)
+        self.assertEqual((report['status'], report['feature']), ('preflight_ok', B))
+        self.assertEqual(report['param_report']['by_table']['author_table']['total'], (len(data['author_vocab']) + 2) * 64)
+        self.assertIn('attr_sha256', report['sidecar'])
+
+    def test_preflight_check_fails_when_b_history_side_is_inactive(self):
+        from vkgr import retrieval_feat04a as m4
+        with mock.patch.object(m4, 'history_author_content', lambda model, histories: torch.zeros(*histories.shape, 64)):
+            with self.assertRaises(ValueError):
+                r4().preflight_check(fr2().synthetic_data(), config4(feature=B), None)
+
+    def test_preflight_check_fails_when_the_b_user_vector_reads_the_target_item(self):
+        # a leak through tensors (the target item put into the last history slot) must be caught by the flip check
+        original_tensors = fr2()._tensors2
+
+        def mutated(batch, idmap, width, feature):
+            histories, side = original_tensors(batch, idmap, width, feature)
+            for j, r in enumerate(batch):
+                histories[j, len(r['history']) - 1] = idmap.get(r['target'], 1)
+            return histories, side
+        with mock.patch.object(fr2(), '_tensors2', mutated):
+            with self.assertRaises(ValueError):
+                r4().preflight_check(fr2().synthetic_data(), config4(feature=B), None)
+
     def test_preflight_check_fails_when_a_does_not_start_at_the_anchor(self):
         from vkgr import retrieval_feat03 as f3
 
@@ -635,6 +717,64 @@ class PreflightTests(unittest.TestCase):
                 self.assertEqual((code, out), (2, ''))
 
 
+class VocabularyLeakTests(unittest.TestCase):
+    """L8: the author vocabulary of B is defined by the train-only support set. Two executable tests on a small synthetic sidecar directory."""
+
+    CATALOG = list(range(101, 111)); SUPPORT = set(range(101, 106))
+    AUTHORS = {101: 5, 102: 5, 103: 6, 104: 6, 105: 7, 106: 5, 107: 900, 108: 901, 109: 6, 110: 902}        # 900..902 only on UNSUPPORTED items
+
+    def _write(self, tmp):
+        from vkgr import item_attr as ia
+        built = ia.build_item_attr(self.AUTHORS, self.CATALOG, self.SUPPORT)
+        receipt = ia.write_item_attr(Path(tmp) / 'attr', 'c' * 64, self.CATALOG, self.SUPPORT, self.AUTHORS, {}, built['vocab_size'], built['vocab_sha256'])
+        return ia, built, Path(tmp) / 'attr' / 'manifest.json', receipt['manifest_sha256']
+
+    def test_l8_author_only_on_unsupported_items_is_not_in_the_vocabulary_and_maps_to_the_oov_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ia, built, path, digest = self._write(tmp)
+            loaded = ia.load_item_attr(path, digest, 'c' * 64, self.CATALOG, self.SUPPORT, built['vocab_size'], built['vocab_sha256'])
+            self.assertEqual(loaded['vocab'], [5, 6, 7])
+            for x in (900, 901, 902):
+                self.assertNotIn(x, loaded['vocab'])
+            rows = ia.author_rows(loaded['authors'], loaded['vocab'])
+            by_item = dict(zip(self.CATALOG, rows))
+            self.assertEqual((by_item[107], by_item[108], by_item[110]), (1, 1, 1))                         # OOV row
+            self.assertEqual((by_item[101], by_item[103], by_item[105], by_item[106]), (2, 3, 4, 2))      # 2 + rank; an unsupported item with a vocabulary author gets a vocabulary row
+
+    def test_l8_a_different_support_set_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ia, built, path, digest = self._write(tmp)
+            for other in (self.SUPPORT | {107}, self.SUPPORT - {105}, set(range(101, 111))):
+                with self.assertRaises(ValueError):
+                    ia.load_item_attr(path, digest, 'c' * 64, self.CATALOG, other, built['vocab_size'], built['vocab_sha256'])
+
+
+class BRealPathTests(unittest.TestCase):
+    def test_b_real_path_wiring_requires_attr_pins(self):
+        from vkgr.data_audit import file_sha256
+        m = r4()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp); (tmp / 'b_inputs.json').write_text(json.dumps(GOOD_SPEC_B)); (tmp / 'a_inputs.json').write_text(json.dumps(GOOD_SPEC))
+            (tmp / 'b.json').write_text(json.dumps(real_config(feature=B)))
+            b_common = ['--inputs', str(tmp / 'b_inputs.json'), '--inputs-sha', file_sha256(tmp / 'b_inputs.json'), '--config', str(tmp / 'b.json'), '--config-sha', file_sha256(tmp / 'b.json')]
+            seen = {}
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(mock.patch('torch.cuda.is_available', return_value=True))
+                stack.enter_context(mock.patch.object(m.b1, 'resource_guard', lambda *a, **k: (lambda: None)))
+                stack.enter_context(mock.patch.object(m.b1, 'real_inputs', lambda s: ({'rows': [], 'queries': [], 'catalog': []}, None, {'prepared_sha': 'x'})))
+                stack.enter_context(mock.patch.object(m, 'apply_feat04a', lambda d, s, n, f: (seen.update(feature=f) or d, {'history_manifest_sha256': 'h'})))
+                stack.enter_context(mock.patch.object(m, 'run_session', lambda *a, **k: {'status': 'complete', 'manifest_sha256': 'm', 'selection': {'best_epoch': 2}}))
+                code, out, _ = run_cli(['train', *b_common, '--output', str(tmp / 'run-b')])
+                self.assertEqual((code, json.loads(out)['best_epoch'], seen['feature']), (0, 2, B))
+                code, out, err = run_cli(['train', '--inputs', str(tmp / 'a_inputs.json'), '--inputs-sha', file_sha256(tmp / 'a_inputs.json'), '--config', str(tmp / 'b.json'),
+                                          '--config-sha', file_sha256(tmp / 'b.json'), '--output', str(tmp / 'run-b2')])
+                self.assertEqual((code, out), (2, '')); self.assertIn('P-FEAT04A', err); self.assertFalse((tmp / 'run-b2').exists())
+
+    def test_apply_feat04a_refuses_missing_attr_pins_for_b(self):
+        with self.assertRaises(ValueError):
+            r4().apply_feat04a({}, dict(GOOD_SPEC), 50, B)
+
+
 class ConfigFileTests(unittest.TestCase):
     def test_a_config_files(self):
         h1 = json.loads((ROOT / 'configs' / 'php01' / 'p-php01-h1-t010-s42.json').read_text())
@@ -649,6 +789,14 @@ class ConfigFileTests(unittest.TestCase):
         self.assertEqual(seen[42], expected)                                     # AC7: only schema/task_id/feature differ from H1 (seed 42), dim/knob dropped
         for seed in (2024, 2025):
             self.assertEqual({k: v for k, v in seen[seed].items() if k != 'seed'}, {k: v for k, v in seen[42].items() if k != 'seed'})
+
+    def test_b_config_files(self):
+        a42 = json.loads((ROOT / 'configs' / 'feat04a' / 'p-feat04a-a-q2t010-s42.json').read_text())
+        for seed in (42, 2024, 2025):
+            value = json.loads((ROOT / 'configs' / 'feat04a' / f'p-feat04a-b-f6hist-s{seed}.json').read_text())
+            r4().validate_config(value)
+            self.assertEqual({k: v for k, v in value.items() if k not in ('feature', 'seed')}, {k: v for k, v in a42.items() if k not in ('feature', 'seed')})
+            self.assertEqual((value['feature'], value['seed']), (B, seed))
 
 
 if __name__ == '__main__':
