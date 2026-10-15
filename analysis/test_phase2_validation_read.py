@@ -8,6 +8,23 @@ SPEC.loader.exec_module(reader)
 
 
 class MethodChecks(unittest.TestCase):
+    def test_behavior_beta_requires_verified_unique_best_epoch(self):
+        beta={'like':.4,'dislike':-.2,'share':.1,'bookmark':0.,'click_on_author':-.05,'open_comments':.03}
+        manifest={'selection':{'best_epoch':2},'best':{'epoch':2},'evaluations':[
+            {'epoch':2,'diagnostics':{'behavior_beta':beta}},
+            {'epoch':3,'diagnostics':{'behavior_beta':{k:99. for k in beta}}}]}
+        self.assertEqual(reader.best_behavior_beta(manifest,True),beta)
+        with self.assertRaises(ValueError):reader.best_behavior_beta(manifest,False)
+        manifest['evaluations'].append(manifest['evaluations'][0])
+        with self.assertRaises(ValueError):reader.best_behavior_beta(manifest,True)
+
+    def test_behavior_beta_rejects_nonfinite_or_missing_bit(self):
+        beta={'like':.4,'dislike':-.2,'share':.1,'bookmark':0.,'click_on_author':-.05,'open_comments':float('nan')}
+        m={'selection':{'best_epoch':1},'best':{'epoch':1},'evaluations':[{'epoch':1,'diagnostics':{'behavior_beta':beta}}]}
+        with self.assertRaises(ValueError):reader.best_behavior_beta(m,True)
+        del beta['open_comments']
+        with self.assertRaises(ValueError):reader.best_behavior_beta(m,True)
+
     def test_exit_zero_is_not_verified(self):
         self.assertFalse(reader.verified_records([{'status': 'complete', 'exit_code': 0}], 'a' * 64))
         self.assertFalse(reader.verified_records([{'status': 'unverified'}], 'a' * 64))

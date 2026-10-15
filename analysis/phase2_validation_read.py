@@ -135,7 +135,23 @@ def inspect_run(rid):
         result['verify'] = verifier(rid, sha)
         result['verified'] = result['verify']['verified']
         result['binding_keys'] = sorted(m.get('binding', {}))
+        if rid.startswith('p-feat04b-e-') and result['verified']:
+            result['best_behavior_beta'] = best_behavior_beta(m, True)
     return result
+
+
+def best_behavior_beta(manifest, accepted):
+    """Report verified best-epoch coefficients, never final-epoch coefficients."""
+    if not accepted: raise ValueError('beta requires accepted science verifier')
+    epoch = manifest['selection']['best_epoch']
+    rows = [x for x in manifest['evaluations'] if x['epoch'] == epoch]
+    if manifest['best']['epoch'] != epoch or len(rows) != 1:
+        raise ValueError('best beta epoch mismatch')
+    beta = rows[0]['diagnostics']['behavior_beta']
+    expected = {'like', 'share', 'bookmark', 'open_comments', 'click_on_author', 'dislike'}
+    if set(beta) != expected or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in beta.values()):
+        raise ValueError('behavior beta schema/nonfinite mismatch')
+    return beta
 
 
 def classify(deltas, feature=False):
@@ -266,7 +282,33 @@ def paired(new, ctl):
 
 
 def run_ids():
-    return [f'{stem}-s{s}' for stem in ('p-php01-h1-t010', 'p-php02-t005', 'p-php02-t007', 'p-feat04a-a-q2t010', 'p-feat04a-b-f6hist', 'p-feat04b-c-i4-popfresh', 'p-feat04b-d-i5-quality', 'g-gtok01b-t3-b256d3', 'g-tok-t1r-rqvae-b256', 'g-tok-t3-bhkm-b256', 'g-garch01-a1-lr3e-4') for s in SEEDS]
+    base = [f'{stem}-s{s}' for stem in ('p-php01-h1-t010', 'p-php02-t005', 'p-php02-t007', 'p-feat04a-a-q2t010', 'p-feat04a-b-f6hist', 'p-feat04b-c-i4-popfresh', 'p-feat04b-d-i5-quality', 'p-feat04b-e-q2-behavior', 'g-gtok01b-t3-b256d3', 'g-tok-t1r-rqvae-b256', 'g-tok-t3-bhkm-b256', 'g-garch01-a1-lr3e-4') for s in SEEDS]
+    return base + [f'g-tok2-{v}-s{s}' for v in ('b1024d3', 'b512d3', 'b128d3', 'b64d3', 'b32d3', 'b256d2') for s in (SEEDS if v in ('b1024d3', 'b512d3', 'b256d2') else (42,))]
+
+
+def driver_receipts():
+    result = []
+    for folder in ('/workspace/vkgr-codex-seed-drivers/p2-20261016T0025', '/workspace/vkgr-codex-seed-drivers/p1-20261016T0035', '/workspace/vkgr-feat04b-driver/x2-e'):
+        p = Path(folder); entry = {'path': folder}
+        pidfile = p/'driver.pid'
+        if pidfile.exists():
+            pid = int(pidfile.read_text()); entry['pid'] = pid
+            status = Path(f'/proc/{pid}/status')
+            entry['alive'] = status.exists()
+            if status.exists():
+                fields = dict(x.split(':', 1) for x in status.read_text().splitlines() if ':' in x)
+                entry['ppid'] = int(fields['PPid'])
+                cmd = Path(f'/proc/{pid}/cmdline')
+                entry['command'] = cmd.read_bytes().replace(b'\x00', b' ').decode() if cmd.exists() else None
+        entry['files'] = {}
+        for name in ('state.json', 'plan.json', 'driver.log', 'driver.jsonl', 'driver.py'):
+            f = p/name
+            if f.exists():
+                payload = f.read_bytes(); entry['files'][name] = {'sha256': hashlib.sha256(payload).hexdigest()}
+                if name.endswith(('.log', '.jsonl')): entry['files'][name]['tail'] = payload.decode()[-6500:]
+                elif name != 'driver.py': entry['files'][name]['value'] = json.loads(payload)
+        result.append(entry)
+    return result
 
 
 def inspect_fits():
@@ -291,6 +333,7 @@ def main():
     out = {'read_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'test_read': False, 'checkpoint_read': False, 'new_submit': False}
     states = {rid: inspect_run(rid) for rid in run_ids()}
     out['runs'] = states
+    out['drivers'] = driver_receipts()
     out['fits'] = inspect_fits()
     out['kiro_tok2_queue'] = {f'g-tok2-{v}-s42': queue(f'g-tok2-{v}-s42') for v in ('b1024d3', 'b512d3', 'b128d3', 'b64d3', 'b32d3', 'b256d2')}
     if '--metadata' not in sys.argv:
@@ -317,13 +360,17 @@ def main():
             except (ValueError, KeyError, OSError) as e:
                 out['archive_summaries'][rid] = {'status': 'UNKNOWN', 'reason': str(e)}
         out['paired'] = {}; out['mechanical'] = {}; out['g5_precheck'] = {}
-        for stem in ('p-php02-t005', 'p-php02-t007', 'p-feat04a-a-q2t010', 'p-feat04a-b-f6hist', 'p-feat04b-c-i4-popfresh', 'p-feat04b-d-i5-quality'):
+        for stem in ('p-php02-t005', 'p-php02-t007', 'p-feat04a-a-q2t010', 'p-feat04a-b-f6hist', 'p-feat04b-c-i4-popfresh', 'p-feat04b-d-i5-quality', 'p-feat04b-e-q2-behavior'):
             pairs = {}
             for s in SEEDS:
                 new, ctl = f'{stem}-s{s}', f'p-php01-h1-t010-s{s}'
                 if new in data and ctl in data: pairs[str(s)] = paired(data[new], data[ctl])
             out['paired'][stem] = pairs
             out['mechanical'][stem] = classify([pairs[str(s)]['delta_hits'] for s in SEEDS if str(s) in pairs], feature=stem.startswith('p-feat04'))
+        out['e_minus_a_descriptive'] = {}
+        for s in SEEDS:
+            e, a = f'p-feat04b-e-q2-behavior-s{s}', f'p-feat04a-a-q2t010-s{s}'
+            if e in data and a in data: out['e_minus_a_descriptive'][str(s)] = paired(data[e], data[a])
         for stem in ('g-tok-t3-bhkm-b256', 'g-garch01-a1-lr3e-4'):
             out['g5_precheck'][stem] = {}
             for s in SEEDS:
