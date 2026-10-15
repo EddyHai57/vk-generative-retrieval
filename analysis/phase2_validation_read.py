@@ -131,9 +131,11 @@ def inspect_run(rid):
     mp = rd / 'out/manifest.json'
     if mp.exists() and (result['terminal'] or {}).get('status') == 'succeeded':
         m, sha = read(mp)
-        result.update(manifest_path=str(mp), manifest_sha256=sha, status=m.get('status'), selection=m.get('selection'), hit_max_epochs=m.get('hit_max_epochs'))
+        result.update(manifest_path=str(mp), manifest_sha256=sha, status=m.get('status'), hit_max_epochs=m.get('hit_max_epochs'))
         result['verify'] = verifier(rid, sha)
         result['verified'] = result['verify']['verified']
+        if result['verified']:
+            result['selection'] = m.get('selection')
         result['binding_keys'] = sorted(m.get('binding', {}))
         if rid.startswith('p-feat04b-e-') and result['verified']:
             result['best_behavior_beta'] = best_behavior_beta(m, True)

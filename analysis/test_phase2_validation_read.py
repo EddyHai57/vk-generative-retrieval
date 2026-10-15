@@ -8,6 +8,17 @@ SPEC.loader.exec_module(reader)
 
 
 class MethodChecks(unittest.TestCase):
+    def test_unverified_run_does_not_publish_selection(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);run=root/'runs/p-fixture-s42';(run/'out').mkdir(parents=True)
+            (run/'terminal.json').write_text(json.dumps({'status':'succeeded','exit_code':0}))
+            (run/'out/manifest.json').write_text(json.dumps({'status':'complete','selection':{'best_metric':[.9,.8]}}))
+            with patch.object(reader,'ROOT',root),patch.object(reader,'verifier',return_value={'verified':False}):
+                self.assertNotIn('selection',reader.inspect_run('p-fixture-s42'))
+
     def test_behavior_beta_requires_verified_unique_best_epoch(self):
         beta={'like':.4,'dislike':-.2,'share':.1,'bookmark':0.,'click_on_author':-.05,'open_comments':.03}
         manifest={'selection':{'best_epoch':2},'best':{'epoch':2},'evaluations':[
