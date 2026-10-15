@@ -29,12 +29,15 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_feat02_model as tm  # noqa: E402
 import test_feat03_model as t3  # noqa: E402
+import test_feat04b_model as tmb  # noqa: E402
 from test_feat02_run import flip_non_history_fields  # noqa: E402
 from test_feat03_run import craft_row  # noqa: E402
 from test_feat04b_untouched import check_pinned, load_pins  # noqa: E402
 
 ensure = tm.ensure
-CONTROL, A = 'f4_control', 'f4_recency_pool'
+CONTROL, A, E = 'f4_control', 'f4_recency_pool', 'f4_recency_behavior'
+C, D = 'f4_item_popularity', 'f4_item_quality'
+CD = (C, D)
 REAL_FEATURE = 'f4_item_popularity'                    # a real variant of this runner (implemented in a later feature; config-level checks only here)
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_TOP = ('schema', 'kind', 'binding', 'training_seconds', 'evaluation_seconds')
@@ -52,6 +55,11 @@ def fr2():
     return retrieval_feat02_run
 
 
+def syn():
+    """The synthetic world of every variant: FEAT-02 synthetic data plus seeded synthetic ITEM_STATS_V1 (a superset: A/E/control ignore the extra keys)."""
+    return r4().synthetic_data4b()
+
+
 def config4(**overrides):
     value = r4().default_config(); value.update(logq=True, temperature=0.1, batch_size=16, max_epochs=8, min_epochs=2, feature=A); value.update(overrides)
     return value
@@ -63,10 +71,12 @@ def real_config(**overrides):
 
 
 def model4(data, feature, logits=False):
-    """Runner-built model on CPU in eval mode; A optionally gets fixed non-zero logits so the weighted branch is exercised."""
+    """Runner-built model on CPU in eval mode; A and E optionally get fixed non-zero logits (E also a non-zero beta) so the weighted branch is exercised."""
     model = r4()._model4b(data, config4(feature=feature), 'cpu'); model.eval()
-    if feature == A and logits:
+    if feature in (A, E) and logits:
         t3.set_logits(model, seed=5, scale=0.5)
+    if feature == E and logits:
+        tmb.set_beta(model, seed=6, scale=0.6)
     return model
 
 
@@ -124,7 +134,7 @@ def guard_s_cli_default_device_cpu():
 def _first_batch(config):
     from vkgr.retrieval_negatives import target_frequency
     from vkgr.retrieval_training import EpochCursor
-    data = fr2().synthetic_data(); rows, _ = fr2()._view(data, 50)
+    data = syn(); rows, _ = fr2()._view(data, 50)
     indices = EpochCursor(len(rows), config['seed']).next(config['batch_size'])
     return data, rows, [rows[i] for i in indices], target_frequency(rows)
 
@@ -226,14 +236,14 @@ def guard_s_equiv_f4_control_t015():
 
 
 def guard_s_first_step_loss_equals_anchor():
-    """A starts exactly at the anchor: the loss of the first step is bit-equal to f4_control's (same seed, same batch)."""
+    """A starts exactly at the anchor and E exactly at A: the loss of the first step is bit-equal to f4_control's (same seed, same batch)."""
     from vkgr.retrieval_training import SamplerStats
     losses = {}
-    for feature in (CONTROL, A):
+    for feature in (CONTROL, A, E):
         config = config4(feature=feature); data, rows, batch, frequency = _first_batch(config)
         model = r4()._model4b(data, config, 'cpu'); optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0001)
         losses[feature] = r4().train_step(model, optimizer, batch, {**data, 'rows': rows}, SamplerStats(), 0, config, random.Random(0), None, frequency)['loss']
-    ensure(losses[CONTROL] == losses[A], f'first-step loss differs: {losses}')
+    ensure(losses[CONTROL] == losses[A] == losses[E], f'first-step loss differs: {losses}')
 
 
 def _bridge_runner():
@@ -284,11 +294,153 @@ def guard_s_candidate_seam_wiring():
         ensure(len(calls) == -(-len(data['catalog']) // 16), 'the evaluation export must read every catalog chunk through candidate_items')
 
 
+# ---------------------------------------------------------------- C/D guards (guard_cd_*, L3 / L5 / L9 for the candidate side)
+
+def _cd_loss_through(variant, method):
+    """First-step loss of the batch computed independently, with the candidate column read through ``model.<method>`` (candidate_items or items)."""
+    from vkgr import retrieval_b1_run as b1
+    from vkgr.retrieval_negatives import masked_ce_logq
+    config = config4(feature=variant); data, rows, batch, frequency = _first_batch(config)
+    model = r4()._model4b(data, config, 'cpu'); model.train()
+    columns, labels, mask, negatives, pool_size = b1._columns(batch, data, config, random.Random(0), None)
+    histories, side = fr2()._tensors2(batch, data['idmap'], max(len(r['history']) for r in batch), 'f3_f4_recency')
+    log_q = b1._log_q(batch, negatives, pool_size, config, frequency)
+    loss, _ = masked_ce_logq(model.users(histories, side), getattr(model, method)(columns), labels, mask, config['temperature'], log_q)
+    return float(loss.detach())
+
+
+def guard_cd_train_step_uses_candidate_items():
+    """C/D: train_step reads the candidate column through candidate_items (spy) and its first-step loss is the independent candidate_items loss, not the items loss."""
+    from vkgr import retrieval_feat04b as m4
+    from vkgr.retrieval_training import SamplerStats
+    for variant in CD:
+        config = config4(feature=variant); data, rows, batch, frequency = _first_batch(config)
+        model = r4()._model4b(data, config, 'cpu'); optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0001)
+        original = m4.Feat04bIDMean.candidate_items; calls = []
+
+        def spy(self, indices):
+            calls.append(tuple(indices.shape)); return original(self, indices)
+        with mock.patch.object(m4.Feat04bIDMean, 'candidate_items', spy):
+            record = r4().train_step(model, optimizer, batch, {**data, 'rows': rows}, SamplerStats(), 0, config, random.Random(0), None, frequency)
+        ensure(len(calls) == 1, f'{variant}: train_step must read the candidate column through candidate_items exactly once')
+        through_candidates, through_items = _cd_loss_through(variant, 'candidate_items'), _cd_loss_through(variant, 'items')
+        ensure(abs(through_candidates - through_items) > 1e-5, f'{variant}: fixture cannot tell candidate_items from items')
+        ensure(abs(record['loss'] - through_candidates) < 1e-6, f'{variant}: train_step loss {record["loss"]} is not the candidate_items loss {through_candidates}')
+
+
+def guard_cd_train_step_tables_receive_gradient():
+    """C/D: after one real train_step the variant's two bucket tables hold finite, non-zero gradients (the loss reaches them through the candidate column) and the PAD rows exactly 0."""
+    from vkgr import retrieval_feat04b as m4
+    from vkgr.retrieval_training import SamplerStats
+    for variant in CD:
+        config = config4(feature=variant); data, rows, batch, frequency = _first_batch(config)
+        model = r4()._model4b(data, config, 'cpu'); optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0001)
+        r4().train_step(model, optimizer, batch, {**data, 'rows': rows}, SamplerStats(), 0, config, random.Random(0), None, frequency)
+        for table, _, _ in m4.STAT_LAYOUT[variant]:
+            grad = getattr(model, table).weight.grad
+            ensure(grad is not None and bool(torch.isfinite(grad).all()) and float(grad.abs().sum()) > 0, f'{variant}: {table} got no gradient from train_step')
+            ensure(bool((grad[0] == 0).all()), f'{variant}: PAD row of {table} must get exactly 0')
+
+
+def guard_cd_export_uses_candidate_items():
+    """C/D: the evaluation export reads the catalog through candidate_items: spy count per chunk, and the raw norms returned are the norms of candidate_items."""
+    from vkgr import retrieval_feat04b as m4
+    for variant in CD:
+        data = syn(); model = model4(data, variant); queries = fr2()._view(data, 50)[1][:4]
+        original = m4.Feat04bIDMean.candidate_items; calls = []
+
+        def spy(self, indices):
+            calls.append(tuple(indices.shape)); return original(self, indices)
+        with mock.patch.object(m4.Feat04bIDMean, 'candidate_items', spy):
+            _, _, norms = r4().export_vectors_side4b(model, data['catalog'], queries, data['idmap'], 16, 50, variant)
+        ensure(len(calls) == -(-len(data['catalog']) // 16), f'{variant}: the export must read every catalog chunk through candidate_items')
+        ids = torch.tensor([data['idmap'][i] for i in data['catalog']])
+        with torch.no_grad():
+            expected = np.linalg.norm(model.candidate_items(ids).numpy().astype(np.float64), axis=1)
+        ensure(np.array_equal(norms, expected), f'{variant}: exported item norms are not the candidate_items norms')
+
+
+def guard_cd_binding_has_cutoff(variant=None):
+    """C/D binding: stat_cutoff_week == 24, the sidecar digest and the digest of the variant's own bucket-id vectors; a different cutoff / bucket ids change it; the others carry none of these."""
+    from vkgr import item_stats
+    for feature in (variant,) if variant else CD:
+        data = syn(); config = config4(feature=feature); rows, queries = fr2()._view(data, 50); model = r4()._model4b(data, config, 'cpu')
+        binding = r4().binding_for4b(data, config, rows, queries, model, 'cpu', None)
+        ensure('stat_cutoff_week' in binding and binding['stat_cutoff_week'] == item_stats.STAT_CUTOFF_WEEK == 24, f'{feature}: binding must carry stat_cutoff_week == 24')
+        ensure(binding.get('stats_sha256') == data['stats_sha256'] and len(binding.get('stat_bucket_ids_sha256', '')) == 64, f'{feature}: binding must carry the sidecar and bucket-id digests')
+        later = r4().binding_for4b({**data, 'stat_cutoff_week': 25}, config, rows, queries, model, 'cpu', None)
+        ensure(later != binding, f'{feature}: a different cutoff week must change the binding')
+    if variant is None:
+        for feature in (CONTROL, A, E):
+            data = syn(); config = config4(feature=feature); rows, queries = fr2()._view(data, 50); model = r4()._model4b(data, config, 'cpu')
+            binding = r4().binding_for4b(data, config, rows, queries, model, 'cpu', None)
+            ensure(not any(k in binding for k in ('stat_cutoff_week', 'stats_sha256', 'stat_bucket_ids_sha256')), f'{feature}: binding must not carry stat fields')
+
+
+def guard_l3_candidate_reverse_control(variant):
+    """L3 for C/D: changing one item's bucket id changes that item's candidate vector and nothing else (users are untouched); restoring it restores the vectors."""
+    from vkgr import retrieval_feat04b as m4
+    data = syn(); model = model4(data, variant); table, buffer, edges = m4.STAT_LAYOUT[variant][0]
+    idx = data['idmap'][data['catalog'][3]]; ids = torch.tensor([data['idmap'][i] for i in data['catalog']])
+    rows, _ = fr2()._view(data, 50); width = width_of(rows[:8]); histories, side = r4()._tensors4b(rows[:8], data['idmap'], width, variant)
+    base, base_users = model.candidate_items(ids), model.users(histories, side)
+    old = int(getattr(model, buffer)[idx])
+    getattr(model, buffer)[idx] = old % (len(getattr(m4, edges)) + 1) + 1
+    moved = model.candidate_items(ids)
+    changed = (moved != base).any(-1).nonzero().flatten().tolist()
+    ensure(changed == [data['catalog'].index(data['catalog'][3])], f'{variant}: only the edited item may change, got rows {changed}')
+    ensure(torch.equal(model.users(histories, side), base_users), f'{variant}: the user vector must not depend on the candidate-side bucket ids')
+    getattr(model, buffer)[idx] = old
+    ensure(torch.equal(model.candidate_items(ids), base), f'{variant}: restoring the bucket id must restore the vectors')
+
+
+def guard_l5_candidate_side_depends_on_item_id_only(variant):
+    """L5 for C/D: the candidate vector of an item id is bit-equal in different batches, positions and with different companions, and equals the catalog vector."""
+    from vkgr import retrieval_b1_run as b1
+    data = syn(); model = model4(data, variant); rows, _ = fr2()._view(data, 50); config = config4(feature=variant)
+    ids = torch.tensor([data['idmap'][i] for i in data['catalog']]); catalog_vectors = model.candidate_items(ids)
+    seen = {}
+    for batch in (rows[:20], list(reversed(rows[10:30])), rows[5:15] + rows[40:50]):
+        columns = b1._columns(batch, data, config, random.Random(1), None)[0].flatten()
+        vectors = model.candidate_items(columns)
+        for position, index in enumerate(columns.tolist()):
+            ensure(torch.equal(vectors[position], catalog_vectors[index - 1]), f'{variant}: candidate vector of index {index} differs from the catalog vector')
+            if index in seen:
+                ensure(torch.equal(seen[index], vectors[position]), f'{variant}: candidate vector of index {index} differs between batches')
+            seen[index] = vectors[position]
+    ensure(len(seen) >= 10, 'fixture: too few candidate columns')
+
+
+def guard_l9_train_and_export_vectors_equal(variant):
+    """L9 for C/D: the candidate vector train_step feeds the loss and the one the evaluation export writes for the same item are bit-equal (same candidate_items, same weights)."""
+    from vkgr import retrieval_feat04b as m4
+    from vkgr.retrieval_training import SamplerStats
+    seen = []
+    original = m4.Feat04bIDMean.candidate_items
+
+    def spy(self, indices):
+        out = original(self, indices); seen.append((indices.clone(), out.detach().clone())); return out
+    config = config4(feature=variant); data, rows, batch, frequency = _first_batch(config)
+    with mock.patch.object(m4.Feat04bIDMean, 'candidate_items', spy):
+        trained = r4()._model4b(data, config, 'cpu'); optimizer = torch.optim.AdamW(trained.parameters(), lr=0.001, weight_decay=0.0001)
+        r4().train_step(trained, optimizer, batch, {**data, 'rows': rows}, SamplerStats(), 0, config, random.Random(0), None, frequency)
+        train_calls, seen[:] = list(seen), []
+        exporter = r4()._model4b(data, config, 'cpu'); exporter.eval()
+        r4().export_vectors_side4b(exporter, data['catalog'], fr2()._view(data, 50)[1][:2], data['idmap'], 64, 50, variant)
+    ensure(len(train_calls) == 1 and len(seen) > 0, f'{variant}: both paths must go through candidate_items')
+    by_index = {}
+    for indices, vectors in seen:
+        for k, index in enumerate(indices.tolist()):
+            by_index[index] = vectors[k]
+    columns, vectors = train_calls[0]
+    ensure(all(torch.equal(by_index[index], vectors[k]) for k, index in enumerate(columns.tolist())), f'{variant}: training and export see different vectors for the same item')
+
+
 # ---------------------------------------------------------------- leakage guards (L1-L7)
 
 def guard_target_flip_leaves_feature_unchanged(variant):
     """L1: changing the target week/position (and every other non-history field) moves neither the batch tensors nor the user vectors."""
-    data = fr2().synthetic_data(); rows, queries = fr2()._view(data, 50)
+    data = syn(); rows, queries = fr2()._view(data, 50)
     model = model4(data, variant, logits=True)
     picks = (lambda r: r['history_positions'][-1][0], lambda r: 24, lambda r: 26, lambda r: 30)
     for batch in (rows[:24], queries[:24]):
@@ -306,7 +458,7 @@ def guard_target_flip_leaves_feature_unchanged(variant):
 
 def guard_l2_export_path_ignores_non_history_fields(variant):
     """L2: the evaluation export (user and item vectors after normalisation, raw item norms) is independent of the non-history fields."""
-    data = fr2().synthetic_data(); rows, queries = fr2()._view(data, 50)
+    data = syn(); rows, queries = fr2()._view(data, 50)
     model = model4(data, variant, logits=True)
     flipped = [flip_non_history_fields(q) for q in queries]
     a = r4().export_vectors_side4b(model, data['catalog'], queries, data['idmap'], 16, 50, variant)
@@ -316,7 +468,7 @@ def guard_l2_export_path_ignores_non_history_fields(variant):
 
 def guard_l4_reverse_controls(variant):
     """L4: changing a history event's own field changes the user vector; restoring it restores the vector."""
-    data = fr2().synthetic_data(); model = model4(data, variant, logits=True)
+    data = syn(); model = model4(data, variant, logits=True)
     base_row = craft_row(data, [0, 4, 8, 12, 16]); width = 5
 
     def users(row):
@@ -324,6 +476,9 @@ def guard_l4_reverse_controls(variant):
     base = users(base_row)
     changes = [lambda r, slot=slot, new=new: {**r, 'history_positions': [[w if k != slot else new, o] for k, (w, o) in enumerate(r['history_positions'])]} for slot, new in ((1, 8), (3, 15), (4, 24))]
     changes.append(lambda r: {**r, 'history': [data['catalog'][40]] + r['history'][1:]})
+    if variant == E:                                                    # E additionally reads each event's own feedback bits
+        for slot, bit in ((0, 0), (2, 3), (4, 5)):
+            changes.append(lambda r, slot=slot, bit=bit: {**r, 'side': [[m ^ (1 << bit) if k == slot else m, t, d] for k, (m, t, d) in enumerate(r['side'])]})
     for change in changes:
         ensure(not torch.equal(users(change(base_row)), base), f'{variant}: a history-event change did not move the user vector')
     ensure(torch.equal(users(copy.deepcopy(base_row)), base), f'{variant}: restoring the row did not restore the vector')
@@ -331,7 +486,7 @@ def guard_l4_reverse_controls(variant):
 
 def guard_l5_week_shift_invariance(variant):
     """L5: adding a constant to every history week (staying <= 24) leaves the user vector bit-equal (no absolute calendar channel)."""
-    data = fr2().synthetic_data(); rows, queries = fr2()._view(data, 50)
+    data = syn(); rows, queries = fr2()._view(data, 50)
     shiftable = [r for r in rows + queries if r['history_positions'][-1][0] <= 23][:24]
     ensure(len(shiftable) >= 12, 'fixture: not enough shiftable rows')
     shifted = [{**r, 'history_positions': [[w + 1, o] for w, o in r['history_positions']]} for r in shiftable]
@@ -342,33 +497,43 @@ def guard_l5_week_shift_invariance(variant):
 
 
 def guard_l6_week_25_rejected(variant):
-    data = fr2().synthetic_data(); model = model4(data, variant, logits=True)
+    data = syn(); model = model4(data, variant, logits=True)
     histories, side = r4()._tensors4b([craft_row(data, [0, 4, 8, 12, 25])], data['idmap'], 5, variant)
     ensure(rejects(lambda: model.users(histories, side)), f'{variant}: week 25 in a history must be rejected')
 
 
 FORBIDDEN_TEXT = ('target_position', 'past_likes', "['target']", '["target"]', "['oov']", '["oov"]')
 FORBIDDEN_DIAGNOSTICS = ('evaluate_model', 'support_slices', 'top50_unsupported_share', 'history_support_slices', 'side_visibility', 'data_diagnostics',
-                         'item_norm_stats', 'top1_is_last_history_fraction', 'zero_user_vectors')
+                         'item_norm_stats', 'top1_is_last_history_fraction', 'zero_user_vectors', 'beta_bit_train_counts', 'target_bucket_hist', 'stats_self_inclusion',
+                         'logq_redundancy', 'top50_stat_profile', 'feature_data_diagnostics')
 
 
 def feature_path_callables(variant=None):
     """Callables on the feature path, resolved at call time so patched versions are scanned too."""
     from vkgr import retrieval_feat03 as f3
     from vkgr import retrieval_feat04b as m4
-    return [fr2()._tensors2, r4()._tensors4b, r4().train_step, r4().export_vectors_side4b, f3.event_vectors, m4.event_vectors4,
+    return [fr2()._tensors2, r4()._tensors4b, r4().train_step, r4().export_vectors_side4b, f3.event_vectors, m4.event_vectors4, m4.behavior_logits, m4.candidate_stat_terms,
+            m4.stat_bucket_ids, m4.expo_bucket, m4.first_bucket, m4.ratio_bucket4, m4.like_bucket,
             m4.Feat04bIDMean.users, m4.Feat04bIDMean.history_items, m4.Feat04bIDMean.candidate_items]
 
 
+def guard_leak_l7_source_scan(fn_or_source):
+    """L7: no target/past_likes/oov access and no diagnostic helper in the source of a feature-assembly function (a function object or a source string)."""
+    source = fn_or_source if isinstance(fn_or_source, str) else inspect.getsource(fn_or_source)
+    body = '\n'.join(line.split('#')[0] for line in source.splitlines())          # comments are not code
+    for text in FORBIDDEN_TEXT:
+        ensure(text not in body.replace('history_positions', ''), f'forbidden access {text}')
+    for name in FORBIDDEN_DIAGNOSTICS:
+        ensure(name not in body, f'diagnostic function {name} on the feature path')
+
+
 def guard_l7_source_has_no_target_access():
-    """L7: no target/past_likes/oov access and no diagnostic helper in the sources of the feature-assembly functions."""
+    """L7 over every callable of the feature-assembly path (resolved at call time, so patched versions are scanned too)."""
     for fn in feature_path_callables():
-        source = inspect.getsource(fn)
-        body = '\n'.join(line.split('#')[0] for line in source.splitlines())          # comments are not code
-        for text in FORBIDDEN_TEXT:
-            ensure(text not in body.replace('history_positions', ''), f'{fn.__qualname__}: forbidden access {text}')
-        for name in FORBIDDEN_DIAGNOSTICS:
-            ensure(name not in body, f'{fn.__qualname__}: diagnostic function {name} on the feature path')
+        try:
+            guard_leak_l7_source_scan(fn)
+        except AssertionError as error:
+            raise AssertionError(f'{fn.__qualname__}: {error}') from error
 
 
 # ---------------------------------------------------------------- CLI helpers
@@ -380,10 +545,13 @@ def run_cli(argv):
     return code, out.getvalue(), err.getvalue()
 
 
-GOOD_SPEC = {'schema': 'p-feat02-inputs-v1', 'prepared': '/a', 'holdout': '/b', 'raw_root': '/c', 'history_manifest': '/d/manifest.json',
+GOOD_SPEC = {'schema': 'p-feat04b-inputs-v1', 'prepared': '/a', 'holdout': '/b', 'raw_root': '/c', 'history_manifest': '/d/manifest.json',
              'history_sha256': 'a' * 64, 'side_manifest': '/e/manifest.json', 'side_sha256': 'b' * 64, 'items_metadata_sha256': 'c' * 64,
-             'ctx_manifest': None, 'ctx_sha256': None, 'attr_manifest': None, 'attr_sha256': None, 'disk_cap_bytes': 1 << 30, 'test_gate': 'closed_hash_only'}
-RUNNABLE = (CONTROL, A)
+             'ctx_manifest': None, 'ctx_sha256': None, 'attr_manifest': None, 'attr_sha256': None, 'stats_manifest': None, 'stats_sha256': None,
+             'disk_cap_bytes': 1 << 30, 'test_gate': 'closed_hash_only'}
+CD_SPEC = {**GOOD_SPEC, 'stats_manifest': '/s/manifest.json', 'stats_sha256': 'e' * 64}
+BASE_SPEC = {k: v for k, v in GOOD_SPEC.items() if k not in ('stats_manifest', 'stats_sha256')} | {'schema': 'p-feat02-inputs-v1'}      # the spec of range-check / prepare-stats / verify-stats
+RUNNABLE = (CONTROL, A, E, C, D)
 
 
 class ConfigAndInputsTests(unittest.TestCase):
@@ -417,9 +585,60 @@ class ConfigAndInputsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.validate_inputs4b(dict(GOOD_SPEC), 'nope')
 
+    def test_inputs_stats_pin_rules(self):
+        """A pin that is used must be set, a pin that is not used must be null: C/D need the stats pair, control / A / E refuse it; ctx / attr stay null for everyone."""
+        m = r4()
+        for feature in CD:
+            m.validate_inputs4b(dict(CD_SPEC), feature)
+            with self.assertRaises(ValueError):
+                m.validate_inputs4b(dict(GOOD_SPEC), feature)                                       # used pin missing
+            for bad in ({'stats_sha256': None}, {'stats_manifest': None}, {'stats_sha256': 'xyz'}, {'stats_manifest': 7},
+                        {'attr_manifest': '/f/manifest.json', 'attr_sha256': 'd' * 64}, {'ctx_manifest': '/f/manifest.json', 'ctx_sha256': 'd' * 64}):
+                with self.assertRaises(ValueError, msg=str(bad)):
+                    m.validate_inputs4b({**CD_SPEC, **bad}, feature)
+        for feature in (CONTROL, A, E):
+            m.validate_inputs4b(dict(GOOD_SPEC), feature)
+            with self.assertRaises(ValueError):
+                m.validate_inputs4b(dict(CD_SPEC), feature)                                         # unused pin must be null
+        with self.assertRaises(ValueError):
+            m.validate_inputs4b({**CD_SPEC, 'schema': 'p-feat02-inputs-v1'}, C)
+        with self.assertRaises(ValueError):
+            m.validate_inputs4b({k: v for k, v in CD_SPEC.items() if k != 'stats_manifest'}, C)
+        with self.assertRaises(ValueError):
+            m.validate_inputs4b(dict(BASE_SPEC), A)                                                 # the old schema is for the stats commands only
+
+    def test_apply_feat04b_loads_the_stats_for_c_d_only(self):
+        """C/D: item_stats.load_item_stats gets the pinned manifest / sha / metadata / history sha / catalog / support / audited digest; the data gains the bucket ids, the raw
+        stats, their digest and the cutoff week; the extra binding names the sidecar. E / A / control never touch the sidecar."""
+        from vkgr import item_stats, retrieval_feat04b as m4
+        data = syn(); stats = data['stats']; calls = []
+        loaded = {'stats': {'stats_version': 'ITEM_STATS_V1', 'cutoff_week': 24, 'rows_total': sum(stats['n']), **{k: stats[k] for k in ('n', 'first_week', 'likes', 'ratio_pm_sum')}},
+                  'stats_sha256': item_stats.stats_digest(stats), 'manifest_sha256': 'e' * 64}
+        base = {k: v for k, v in data.items() if k not in ('stats', 'stat_buckets', 'stats_sha256', 'stat_cutoff_week')}
+
+        def fake_load(*args, **kwargs):
+            calls.append((args, kwargs)); return loaded
+        with mock.patch.object(r4().fr, 'apply_feat02', lambda d, spec, length: (d, {'history_manifest_sha256': 'h'})), mock.patch.object(item_stats, 'load_item_stats', fake_load):
+            for feature in CD:
+                calls.clear(); out, binding = r4().apply_feat04b(dict(base), dict(CD_SPEC), 50, feature)
+                self.assertEqual(len(calls), 1); args, kwargs = calls[0]
+                self.assertEqual(args, ('/s/manifest.json', 'e' * 64, 'c' * 64, 'a' * 64, base['catalog'], base['support']))
+                self.assertEqual(kwargs, {'expected_sha256': m4.STATS_SHA256})
+                self.assertEqual(out['stats_sha256'], loaded['stats_sha256']); self.assertEqual(out['stat_cutoff_week'], 24)
+                self.assertEqual(out['stats'], loaded['stats'])
+                ref = m4.stat_bucket_ids(loaded['stats'], base['catalog'], base['idmap'], len(base['content']))
+                self.assertTrue(all(torch.equal(out['stat_buckets'][k], ref[k]) for k in ref))
+                self.assertEqual(binding, {'history_manifest_sha256': 'h', 'stats_manifest_sha256': 'e' * 64})
+            calls.clear()
+            for feature in (CONTROL, A, E):
+                out, binding = r4().apply_feat04b(dict(base), dict(GOOD_SPEC), 50, feature)
+                self.assertEqual((calls, binding), ([], {'history_manifest_sha256': 'h'})); self.assertNotIn('stat_buckets', out)
+
     def test_apply_feat04b_refuses_pins_for_a(self):
         with self.assertRaises(ValueError):
             r4().apply_feat04b({}, {**GOOD_SPEC, 'attr_manifest': '/f/manifest.json', 'attr_sha256': 'd' * 64}, 50, A)
+        with self.assertRaises(ValueError):
+            r4().apply_feat04b({}, dict(CD_SPEC), 50, A)
 
 
 class TensorTests(unittest.TestCase):
@@ -532,7 +751,7 @@ class RunnerTests(unittest.TestCase):
         from vkgr import retrieval_feat04b as m4
         for feature in RUNNABLE:
             with self.subTest(feature=feature), tempfile.TemporaryDirectory() as tmp:
-                data = fr2().synthetic_data(); config = config4(feature=feature); run = Path(tmp) / 'run'
+                data = syn(); config = config4(feature=feature); run = Path(tmp) / 'run'
                 value = r4().run_session(run, data, config)
                 self.assertEqual(sorted(p.name for p in run.glob('*.pt')), ['best.pt', 'last.pt'])
                 self.assertEqual((value['schema'], value['kind'], value['status']), ('p-feat04b-train-manifest-v1', 'p_feat04b_train', 'complete'))
@@ -542,6 +761,19 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual(binding['param_report'], m4.expected_param_counts4b(feature))
                 self.assertIn('weeks_sha256', binding); self.assertIn('side_sha256', binding)
                 self.assertNotIn('attr_sha256', binding); self.assertNotIn('ctx_sha256', binding)
+                if feature in CD:
+                    self.assertEqual((binding['stat_cutoff_week'], binding['stats_sha256']), (24, data['stats_sha256'])); self.assertEqual(len(binding['stat_bucket_ids_sha256']), 64)
+                    shifted = {k: v.clone() for k, v in data['stat_buckets'].items()}
+                    for v in shifted.values():
+                        v[1:] = v[1:].roll(1)
+                    with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                        r4().verify_run(run / 'manifest.json', value['manifest_sha256'], {**data, 'stat_buckets': shifted}, config)
+                    with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                        r4().verify_run(run / 'manifest.json', value['manifest_sha256'], {**data, 'stat_cutoff_week': 25}, config)
+                    with self.assertRaisesRegex(ValueError, 'binding mismatch'):
+                        r4().verify_run(run / 'manifest.json', value['manifest_sha256'], {**data, 'stats_sha256': 'f' * 64}, config)
+                else:
+                    self.assertFalse(any(k in binding for k in ('stat_cutoff_week', 'stats_sha256', 'stat_bucket_ids_sha256')))
                 self.assertEqual(binding['execution']['device'], 'cpu')
                 self.assertEqual(r4().verify_run(run / 'manifest.json', value['manifest_sha256'], data, config)['status'], 'verified')
                 other = CONTROL if feature != CONTROL else A
@@ -559,10 +791,10 @@ class RunnerTests(unittest.TestCase):
 
     def test_binding_hash_is_per_variant(self):
         with tempfile.TemporaryDirectory() as tmp:
-            data = fr2().synthetic_data(); seen = {}
+            data = syn(); seen = {}
             for feature in RUNNABLE:
                 seen[feature] = r4().run_session(Path(tmp) / feature, data, config4(feature=feature))['binding']['bucket_spec_sha256']
-            self.assertNotEqual(seen[CONTROL], seen[A])
+            self.assertEqual(len(set(seen.values())), len(RUNNABLE))
 
     def test_verify_requires_cuda_for_real_data_and_pin(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -593,6 +825,39 @@ class RunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             value = r4().run_session(Path(tmp) / 'run', fr2().synthetic_data(), config4(feature=CONTROL))
             self.assertNotIn('recency_logits', value['evaluations'][0]['diagnostics'])
+            self.assertNotIn('behavior_beta', value['evaluations'][0]['diagnostics']); self.assertNotIn('beta_bit_train_counts', value['data_diagnostics'])
+
+    def test_a_run_has_logits_but_no_beta_diagnostics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            value = r4().run_session(Path(tmp) / 'run', fr2().synthetic_data(), config4(feature=A))
+            self.assertIn('recency_logits', value['evaluations'][0]['diagnostics'])
+            self.assertNotIn('behavior_beta', value['evaluations'][0]['diagnostics']); self.assertNotIn('beta_bit_train_counts', value['data_diagnostics'])
+
+    def test_e_beta_diagnostics_per_epoch_bit_counts_and_verify_recomputation(self):
+        from vkgr.data_audit import file_sha256
+        from vkgr.history_side import FEEDBACK_BITS
+        from vkgr.retrieval_ablation_run import strict_json
+        with tempfile.TemporaryDirectory() as tmp:
+            data = fr2().synthetic_data(); config = config4(feature=E); value = r4().run_session(Path(tmp) / 'run', data, config); run = Path(tmp) / 'run'
+            for evaluation in value['evaluations']:
+                diag = evaluation['diagnostics']
+                self.assertEqual(list(diag['behavior_beta']), list(FEEDBACK_BITS)); self.assertEqual(len(diag['recency_logits']['position']), 7)
+            last = value['evaluations'][-1]['diagnostics']['behavior_beta']
+            self.assertTrue(any(v != 0.0 for v in last.values()), 'training must move beta')
+            state = torch.load(run / 'last.pt', map_location='cpu', weights_only=True)['model']
+            self.assertEqual(last, dict(zip(FEEDBACK_BITS, state['behavior_beta'].tolist())))
+            counts = value['data_diagnostics']['beta_bit_train_counts']
+            rows = fr2()._view(data, 50)[0]
+            self.assertEqual(counts, {name: sum((m >> b) & 1 for r in rows for m, _, _ in r['side']) for b, name in enumerate(FEEDBACK_BITS)})
+            self.assertTrue(all(v > 0 for v in counts.values()))
+            forged = strict_json((run / 'manifest.json').read_text()); forged['evaluations'][value['best']['epoch'] - 1]['diagnostics']['behavior_beta']['like'] += 0.25
+            (run / 'forged.json').write_text(json.dumps(forged))
+            with self.assertRaisesRegex(ValueError, 'diagnostics'):
+                r4().verify_run(run / 'forged.json', file_sha256(run / 'forged.json'), data, config)
+            forged = strict_json((run / 'manifest.json').read_text()); forged['data_diagnostics']['beta_bit_train_counts']['like'] += 1
+            (run / 'forged2.json').write_text(json.dumps(forged))
+            with self.assertRaisesRegex(ValueError, 'beta_bit_train_counts'):
+                r4().verify_run(run / 'forged2.json', file_sha256(run / 'forged2.json'), data, config)
 
     def test_nonfinite_gradient_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -605,6 +870,96 @@ class RunnerTests(unittest.TestCase):
             data = {**fr2().synthetic_data(), 'synthetic': False}
             with self.assertRaises(ValueError):
                 r4().run_session(Path(tmp) / 'run', data, real_config(), 'cpu')
+
+
+class CDRunnerTests(unittest.TestCase):
+    def test_train_step_uses_candidate_items(self):
+        guard_cd_train_step_uses_candidate_items()
+        guard_cd_train_step_tables_receive_gradient()
+
+    def test_export_uses_candidate_items(self):
+        guard_cd_export_uses_candidate_items()
+
+    def test_binding_has_cutoff(self):
+        guard_cd_binding_has_cutoff()
+
+    def test_candidate_side_leakage_controls(self):
+        for variant in CD:
+            with self.subTest(variant=variant):
+                guard_l3_candidate_reverse_control(variant)
+                guard_l5_candidate_side_depends_on_item_id_only(variant)
+                guard_l9_train_and_export_vectors_equal(variant)
+
+    def test_synthetic_world_is_a_superset_of_the_feat02_world(self):
+        data, base = syn(), fr2().synthetic_data()
+        self.assertTrue(all(k in data and (data[k] == base[k] if not isinstance(base[k], torch.Tensor) else torch.equal(data[k], base[k])) for k in base))
+        self.assertEqual(data['stat_cutoff_week'], 24); self.assertEqual(len(data['stats']['n']), len(data['catalog']))
+        for name, ids in data['stat_buckets'].items():
+            self.assertEqual((ids.dtype, tuple(ids.shape), int(ids[0])), (torch.long, (len(data['content']),), 0))
+            self.assertGreaterEqual(len({int(v) for v in ids[1:]}), 3, name)                    # the synthetic stats spread over several buckets
+        from vkgr import item_stats
+        self.assertEqual(data['stats_sha256'], item_stats.stats_digest(data['stats']))
+        self.assertEqual(syn()['stats'], data['stats'])                                          # seeded: deterministic
+
+    def test_top50_stat_profile_per_epoch_and_recomputed_in_verify(self):
+        from vkgr.data_audit import file_sha256
+        from vkgr.retrieval_ablation_run import strict_json
+        for variant in CD:
+            with self.subTest(variant=variant), tempfile.TemporaryDirectory() as tmp:
+                data = syn(); config = config4(feature=variant); run = Path(tmp) / 'run'; value = r4().run_session(run, data, config)
+                names = {C: ('xb', 'fb'), D: ('rb', 'lb')}[variant]; labels = {'xb': 'expo', 'fb': 'first', 'rb': 'ratio', 'lb': 'like'}
+                for evaluation in value['evaluations']:
+                    predictions = json.loads((run / evaluation['predictions_ref']).read_text()); profile = evaluation['diagnostics']['top50_stat_profile']
+                    expected = {'slots': sum(len(p[:50]) for p in predictions)}
+                    for name in names:
+                        counts = {}
+                        for p in predictions:
+                            for item in p[:50]:
+                                bucket = int(data['stat_buckets'][name][data['idmap'][item]]); counts[str(bucket)] = counts.get(str(bucket), 0) + 1
+                        expected[labels[name]] = dict(sorted(counts.items(), key=lambda kv: int(kv[0])))
+                    self.assertEqual(profile, expected)
+                    self.assertEqual(sum(profile[labels[names[0]]].values()), profile['slots'])
+                forged = strict_json((run / 'manifest.json').read_text()); forged['evaluations'][value['best']['epoch'] - 1]['diagnostics']['top50_stat_profile']['slots'] += 1
+                (run / 'forged.json').write_text(json.dumps(forged))
+                with self.assertRaisesRegex(ValueError, 'top50_stat_profile|diagnostics'):
+                    r4().verify_run(run / 'forged.json', file_sha256(run / 'forged.json'), data, config)
+        for variant in (CONTROL, A, E):
+            with tempfile.TemporaryDirectory() as tmp:
+                value = r4().run_session(Path(tmp) / 'run', syn(), config4(feature=variant))
+                self.assertNotIn('top50_stat_profile', value['evaluations'][0]['diagnostics']); self.assertNotIn('target_bucket_hist', value['data_diagnostics'])
+
+    def test_data_diagnostics_hooks_are_recomputed_in_verify(self):
+        from vkgr import item_stats, retrieval_feat04b as m4
+        from vkgr.data_audit import file_sha256
+        from vkgr.retrieval_negatives import target_frequency
+        from vkgr.retrieval_ablation_run import strict_json
+        fns = {'expo': m4.expo_bucket, 'first': m4.first_bucket, 'ratio': m4.ratio_bucket4, 'like': m4.like_bucket}
+        for variant in CD:
+            with self.subTest(variant=variant), tempfile.TemporaryDirectory() as tmp:
+                data = syn(); config = config4(feature=variant); run = Path(tmp) / 'run'; value = r4().run_session(run, data, config)
+                rows, queries = fr2()._view(data, 50)
+                hist = item_stats.target_bucket_hist(rows, queries, data['catalog'], data['stats'], fns)
+                red = item_stats.logq_redundancy(data['stats'], data['catalog'], data['support'], target_frequency(rows)['counts'], fns)
+                self.assertEqual(value['data_diagnostics']['target_bucket_hist'], json.loads(json.dumps(hist)))
+                self.assertEqual(value['data_diagnostics']['logq_redundancy'], json.loads(json.dumps(red)))
+                self.assertEqual(hist['train']['examples'], len(rows)); self.assertEqual(hist['validation']['queries'], len(queries))
+                for key, edit in (('target_bucket_hist', lambda d: d['train'].update(examples=d['train']['examples'] + 1)), ('logq_redundancy', lambda d: d.update(supported_items=d['supported_items'] + 1))):
+                    forged = strict_json((run / 'manifest.json').read_text()); edit(forged['data_diagnostics'][key]); (run / 'forged.json').write_text(json.dumps(forged))
+                    with self.assertRaisesRegex(ValueError, key):
+                        r4().verify_run(run / 'forged.json', file_sha256(run / 'forged.json'), data, config)
+
+    def test_tables_train_and_the_best_checkpoint_reloads_with_its_bucket_ids(self):
+        for variant in CD:
+            with self.subTest(variant=variant), tempfile.TemporaryDirectory() as tmp:
+                data = syn(); config = config4(feature=variant); run = Path(tmp) / 'run'; r4().run_session(run, data, config)
+                state = torch.load(run / 'last.pt', map_location='cpu', weights_only=True)['model']
+                fresh = r4()._model4b(data, config, 'cpu').state_dict()
+                from vkgr import retrieval_feat04b as m4
+                for table, buffer, _ in m4.STAT_LAYOUT[variant]:
+                    self.assertFalse(torch.equal(state[f'{table}.weight'], fresh[f'{table}.weight']), f'{table} did not train')
+                    self.assertTrue(torch.equal(state[buffer], fresh[buffer]) and torch.equal(state[f'{table}.weight'][0], torch.zeros(64)))
+                for key in ('embedding.weight',):
+                    self.assertFalse(torch.equal(state[key], fresh[key]))
 
 
 class CliTests(unittest.TestCase):
@@ -669,7 +1024,7 @@ class CliTests(unittest.TestCase):
         from vkgr.data_audit import file_sha256
         m = r4()
         with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp); (tmp / 'inputs.json').write_text(json.dumps(GOOD_SPEC)); (tmp / 'real.json').write_text(json.dumps(real_config()))
+            tmp = Path(tmp); (tmp / 'inputs.json').write_text(json.dumps(CD_SPEC)); (tmp / 'real.json').write_text(json.dumps(real_config()))
             common = ['--inputs', str(tmp / 'inputs.json'), '--inputs-sha', file_sha256(tmp / 'inputs.json'), '--config', str(tmp / 'real.json'), '--config-sha', file_sha256(tmp / 'real.json')]
             patches = self._real_patches(m, {'rows': [], 'queries': [], 'catalog': []}) + [
                 mock.patch.object(m, 'run_session', lambda *a, **k: {'status': 'complete', 'manifest_sha256': 'm', 'selection': {'best_epoch': 3}}),
@@ -686,7 +1041,7 @@ class CliTests(unittest.TestCase):
                     code, out, err = run_cli(['train', '--inputs', str(tmp / 'inputs.json'), '--inputs-sha', file_sha256(tmp / 'inputs.json'), '--config', str(tmp / 'fixture.json'),
                                               '--config-sha', file_sha256(tmp / 'fixture.json'), '--output', str(tmp / 'x')])
                     self.assertEqual((code, out), (2, '')); self.assertIn('P-FEAT04B', err); self.assertFalse((tmp / 'x').exists())
-                (tmp / 'pinned.json').write_text(json.dumps({**GOOD_SPEC, 'ctx_manifest': '/f/manifest.json', 'ctx_sha256': 'd' * 64}))
+                (tmp / 'pinned.json').write_text(json.dumps({**CD_SPEC, 'ctx_manifest': '/f/manifest.json', 'ctx_sha256': 'd' * 64}))
                 code, out, err = run_cli(['train', '--inputs', str(tmp / 'pinned.json'), '--inputs-sha', file_sha256(tmp / 'pinned.json'), '--config', str(tmp / 'real.json'),
                                           '--config-sha', file_sha256(tmp / 'real.json'), '--output', str(tmp / 'y')])
                 self.assertEqual((code, out), (2, '')); self.assertIn('P-FEAT04B', err); self.assertFalse((tmp / 'y').exists())
@@ -699,6 +1054,47 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(report['supported_items'], len(data['support']))
         self.assertIn('binding_sha256', report); self.assertEqual(report['param_report']['by_table']['recency_logit_pos']['total'], 7)
         json.dumps(report)
+
+    def test_preflight_check_passes_on_synthetic_data_for_e(self):
+        data = fr2().synthetic_data(); report = r4().preflight_check(data, config4(feature=E), None)
+        self.assertEqual((report['status'], report['feature']), ('preflight_ok', E))
+        self.assertEqual(report['param_report']['by_table']['behavior_beta']['total'], 6); json.dumps(report)
+
+    def test_preflight_check_passes_on_synthetic_data_for_c_d(self):
+        from vkgr import retrieval_feat04b as m4
+        for variant in CD:
+            data = syn(); report = r4().preflight_check(data, config4(feature=variant), {**CD_SPEC}, None)
+            self.assertEqual((report['status'], report['feature']), ('preflight_ok', variant))
+            for table, buffer, _ in m4.STAT_LAYOUT[variant]:
+                self.assertIn(table, report['param_report']['by_table'])
+                shares = report['stat_buckets'][buffer]
+                self.assertEqual(sum(shares['catalog'].values()), len(data['catalog'])); self.assertEqual(sum(shares['supported'].values()), len(data['support']))
+            self.assertEqual(report['sidecar'], {'side_sha256': 'b' * 64, 'history_sha256': 'a' * 64, 'stats_sha256': 'e' * 64}); json.dumps(report)
+
+    def test_preflight_check_fails_when_c_d_break_the_contract(self):
+        from vkgr import retrieval_feat04b as m4
+        data = syn()
+        for variant in CD:
+            config = config4(feature=variant)
+            with mock.patch.object(m4, 'candidate_stat_terms', lambda model, indices: torch.zeros(*indices.shape, 64)):          # the statistics never reach the candidates
+                with self.assertRaises(ValueError):
+                    r4().preflight_check(data, config, None)
+            with mock.patch.object(m4, 'candidate_stat_terms', lambda model, indices: torch.full((*indices.shape, 64), 0.01)):  # no supported mask
+                with self.assertRaises(ValueError):
+                    r4().preflight_check(data, config, None)
+            original = m4.Feat04bIDMean.history_items
+            with mock.patch.object(m4.Feat04bIDMean, 'history_items', lambda self, indices: original(self, indices) + (0.01 * (indices != 0).unsqueeze(-1) if self.variant in CD else 0.0)):   # user tower touched
+                with self.assertRaises(ValueError):
+                    r4().preflight_check(data, config, None)
+
+    def test_preflight_check_fails_when_e_does_not_start_at_a(self):
+        from vkgr import retrieval_feat04b as m4
+
+        def noisy(model):
+            model.behavior_beta = torch.nn.Parameter(torch.linspace(0.1, 0.6, 6))
+        with mock.patch.object(m4, 'init_behavior_beta', noisy):
+            with self.assertRaises(ValueError):
+                r4().preflight_check(fr2().synthetic_data(), config4(feature=E), None)
 
     def test_preflight_check_fails_when_a_does_not_start_at_the_anchor(self):
         from vkgr import retrieval_feat03 as f3
@@ -725,7 +1121,7 @@ class PreflightTests(unittest.TestCase):
         from vkgr.data_audit import file_sha256
         m = r4()
         with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp); (tmp / 'inputs.json').write_text(json.dumps(GOOD_SPEC)); (tmp / 'real.json').write_text(json.dumps(real_config()))
+            tmp = Path(tmp); (tmp / 'inputs.json').write_text(json.dumps(CD_SPEC)); (tmp / 'real.json').write_text(json.dumps(real_config()))
             common = ['--inputs', str(tmp / 'inputs.json'), '--inputs-sha', file_sha256(tmp / 'inputs.json'), '--config', str(tmp / 'real.json'), '--config-sha', file_sha256(tmp / 'real.json')]
             data = fr2().synthetic_data()
             with contextlib.ExitStack() as stack:
@@ -744,6 +1140,32 @@ class PreflightTests(unittest.TestCase):
                     code, out, err = run_cli(['preflight', '--inputs', str(tmp / 'inputs.json'), '--inputs-sha', file_sha256(tmp / 'inputs.json'),
                                               '--config', str(tmp / 'control.json'), '--config-sha', file_sha256(tmp / 'control.json')])
                     self.assertEqual((code, out), (2, ''))
+
+
+    def test_preflight_cli_runs_the_real_check_on_synthetic_data_for_c_d_e(self):
+        """Item 16: the `preflight` command (config + inputs validation, real_inputs / apply seams mocked to the synthetic world, the real preflight_check) exits 0 with a JSON
+        report for C, D and E, and 2 with one stderr line and empty stdout for a bad config; it never needs CUDA and writes nothing."""
+        from vkgr.data_audit import file_sha256
+        m = r4()
+        for feature, spec in ((C, CD_SPEC), (D, CD_SPEC), (E, GOOD_SPEC)):
+            with self.subTest(feature=feature), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp); (tmp / 'inputs.json').write_text(json.dumps(spec)); (tmp / 'real.json').write_text(json.dumps(real_config(feature=feature)))
+                (tmp / 'bad.json').write_text(json.dumps(real_config(feature=feature, temperature=0.15)))
+                data = syn()
+
+                def argv(config):
+                    return ['preflight', '--inputs', str(tmp / 'inputs.json'), '--inputs-sha', file_sha256(tmp / 'inputs.json'), '--config', str(tmp / config), '--config-sha', file_sha256(tmp / config)]
+                with contextlib.ExitStack() as stack:
+                    stack.enter_context(mock.patch.object(m.b1, 'real_inputs', lambda s: (data, None, {'prepared_sha': 'x'})))
+                    stack.enter_context(mock.patch.object(m, 'apply_feat04b', lambda d, s, n, f: (d, {'history_manifest_sha256': 'h'})))
+                    stack.enter_context(mock.patch('torch.cuda.is_available', return_value=False))
+                    before = sorted(p.name for p in tmp.iterdir())
+                    code, out, err = run_cli(argv('real.json'))
+                    self.assertEqual((code, err), (0, '')); report = json.loads(out)
+                    self.assertEqual((report['status'], report['feature'], report['temperature']), ('preflight_ok', feature, 0.1)); self.assertEqual(len(report['binding_sha256']), 64)
+                    self.assertEqual(sorted(p.name for p in tmp.iterdir()), before)
+                    code, out, err = run_cli(argv('bad.json'))
+                    self.assertEqual((code, out), (2, '')); self.assertEqual(len(err.strip().splitlines()), 1); self.assertTrue(err.startswith('ERROR P-FEAT04B gate failed: '))
 
 
 class StatsCommandTests(unittest.TestCase):
@@ -769,7 +1191,7 @@ class StatsCommandTests(unittest.TestCase):
         parts = self._partitions() if partitions is None else partitions
         if extra_rows:
             parts = [(w, rows + list(extra_rows) if w == 1 else rows) for w, rows in parts]
-        spec = {**GOOD_SPEC, 'raw_root': str(tmp / 'raw'), 'prepared': str(tmp / 'p'), 'holdout': str(tmp / 'h'),
+        spec = {**BASE_SPEC, 'raw_root': str(tmp / 'raw'), 'prepared': str(tmp / 'p'), 'holdout': str(tmp / 'h'),
                 'items_metadata_sha256': file_sha256(tmp / 'raw' / 'metadata' / 'items_metadata.parquet')}
         (tmp / 'inputs.json').write_text(json.dumps(spec))
         data = {'catalog': list(self.CATALOG), 'support': {10, 30}, 'queries': [{'target': 10}]}
@@ -889,6 +1311,63 @@ class StatsCommandTests(unittest.TestCase):
                 self.assertEqual(self._cli(swapped, ['prepare-stats', *common, '--output', str(Path(tmp) / 'stats')])[0], 0)
                 shas.append((file_sha256(Path(tmp) / 'stats' / 'stats.json'), json.loads((Path(tmp) / 'stats' / 'manifest.json').read_text())['stats_sha256']))
         self.assertEqual(shas[0], shas[1])
+
+
+REAL_CONFIG_DIR = ROOT / 'configs' / 'feat04b'
+REAL_VARIANTS = (('c-i4-popfresh', C), ('d-i5-quality', D), ('e-q2-behavior', E))
+REAL_SEEDS = (42, 2024, 2025)
+
+
+def real_config_files():
+    """{(tag, seed): (path, feature)} for the nine real FEAT-04b run configs."""
+    return {(tag, seed): (REAL_CONFIG_DIR / f'p-feat04b-{tag}-s{seed}.json', feature) for tag, feature in REAL_VARIANTS for seed in REAL_SEEDS}
+
+
+def guard_real_configs_match_anchor():
+    """AC10: the nine real configs exist; each differs from the anchor H1 config (php01, dim/knob removed) ONLY in schema, task_id, feature and seed;
+    temperature is the float 0.1 and learning_rate the float 0.001; the 04a Q2 config differs from them in the same four keys only."""
+    anchor = json.loads((ROOT / 'configs' / 'php01' / 'p-php01-h1-t010-s42.json').read_text())
+    anchor = {k: v for k, v in anchor.items() if k not in ('dim', 'knob')}
+    q2 = json.loads((ROOT / 'configs' / 'feat04a' / 'p-feat04a-a-q2t010-s42.json').read_text())
+    m = r4()
+    files = real_config_files()
+    ensure(len(files) == 9, 'nine real configs expected')
+    for (tag, seed), (path, feature) in files.items():
+        ensure(path.is_file(), f'missing real config {path.name}')
+        raw = path.read_text()
+        value = json.loads(raw)
+        ensure(raw == json.dumps(value, indent=1, sort_keys=True) + '\n', f'{path.name}: canonical json formatting (indent 1, sorted keys, final newline)')
+        ensure(value['schema'] == 'p-feat04b-run-v1' and value['task_id'] == 'FEAT-04B', f'{path.name}: schema/task_id')
+        ensure(value['feature'] == feature and value['seed'] == seed, f'{path.name}: feature/seed')
+        ensure(type(value['temperature']) is float and value['temperature'] == 0.1, f'{path.name}: temperature must be float 0.1')
+        ensure(type(value['learning_rate']) is float and value['learning_rate'] == 0.001, f'{path.name}: learning_rate must be float 0.001')
+        varying = ('schema', 'task_id', 'feature', 'seed')
+        ensure(set(value) == set(anchor) | {'feature', 'side_version'}, f'{path.name}: field set differs from the anchor config')
+        for reference in (anchor, q2):
+            same = {k: v for k, v in value.items() if k not in varying and k in reference}
+            ensure(all(reference[k] == same[k] and type(reference[k]) is type(same[k]) for k in same if k not in ('feature', 'side_version')),
+                   f'{path.name}: differs from the reference config outside schema/task_id/feature/seed')
+        ensure(value['side_version'] == q2['side_version'], f'{path.name}: side_version')
+        m.validate_config(value)
+        for bad in ({'temperature': 0.15}, {'feature': CONTROL}, {'feature': A}, {'learning_rate': 0.0003}):
+            ensure(rejects(lambda bad=bad, value=value: m.validate_config({**value, **bad})), f'{path.name}: real path must reject {bad}')
+    ensure(len({p.name for p, _ in files.values()}) == 9, 'config names are unique')
+    ensure(sorted(p.name for p in REAL_CONFIG_DIR.glob('p-feat04b-*.json')) == sorted(p.name for p, _ in files.values()), 'no stray p-feat04b config files')
+
+
+class RealConfigFileTests(unittest.TestCase):
+    def test_nine_real_configs_match_the_anchor(self):
+        guard_real_configs_match_anchor()
+
+    def test_seeds_are_the_three_registered_ones_per_variant(self):
+        for tag, feature in REAL_VARIANTS:
+            seeds = sorted(json.loads(p.read_text())['seed'] for (t, _), (p, f) in real_config_files().items() if t == tag)
+            self.assertEqual(seeds, sorted(REAL_SEEDS))
+
+    def test_a_config_with_another_seed_is_rejected_by_the_real_path(self):
+        path, _ = real_config_files()[('c-i4-popfresh', 42)]
+        with self.assertRaises(ValueError):
+            r4().validate_config({**json.loads(path.read_text()), 'seed': 7})
 
 
 if __name__ == '__main__':

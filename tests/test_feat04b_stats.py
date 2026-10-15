@@ -155,6 +155,110 @@ def guard_stats_alignment():
         got = build_ok(world(), catalog, DURATIONS)
         for key in EXPECTED:
             ensure(got[key] == [base[key][k] for k in perm], f'{key} not aligned with the permuted catalog')
+    guard_stats_bucket_alignment()                                          # the same alignment, one step later: catalog order -> model index space
+
+
+# ---- C/D bucket functions of retrieval_feat04b. The guard keeps its OWN copy of the audited grid (= configs/feat04b/stats-bucket-constants.json): a drifted edge constant is caught here.
+GRID = {'expo': (4, 8, 16, 32, 64, 128, 256, 512), 'first': (1, 3, 6, 10, 15, 20, 23), 'ratio': (200, 350, 500, 650, 800, 1000), 'like': (10, 20, 40, 80, 160)}
+GRID_K, GRID_P0 = 10, 28                                  # LIKE_P0 = 28 is the audited global like rate in permille
+AUDIT_JSON = Path(__file__).resolve().parents[1] / 'configs' / 'feat04b' / 'stats-bucket-constants.json'
+AUDIT_SCRIPT = Path(__file__).resolve().parents[1] / 'scripts' / 'feat04b_audit_constants.py'
+def ref_expo(n):
+    return 1 + sum(1 for e in GRID['expo'] if n >= e)
+
+
+def ref_first(week):
+    return 1 + sum(1 for e in GRID['first'] if week >= e)
+
+
+def ref_ratio(total, n):
+    return 1 + sum(1 for e in GRID['ratio'] if total >= e * n)
+
+
+def ref_like(likes, n):
+    return 1 + sum(1 for e in GRID['like'] if 1000 * likes + GRID_K * GRID_P0 >= e * (n + GRID_K))
+
+
+def m4():
+    from vkgr import retrieval_feat04b
+    return retrieval_feat04b
+
+
+def guard_stats_bucket_boundaries():
+    """Every edge +-1 against an independent reference (own copy of the grid): expo / first / ratio (integer form S >= e*n) / like (smoothed permille with K and P0)."""
+    f = m4()
+    for e in GRID['expo']:
+        for n in (e - 1, e, e + 1):
+            ensure(f.expo_bucket(n) == ref_expo(n) and type(f.expo_bucket(n)) is int, f'expo_bucket({n})')
+    ensure(f.expo_bucket(1) == 1 and f.expo_bucket(10 ** 6) == len(GRID['expo']) + 1, 'expo range 1..len+1')
+    for week in range(0, 25):
+        ensure(f.first_bucket(week) == ref_first(week), f'first_bucket({week})')
+    ensure(f.first_bucket(0) == 1 and f.first_bucket(24) == len(GRID['first']) + 1, 'first range')
+    for e in GRID['ratio']:
+        for n in (1, 3, 7, 100):
+            for total in (e * n - 1, e * n, e * n + 1):
+                ensure(f.ratio_bucket4(total, n) == ref_ratio(total, n), f'ratio_bucket4({total},{n})')
+    ensure(f.ratio_bucket4(0, 5) == 1 and f.ratio_bucket4(2000 * 5, 5) == len(GRID['ratio']) + 1, 'ratio range')
+    for n in (1, 2, 5, 9, 10, 40, 77, 300, 1000):
+        for likes in sorted({0, 1, n // 7, n // 3, n // 2, n - 1, n} & set(range(n + 1))):
+            ensure(f.like_bucket(likes, n) == ref_like(likes, n), f'like_bucket({likes},{n})')
+        for e in GRID['like']:                                  # the exact crossing point of each edge for this n
+            for likes in range(0, n + 1):
+                ensure(f.like_bucket(likes, n) == ref_like(likes, n), f'like_bucket({likes},{n}) at edge {e}')
+    ensure(f.like_bucket(0, 1) == ref_like(0, 1) and f.like_bucket(1, 1) == ref_like(1, 1), 'n = 1')
+    ensure((f.LIKE_K, f.LIKE_P0) == (GRID_K, GRID_P0), 'smoothing constants')
+
+
+def guard_stats_constants_match_audit():
+    """The audited constants: stats-bucket-constants.json (the audit stdout, byte for byte canonical) == the code constants == this file's own grid copy; the merged histograms
+    satisfy the 2% rule and add up to the training examples; the audit's report threshold is the one in the audit script."""
+    import json
+    import re
+    from vkgr import item_stats
+    f = m4()
+    raw = AUDIT_JSON.read_text()
+    doc = json.loads(raw)
+    ensure(raw == json.dumps(doc, sort_keys=True, separators=(',', ':')) + '\n', 'the constants file must be the audit stdout verbatim (canonical json plus a newline)')
+    for field in ('sum_likes', 'n_train_examples', 'sum_likes_minus_n_train_examples', 'likes_vs_target_freq', 'timespent', 'duration', 'stats_self_inclusion', 'p_like_report_threshold',
+                  'p_like_exceeds_threshold', 'logq_redundancy', 'grids', 'like_p0', 'stats_sha256'):
+        ensure(field in doc, f'AC16 field missing from the constants file: {field}')
+    ensure(doc['train_only'] is True and doc['cutoff_week'] == item_stats.STAT_CUTOFF_WEEK, 'train-only audit at the code cutoff week')
+    for name, attr in (('expo', 'EXPO_EDGES'), ('first', 'FIRST_EDGES'), ('ratio', 'RATIO_EDGES'), ('like', 'LIKE_EDGES')):
+        edges = tuple(doc['grids'][name]['final_edges'])
+        ensure(getattr(f, attr) == edges, f'{attr} differs from the audit: {getattr(f, attr)} != {edges}')
+        ensure(GRID[name] == edges, f'the guard grid copy of {name} differs from the audit')
+        counts = doc['grids'][name]['final_counts']
+        ensure(len(counts) == len(edges) + 1 and sum(counts) == doc['n_train_examples'], f'{name}: merged histogram does not add up')
+        ensure(min(counts) >= 0.02 * doc['n_train_examples'], f'{name}: a merged bucket is below the 2% rule')
+    ensure((f.LIKE_K, f.LIKE_P0, f.STATS_SHA256) == (doc['like_k'], doc['like_p0'], doc['stats_sha256']), 'LIKE_K / LIKE_P0 / STATS_SHA256 differ from the audit')
+    ensure((GRID_K, GRID_P0) == (doc['like_k'], doc['like_p0']), 'the guard copy of K / P0 differs from the audit')
+    ensure(doc['like_p0'] == round(1000 * doc['sum_likes'] / doc['rows_total']), 'like_p0 is the rounded global like rate')
+    ensure(len(f.STATS_SHA256) == 64 and set(f.STATS_SHA256) <= set('0123456789abcdef'), 'STATS_SHA256 must be a sha256 hex digest')
+    match = re.search(r'^P_LIKE_REPORT_THRESHOLD\s*=\s*([0-9.]+)', AUDIT_SCRIPT.read_text(), re.M)
+    ensure(match is not None and float(match.group(1)) == doc['p_like_report_threshold'], 'the audit threshold differs from the audit script constant')
+    ensure(doc['p_like_exceeds_threshold'] == (doc['stats_self_inclusion']['p_like'] > doc['p_like_report_threshold']), 'p_like_exceeds_threshold is p_like > threshold')
+def guard_stats_bucket_alignment():
+    """stat_bucket_ids indexes by idmap (the model's index space), not by the raw item id or the catalog position; PAD row 0 stays 0; a permuted catalog gives the same table."""
+    import torch
+    f = m4()
+    catalog = [50, 7, 33, 12]; idmap = {50: 3, 7: 1, 33: 4, 12: 2}
+    stats = {'n': [1, 40, 600, 5], 'first_week': [0, 5, 24, 11], 'likes': [0, 12, 30, 4], 'ratio_pm_sum': [100, 40 * 700, 600 * 1500, 5 * 400]}
+    ids = f.stat_bucket_ids(stats, catalog, idmap, 5)
+    ensure(set(ids) == {'xb', 'fb', 'rb', 'lb'}, 'four tensors')
+    for name, tensor in ids.items():
+        ensure(tensor.dtype == torch.long and tensor.shape == (5,) and int(tensor[0]) == 0, f'{name}: long vector of the index space with PAD row 0')
+    for k, item in enumerate(catalog):
+        row = idmap[item]
+        got = (int(ids['xb'][row]), int(ids['fb'][row]), int(ids['rb'][row]), int(ids['lb'][row]))
+        want = (ref_expo(stats['n'][k]), ref_first(stats['first_week'][k]), ref_ratio(stats['ratio_pm_sum'][k], stats['n'][k]), ref_like(stats['likes'][k], stats['n'][k]))
+        ensure(got == want, f'item {item}: bucket ids {got} != {want}')
+    ensure(len({int(v) for v in ids['xb'][1:]}) == 4, 'fixture must use four different exposure buckets (a mis-indexed table is visible)')
+    perm = [2, 0, 3, 1]
+    again = f.stat_bucket_ids({k: [v[i] for i in perm] for k, v in stats.items()}, [catalog[i] for i in perm], idmap, 5)
+    ensure(all(torch.equal(again[k], ids[k]) for k in ids), 'permuting catalog and stats together must not change the index-space tables')
+    ensure(raises(ValueError, f.stat_bucket_ids, {**stats, 'n': stats['n'][:3]}, catalog, idmap, 5), 'a short column is refused')
+    ensure(raises(ValueError, f.stat_bucket_ids, stats, catalog, {**idmap, 12: 9}, 5), 'an index outside the table is refused')
+    ensure(raises(ValueError, f.stat_bucket_ids, stats, catalog, {50: 3, 7: 1, 33: 4}, 5), 'an item missing from idmap is refused')
 
 
 def guard_stats_flip_increment():
@@ -247,6 +351,16 @@ def guard_logq_redundancy():
     zero = m().logq_redundancy(stats2(), CATALOG2, {10, 20, 30}, {10: 5, 20: 3}, BUCKETS)            # an item with no target example has count 0
     ensure(zero['supported_items'] == 3 and zero['expo_spearman'] is not None, 'missing count means 0')
     ensure(raises(ValueError, m().logq_redundancy, stats2(), CATALOG2, {10, 99}, counts, BUCKETS), 'support outside the catalog')
+
+
+class BucketTests(unittest.TestCase):
+    def test_bucket_boundaries(self):
+        guard_stats_bucket_boundaries()
+
+    def test_bucket_alignment(self):
+        guard_stats_bucket_alignment()
+    def test_constants_match_audit(self):
+        guard_stats_constants_match_audit()
 
 
 class DiagnosticsTests(unittest.TestCase):

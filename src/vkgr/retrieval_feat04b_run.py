@@ -1,7 +1,7 @@
 """FEAT-04b P runner: id_mean + the F4-T010 anchor (N1 logQ, F3, F4, temperature 0.10) + one more variable, over HIST_V2_SIDE_V1.
 
 ``f4_control`` and ``f4_recency_pool`` (chain A) exist for synthetic runs only: they are the equivalence fixtures (the real A run is submitted by the
-FEAT-04a runner, never by this one). The real variants (C/D/E) are added in later features. New file only (K1): the FEAT-02/FEAT-03/FEAT-04a/P-HP-01 runners stay
+FEAT-04a runner, never by this one). The real variants are C (``f4_item_popularity``), D (``f4_item_quality``) and E (``f4_recency_behavior``). New file only (K1): the FEAT-02/FEAT-03/FEAT-04a/P-HP-01 runners stay
 byte-identical. ``train_step / export_vectors_side4b / evaluate_model / binding_for4b / _model4b / run_session / verify_run`` are copies of the FEAT-04a functions
 (themselves copies of FEAT-03's) with 04b names; the candidate columns of ``train_step`` and the catalog vectors of the evaluation export go through
 ``model.candidate_items`` (the C/D seam; today it equals ``items``). The copy is guarded by four equivalence tests (E1 T0.10 control == P-HP-01 H1,
@@ -9,7 +9,8 @@ E2 T0.15 A == FEAT-03 Q2, E3 T0.15 control == FEAT-03 control, E4 T0.10 A == FEA
 The temperature is the only difference of the config contract to FEAT-03: the frozen B1 validator pins 0.15, so (like P-HP-01) it is projected back before
 the frozen validator runs; real runs accept 0.1 and learning_rate 0.001 only. Seams are resolved through the modules (K2): ``fr.<name>``, ``f3.<name>``, ``m4.<name>``.
 Config schema ``p-feat04b-run-v1`` has the FEAT-03 field set; only schema, task_id and the ``feature`` values differ.
-Inputs: the ``p-feat02-inputs-v1`` spec (validated by ``validate_inputs4b``: a pin that is not used must be null).
+Inputs: the ``p-feat04b-inputs-v1`` spec = ``p-feat02-inputs-v1`` + ``stats_manifest`` / ``stats_sha256`` (validated by ``validate_inputs4b``: a pin that is used must be set,
+a pin that is not used must be null; only C/D use the stats pair, nobody uses ctx / attr). ``range-check`` / ``prepare-stats`` / ``verify-stats`` keep the ``p-feat02-inputs-v1`` spec.
 CLI: ``synthetic-train [--device]``, ``synthetic-verify [--device]``, ``train``, ``verify``, ``preflight`` (read-only, CPU, never writes a run directory),
 ``range-check`` (read-only gate before ``prepare-stats``), ``prepare-stats`` and ``verify-stats`` (ITEM_STATS_V1 sidecar for C/D, rebuilt from the raw train partitions).
 """
@@ -71,6 +72,19 @@ def validate_config(value, synthetic=False):
 
 
 # ---------------------------------------------------------------- data
+
+def synthetic_data4b(seed=11):
+    """``fr.synthetic_data()`` plus seeded synthetic ITEM_STATS_V1 columns (spread over many buckets of every table), their digest, the cutoff week and the bucket ids
+    (``data['stat_buckets']``). A superset of the FEAT-02 world: control / A / E ignore the extra keys. Only the synthetic CLI and the tests use it."""
+    data = fr.synthetic_data(seed); rng = random.Random(seed + 7); stats = {'n': [], 'first_week': [], 'likes': [], 'ratio_pm_sum': []}
+    for _ in data['catalog']:
+        n = rng.choice([1, 2, 3, 5, 9, 17, 33, 65, 129, 257, 513, 900])
+        stats['n'].append(n); stats['first_week'].append(rng.randrange(item_stats.STAT_CUTOFF_WEEK + 1))
+        stats['likes'].append(rng.randint(0, n // 2)); stats['ratio_pm_sum'].append(n * rng.choice([50, 250, 400, 600, 700, 900, 1100, 1500]) + rng.randint(0, n))
+    stats = {'stats_version': item_stats.STATS_VERSION, 'cutoff_week': item_stats.STAT_CUTOFF_WEEK, 'rows_total': sum(stats['n']), **stats}
+    return {**data, 'stats': stats, 'stats_sha256': item_stats.stats_digest(stats), 'stat_cutoff_week': item_stats.STAT_CUTOFF_WEEK,
+            'stat_buckets': m4.stat_bucket_ids(stats, data['catalog'], data['idmap'], len(data['content']))}
+
 
 def _tensors4b(batch, idmap, width, feature):
     """Padded history ids and the 6-column side tensor, built from the history events' own fields only (through ``fr._tensors2``).
@@ -134,9 +148,51 @@ def evaluate_model(model, data, queries, config, check=None):
                    'history_support_slices': f1.history_support_slices(predictions, queries, data['support'], data['catalog']),
                    'top50_unsupported_share': fr.top50_unsupported_share(predictions, data['support']),
                    'item_norm_stats': fr.item_norm_stats(norms, data['catalog'], data['support'])}
-    if config['feature'] == m4.A_FEATURE:
+    if config['feature'] in (m4.A_FEATURE, m4.E_FEATURE):
         diagnostics['recency_logits'] = {'position': model.recency_logit_pos.detach().cpu().tolist(), 'weekgap': model.recency_logit_gap.detach().cpu().tolist()}
+    if config['feature'] == m4.E_FEATURE:
+        diagnostics['behavior_beta'] = dict(zip(m4.BEHAVIOR_BITS, model.behavior_beta.detach().cpu().tolist()))
+    if config['feature'] in m4.STAT_VARIANTS:
+        diagnostics['top50_stat_profile'] = top50_stat_profile(predictions, data, config['feature'])
     return result, diagnostics
+
+
+PROFILE_LABELS = {'xb': 'expo', 'fb': 'first', 'rb': 'ratio', 'lb': 'like'}
+
+
+def top50_stat_profile(predictions, data, feature):
+    """C/D evaluation diagnostic: how many of the top-50 slots (all validation queries) fall into each bucket of the variant's two statistics (str bucket id -> count);
+    recomputed from the stored predictions by ``verify_run``. None for the other variants."""
+    if feature not in m4.STAT_VARIANTS:
+        return None
+    buffers = [buffer for _, buffer, _ in m4.STAT_LAYOUT[feature]]
+    counts = {buffer: {} for buffer in buffers}; slots = 0
+    for prediction in predictions:
+        for item in prediction[:50]:
+            slots += 1; row = data['idmap'][item]
+            for buffer in buffers:
+                bucket = str(int(data['stat_buckets'][buffer][row])); counts[buffer][bucket] = counts[buffer].get(bucket, 0) + 1
+    return {'slots': slots, **{PROFILE_LABELS[buffer]: dict(sorted(counts[buffer].items(), key=lambda kv: int(kv[0]))) for buffer in buffers}}
+
+
+def beta_bit_train_counts(rows):
+    """E data diagnostic: how many training history events carry each feedback bit (the events beta can act on); a pure function of the history events' own masks."""
+    return {name: sum((mask >> b) & 1 for r in rows for mask, _, _ in r['side']) for b, name in enumerate(m4.BEHAVIOR_BITS)}
+
+
+def feature_data_diagnostics(data, rows, queries, feature):
+    """Per-variant static diagnostics added next to ``b1.data_diagnostics`` (recomputed by ``verify_run``). OFFLINE only: nothing here is called by users / candidate_items /
+    train_step (L7 source guard). E: how many history events carry each feedback bit. C/D: training / validation target bucket histograms and the Spearman correlation of
+    the expo / like buckets with the logQ target frequency (JSON-normalised: str keys). ``stats_self_inclusion`` needs the raw partitions and is reported by the audit receipt only."""
+    if feature == m4.E_FEATURE:
+        return {'beta_bit_train_counts': beta_bit_train_counts(rows)}
+    if feature in m4.STAT_VARIANTS:
+        from .retrieval_negatives import target_frequency
+        fns = {'expo': m4.expo_bucket, 'first': m4.first_bucket, 'ratio': m4.ratio_bucket4, 'like': m4.like_bucket}
+        found = {'target_bucket_hist': item_stats.target_bucket_hist(rows, queries, data['catalog'], data['stats'], fns),
+                 'logq_redundancy': item_stats.logq_redundancy(data['stats'], data['catalog'], data['support'], target_frequency(rows)['counts'], fns)}
+        return json.loads(json.dumps(found, sort_keys=True))
+    return {}
 
 
 # ---------------------------------------------------------------- binding / run
@@ -148,13 +204,18 @@ def binding_for4b(data, config, rows, queries, model, device, inputs_binding):
                'weeks_sha256': b1._digest([[p[0] for p in r['history_positions']] for r in rows + queries]),
                'bucket_spec_sha256': m4.bucket_spec_sha256(config['feature']),
                'param_report': m4.parameter_report4b(model)}
+    if config['feature'] in m4.STAT_VARIANTS:                          # the sidecar, its cutoff and the exact bucket ids this model was built with
+        if any(k not in data for k in ('stats_sha256', 'stat_cutoff_week')):
+            raise ValueError('C/D need the sidecar digest and cutoff week in the data (apply_feat04b)')
+        binding = {**binding, 'stats_sha256': data['stats_sha256'], 'stat_cutoff_week': data['stat_cutoff_week'], 'stat_bucket_ids_sha256': m4.stat_bucket_ids_sha256(model)}
     return binding
 
 
 def _model4b(data, config, device):
     from .training import seed_all
     seed_all(config['seed'])
-    return m4.make_feat04b_model(config['feature'], data['content'], data['supported_indices'], config['history_len'], config['seed']).to(device)
+    buckets = data.get('stat_buckets') if config['feature'] in m4.STAT_VARIANTS else None
+    return m4.make_feat04b_model(config['feature'], data['content'], data['supported_indices'], config['history_len'], config['seed'], stat_buckets=buckets).to(device)
 
 
 def run_session(output, data, config, device='cpu', check=None, inputs_binding=None):
@@ -177,7 +238,8 @@ def run_session(output, data, config, device='cpu', check=None, inputs_binding=N
     view = {**data, 'rows': rows}
     output = Path(output); output.mkdir(parents=True, exist_ok=False)
     step = 0; records = []; evaluations = []; best = None; last = None; train_seconds = 0.; eval_seconds = 0.
-    diagnostics = {**b1.data_diagnostics(rows, queries, data['support']), 'side_visibility': f1.side_visibility(queries, data['support'])}
+    diagnostics = {**b1.data_diagnostics(rows, queries, data['support']), 'side_visibility': f1.side_visibility(queries, data['support']),
+                   **feature_data_diagnostics(data, rows, queries, config['feature'])}
     b1._write_progress('train', 0, config['max_epochs'])
     while not stop.stopped:
         if check: check()
@@ -237,6 +299,9 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
     model = _model4b(data, config, device)
     if value['binding'] != binding_for4b(data, config, rows, queries, model, device, inputs_binding):
         raise ValueError('run input/source/init/side binding mismatch')
+    for name, expected in feature_data_diagnostics(data, rows, queries, config['feature']).items():
+        if value['data_diagnostics'].get(name) != expected:
+            raise ValueError(f'{name} not reproducible from the pinned history events')
     cursor = EpochCursor(len(rows), config['seed']); stats = SamplerStats(); rng = random.Random(f"p-b1-negative-v1:{config['seed']}")
     pool = sorted(data['support']) if config['extra_uniform'] else None
     epoch_ends = []
@@ -272,6 +337,8 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
             raise ValueError('target support slice metrics not reproducible from stored predictions')
         if fr.top50_unsupported_share(predictions, data['support']) != stored.get('top50_unsupported_share'):
             raise ValueError('top50 unsupported share not reproducible from stored predictions')
+        if top50_stat_profile(predictions, data, config['feature']) != stored.get('top50_stat_profile'):
+            raise ValueError('top50_stat_profile not reproducible from stored predictions')
         primary = recomputed['all']
         if stop.observe(epoch, primary['recall@50'], primary['ndcg@50']):
             expected_best = (epoch, step)
@@ -302,31 +369,54 @@ def verify_run(path, digest, data, config, device='cpu', check=None, inputs_bind
 
 # ---------------------------------------------------------------- real inputs
 
-def validate_inputs4b(value, feature):
-    """p-feat02-inputs-v1 (schema, sha, half-pin checks delegated) plus the rule 'a pin that is used must be set, a pin that is not used must be null'.
+INPUTS_SCHEMA = 'p-feat04b-inputs-v1'
+STATS_PINS = ('stats_manifest', 'stats_sha256')
 
-    The control and chain A use no ctx/attr sidecar: all four pins null (C/D/E pins are added in later features).
-    """
+
+def validate_inputs4b(value, feature):
+    """p-feat04b-inputs-v1 = p-feat02-inputs-v1 + the stats pin pair. A pin that is used must be set, a pin that is not used must be null: C/D need ``stats_manifest`` +
+    ``stats_sha256`` (a complete, well-formed pair), control / A / E must have both null, and nobody uses the ctx / attr sidecars (all four pins null)."""
     if feature not in m4.FEATURES4B:
         raise ValueError('unregistered FEAT-04b variant')
-    fr.validate_inputs(value, None)
+    if type(value) is not dict or value.get('schema') != INPUTS_SCHEMA or any(k not in value for k in STATS_PINS):
+        raise ValueError('FEAT-04B inputs schema')
+    fr.validate_inputs({**{k: v for k, v in value.items() if k not in STATS_PINS}, 'schema': fr.INPUTS_SCHEMA}, None)
     if any(value[key] is not None for pair in fr.PIN_PAIRS for key in pair):
-        raise ValueError('this FEAT-04b variant uses no ctx/attr sidecar: all four pins must be null')
+        raise ValueError('no FEAT-04b variant uses a ctx/attr sidecar: all four pins must be null')
+    manifest, digest = value['stats_manifest'], value['stats_sha256']
+    if (manifest is None) != (digest is None):
+        raise ValueError('partial stats pin')
+    if manifest is not None and (type(manifest) is not str or not f1._sha(digest)):
+        raise ValueError('invalid stats pin')
+    if (feature in m4.STAT_VARIANTS) != (manifest is not None):
+        raise ValueError('the stats pin is required by C/D and must be null for every other variant')
     return value
 
 
 def apply_feat04b(data, spec, length, feature):
-    """Overlay pinned history-v2 and the FEAT-01 side sidecar (weeks come from history_positions). A variant without a sidecar refuses a non-empty pin."""
+    """Overlay pinned history-v2 and the FEAT-01 side sidecar (weeks come from history_positions). C/D also load the pinned ITEM_STATS_V1 sidecar (re-checked against this
+    catalog / support / metadata / history, and against the audited digest ``m4.STATS_SHA256`` pinned by FEAT-005 from the audit) and add ``stats``, ``stats_sha256``,
+    ``stat_cutoff_week`` and the bucket ids ``stat_buckets`` to the data; the other variants never touch the sidecar."""
     validate_inputs4b(spec, feature)
-    return fr.apply_feat02(data, spec, length)
+    base = {k: v for k, v in spec.items() if k not in STATS_PINS}
+    data, binding = fr.apply_feat02(data, {**base, 'schema': fr.INPUTS_SCHEMA}, length)
+    if feature in m4.STAT_VARIANTS:
+        loaded = item_stats.load_item_stats(spec['stats_manifest'], spec['stats_sha256'], spec['items_metadata_sha256'], spec['history_sha256'],
+                                            data['catalog'], data['support'], expected_sha256=m4.STATS_SHA256)
+        stats = loaded['stats']
+        data = {**data, 'stats': stats, 'stats_sha256': loaded['stats_sha256'], 'stat_cutoff_week': stats['cutoff_week'],
+                'stat_buckets': m4.stat_bucket_ids(stats, data['catalog'], data['idmap'], len(data['content']))}
+        binding = {**binding, 'stats_manifest_sha256': spec['stats_sha256']}
+    return data, binding
 
 
 def preflight_check(data, config, spec=None, inputs_binding=None, train_sample=512):
     """Read-only checks on REAL inputs (also callable on synthetic data). Runs on CPU, writes nothing, never looks at CUDA.
 
     For the first ``train_sample`` training examples and every validation query it builds the users of the variant and of the anchor control with the same seed
-    and asserts: shapes and finiteness, A's users bit-equal to the control's (logits start at 0), the item tower equal to the control's with unsupported items
-    exactly 0, and (F3) flipping target / target_position / oov of every validation query leaves the users bit-equal. Raises ValueError on any failure.
+    and asserts: shapes and finiteness, every anchor table equal to the control's, the users of A / E / C / D bit-equal to the control's (A / E logits start at 0, C / D
+    leave the history path alone), the catalog vectors equal to the control's (A / E) or equal on unsupported items and different on supported ones (C / D), unsupported
+    catalog items exactly 0, and (F3) flipping target / target_position / oov of every validation query leaves the users bit-equal. Raises ValueError on any failure.
     """
     import copy
     feature = config['feature']
@@ -341,11 +431,19 @@ def preflight_check(data, config, spec=None, inputs_binding=None, train_sample=5
         items, control_items = model.candidate_items(catalog_ids), control.candidate_items(catalog_ids)
         if items.shape != (len(catalog_ids), 64) or not bool(torch.isfinite(items).all()):
             raise ValueError('catalog item vectors have the wrong shape or are not finite')
-        if not torch.equal(items, control_items):
-            raise ValueError('item tower differs from the anchor control')
         unsupported = torch.tensor([i not in data['support'] for i in data['catalog']])
+        if feature in m4.STAT_VARIANTS:
+            if not torch.equal(items[unsupported], control_items[unsupported]):
+                raise ValueError('C/D candidate vectors of unsupported items differ from the anchor control')
+            if torch.equal(items[~unsupported], control_items[~unsupported]):
+                raise ValueError('C/D candidate vectors equal the anchor on supported items: the statistics never reach the candidates')
+        elif not torch.equal(items, control_items):
+            raise ValueError('item tower differs from the anchor control')
         if bool(items[unsupported].abs().sum() != 0):
             raise ValueError('unsupported catalog items must have exactly zero vectors')
+        for key, value in control.state_dict().items():
+            if not torch.equal(model.state_dict()[key], value):
+                raise ValueError(f'anchor entry {key} differs from the control')
         checked = {}
         for name, batch in (('train', sample), ('validation', queries)):
             users, control_users = [], []
@@ -356,8 +454,8 @@ def preflight_check(data, config, spec=None, inputs_binding=None, train_sample=5
             users, control_users = torch.cat(users), torch.cat(control_users)
             if users.shape != (len(batch), 64) or not bool(torch.isfinite(users).all()):
                 raise ValueError(f'{name} user vectors have the wrong shape or are not finite')
-            if feature == m4.A_FEATURE and not torch.equal(users, control_users):
-                raise ValueError(f'{name}: A does not start at the anchor (user vectors differ from the control)')
+            if feature != m4.CONTROL and not torch.equal(users, control_users):
+                raise ValueError(f'{name}: {feature} does not start at the anchor (user vectors differ from the control)')
             checked[name] = len(batch)
         moved = []
         for q in queries:
@@ -370,10 +468,19 @@ def preflight_check(data, config, spec=None, inputs_binding=None, train_sample=5
             if not (torch.equal(a[0], b[0]) and torch.equal(a[1], b[1]) and torch.equal(model.users(*a), model.users(*b))):
                 raise ValueError('user vectors depend on target / target_position / oov')
     binding = binding_for4b(data, config, rows, queries, model, 'cpu', inputs_binding)
+    stat_buckets = {}
+    if feature in m4.STAT_VARIANTS:
+        def histogram(ids):
+            values, counts = torch.unique(ids, return_counts=True)
+            return {str(int(v)): int(c) for v, c in zip(values, counts)}
+        for _, buffer, _ in m4.STAT_LAYOUT[feature]:
+            ids = getattr(model, buffer)[catalog_ids]
+            stat_buckets[buffer] = {'catalog': histogram(ids), 'supported': histogram(ids[~unsupported])}
     return {'status': 'preflight_ok', 'feature': feature, 'temperature': config['temperature'], 'seed': config['seed'],
             'catalog_items': len(data['catalog']), 'supported_items': len(data['support']), 'train_examples_checked': checked['train'],
             'queries_checked': checked['validation'], 'binding_sha256': b1._digest(binding), 'param_report': binding['param_report'],
-            'sidecar': {k: spec[k] for k in ('side_sha256', 'history_sha256', 'attr_sha256') if spec and spec.get(k) is not None}}
+            'sidecar': {k: spec[k] for k in ('side_sha256', 'history_sha256', 'attr_sha256', 'stats_sha256') if spec and spec.get(k) is not None},
+            **({'stat_buckets': stat_buckets} if stat_buckets else {})}
 
 
 # ---------------------------------------------------------------- ITEM_STATS_V1 sidecar (C/D)
@@ -440,9 +547,9 @@ def main(argv=None):
                 raise ValueError('actual CUDA environment required')
             config = strict_json(Path(args.config).read_text())
             if args.command == 'synthetic-train':
-                value = run_session(args.output, fr.synthetic_data(), config, args.device)
+                value = run_session(args.output, synthetic_data4b(), config, args.device)
                 print(json.dumps({'status': value['status'], 'manifest_sha256': value['manifest_sha256']})); return 0
-            print(json.dumps(verify_run(args.manifest, args.manifest_sha, fr.synthetic_data(), config, args.device))); return 0
+            print(json.dumps(verify_run(args.manifest, args.manifest_sha, synthetic_data4b(), config, args.device))); return 0
         if args.command in ('range-check', 'prepare-stats', 'verify-stats'):
             return _stats_command(args, fr.validate_inputs(read_pinned(args.inputs, args.inputs_sha)))
         config = read_pinned(args.config, args.config_sha); validate_config(config)
