@@ -138,12 +138,16 @@ def inspect_run(rid):
     return result
 
 
-def classify(deltas):
+def classify(deltas, feature=False):
     if len(deltas) != 3:
         return {'classification': 'UNKNOWN', 'temperature_adopt_condition': False}
     mean = sum(deltas) / 3
-    return {'deltas': deltas, 'mean_delta_hits': mean, 'seeds_ge6': sum(x >= 6 for x in deltas),
-            'classification': 'effective' if mean >= 6 and sum(x >= 6 for x in deltas) >= 2 else 'harmful' if mean <= -6 else 'inconclusive',
+    count = sum(x >= 6 for x in deltas)
+    flag = 'effective' if mean >= 6 and count >= 2 else 'harmful' if mean <= -6 else 'inconclusive'
+    if feature and mean >= 6 and count < 2:
+        flag = 'UNCLASSIFIED_PENDING_KIRO'
+    return {'deltas': deltas, 'mean_delta_hits': mean, 'seeds_ge6': count,
+            'classification': flag,
             'temperature_adopt_condition': all(x >= 6 for x in deltas)}
 
 
@@ -265,10 +269,30 @@ def run_ids():
     return [f'{stem}-s{s}' for stem in ('p-php01-h1-t010', 'p-php02-t005', 'p-php02-t007', 'p-feat04a-a-q2t010', 'p-feat04a-b-f6hist', 'g-gtok01b-t3-b256d3', 'g-tok-t1r-rqvae-b256', 'g-tok-t3-bhkm-b256', 'g-garch01-a1-lr3e-4') for s in SEEDS]
 
 
+def inspect_fits():
+    out = {}
+    for variant in ('b1024d3', 'b512d3', 'b128d3', 'b64d3', 'b32d3', 'b256d2'):
+        rid = 'g-tok2-' + variant + '-fit'
+        mp = ROOT / 'runs' / rid / 'out/run_manifest.json'
+        m, pin = read(mp)
+        audit, audit_sha = read(mp.parent/'audit.json', m['artifacts']['audit.json'])
+        vr = ROOT / 'runs' / (rid+'-verify')
+        proof, proof_sha = read(vr/'out/verify.json')
+        t, _ = read(vr/'terminal.json')
+        if proof.get('status') != 'verified' or proof.get('manifest_sha256') != pin or t.get('status') != 'succeeded':
+            raise ValueError('fit verifier not accepted')
+        out[rid] = {'manifest_sha256': pin, 'audit_sha256': audit_sha, 'audit': audit,
+                    'verify_path': str(vr/'out/verify.json'), 'verify_sha256': proof_sha, 'verify_status': proof['status'],
+                    'engineering': m['engineering'], 'gates': m['gates']}
+    return out
+
+
 def main():
     out = {'read_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'test_read': False, 'checkpoint_read': False, 'new_submit': False}
     states = {rid: inspect_run(rid) for rid in run_ids()}
     out['runs'] = states
+    out['fits'] = inspect_fits()
+    out['kiro_tok2_queue'] = {f'g-tok2-{v}-s42': queue(f'g-tok2-{v}-s42') for v in ('b1024d3', 'b512d3', 'b128d3', 'b64d3', 'b32d3', 'b256d2')}
     if '--metadata' not in sys.argv:
         hdir = ROOT / 'runs/h2-prepare/out'
         hist, _ = read(hdir/'manifest.json', HISTORY_PIN)
@@ -299,7 +323,7 @@ def main():
                 new, ctl = f'{stem}-s{s}', f'p-php01-h1-t010-s{s}'
                 if new in data and ctl in data: pairs[str(s)] = paired(data[new], data[ctl])
             out['paired'][stem] = pairs
-            out['mechanical'][stem] = classify([pairs[str(s)]['delta_hits'] for s in SEEDS if str(s) in pairs])
+            out['mechanical'][stem] = classify([pairs[str(s)]['delta_hits'] for s in SEEDS if str(s) in pairs], feature=stem.startswith('p-feat04a'))
         for stem in ('g-tok-t3-bhkm-b256', 'g-garch01-a1-lr3e-4'):
             out['g5_precheck'][stem] = {}
             for s in SEEDS:

@@ -42,6 +42,7 @@ class MethodChecks(unittest.TestCase):
         self.assertFalse(reader.classify([8, 9, 1])['temperature_adopt_condition'])
         self.assertTrue(reader.classify([6, 6, 6])['temperature_adopt_condition'])
         self.assertEqual(reader.classify([-6, -6, -6])['classification'], 'harmful')
+        self.assertEqual(reader.classify([-20, 0, 40], feature=True)['classification'], 'UNCLASSIFIED_PENDING_KIRO')
 
     def test_serialization_conventions_and_fixed_archive_role(self):
         import hashlib
