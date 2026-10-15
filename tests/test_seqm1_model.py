@@ -557,12 +557,14 @@ class MaskPaddingTests(unittest.TestCase):
     def test_padding_invariant(self):
         guard_padding_invariant()
 
-    def test_padding_invariance_is_bitwise_on_cpu_or_within_atol(self):
-        """Informational tightening (N1): record whether CPU is even bit for bit; never loosen the atol."""
-        h, s = make_batch([4, 9], 9, 43); model = activate(build('mean')).eval()
-        ph, ps = pad_to(h, s, 50)
-        with torch.no_grad():
-            self.assertTrue(torch.allclose(model.users(h, s), model.users(ph, ps), atol=1e-6, rtol=0))
+    def test_padding_invariance_is_bitwise_on_cpu(self):
+        """N1 tightening: on this CPU the padded-width change is even bit for bit (measured, all 5 arms); the guard itself keeps atol=1e-6 for GPU."""
+        h, s = make_batch([4, 9, 20, 13], 20, 3)
+        for arm in ARMS:
+            model = activate(build(arm)).eval()
+            with torch.no_grad():
+                for width in (35, 50):
+                    self.assertTrue(torch.equal(model.users(h, s), model.users(*pad_to(h, s, width))), (arm, width))
 
     def test_mask_semantics(self):
         guard_mask_semantics()
