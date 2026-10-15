@@ -80,6 +80,10 @@ def publish(q, runs, job, name=None):
 def is_verified(obj, pin): return obj.get('status')=='verified' and obj.get('manifest_sha256')==pin
 
 
+def watchable_queue(state):
+    return bool(state['pending'] or state['claimed']) and not state['rejected']
+
+
 def accepted(rid):
     out=R/'runs'/rid/'out';mp=out/'manifest.json';m=load(mp)
     if load(R/'runs'/rid/'terminal.json')['status']!='succeeded': raise ValueError('parent train not succeeded')
@@ -227,7 +231,7 @@ def main():
         if folder.parent!=Path('/workspace/vkgr-codex-seed-drivers'):raise ValueError('fixed new driver parent required')
         folder.parent.mkdir(exist_ok=True);folder.mkdir(exist_ok=False)
         for j in jobs:
-            if not where(Q,j['run_id'])['claimed'] or where(Q,j['run_id'])['rejected']:raise ValueError('driver only after train accepted')
+            if not watchable_queue(where(Q,j['run_id'])):raise ValueError('driver requires an existing queued own run; no rejection')
         repo=Path('/workspace/vkgr-b1-src');code=folder/'code'
         subprocess.run(['git','-C',str(repo),'fetch','origin','codex/phase2-readonly-tools'],check=True,capture_output=True)
         subprocess.run(['git','-C',str(repo),'worktree','add','--detach',str(code),req['ops_commit']],check=True,capture_output=True)

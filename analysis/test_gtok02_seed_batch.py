@@ -59,5 +59,12 @@ class BatchChecks(unittest.TestCase):
             self.assertEqual(sum(results),1)
             self.assertEqual(len(list((q/'pending').glob('*.json'))),1)
 
+    def test_driver_may_watch_pending_but_not_claim_success(self):
+        m=self.module()
+        self.assertTrue(hasattr(m,'watchable_queue'),'pending acceptance-watch support is missing')
+        self.assertTrue(m.watchable_queue({'pending':['job.json'],'claimed':[],'rejected':[]}))
+        self.assertFalse(m.watchable_queue({'pending':[],'claimed':[],'rejected':[]}))
+        self.assertFalse(m.watchable_queue({'pending':[],'claimed':[],'rejected':['job.json']}))
+
 
 if __name__ == '__main__': unittest.main()
