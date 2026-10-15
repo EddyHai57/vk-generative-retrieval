@@ -1,0 +1,133 @@
+{
+ "content": {
+  "dim": 64,
+  "feature_array_sha256": "766317a88353dcda241d7579aee6da73b5ad8ea0a627470e2ac8a68c99530c84"
+ },
+ "schema": "g-tok-02-fit-v1",
+ "task_id": "G-TOK-02",
+ "variants": {
+  "S1024": {
+   "branching": 1024,
+   "depth": 3,
+   "expected": {
+    "items_needing_suffix": 0,
+    "leaves_count": 120415,
+    "leaves_max": 1,
+    "positions_distinct": [
+     1024,
+     118,
+     1,
+     1
+    ],
+    "vocab_size": 3075
+   },
+   "kind": "bhkm",
+   "max_iter": 10,
+   "seed": 42,
+   "sid_version": "SID_BHKM_B1024D3_S42"
+  },
+  "S128": {
+   "branching": 128,
+   "depth": 3,
+   "expected": {
+    "items_needing_suffix": 0,
+    "leaves_count": 120415,
+    "leaves_max": 1,
+    "positions_distinct": [
+     128,
+     128,
+     8,
+     1
+    ],
+    "vocab_size": 387
+   },
+   "kind": "bhkm",
+   "max_iter": 10,
+   "seed": 42,
+   "sid_version": "SID_BHKM_B128D3_S42"
+  },
+  "S256D2": {
+   "branching": 256,
+   "depth": 2,
+   "expected": {
+    "items_needing_suffix": 54879,
+    "leaves_count": 65536,
+    "leaves_max": 2,
+    "positions_distinct": [
+     256,
+     256,
+     1,
+     2
+    ],
+    "vocab_size": 772
+   },
+   "kind": "derive_depth2",
+   "parent": {
+    "manifest_sha256": "a7af78a3fc04f0f0d174b983987c34d7efa754edd88a05d1350cdadd06fd47b8",
+    "sid_version": "SID_BHKM_B256D3_S42",
+    "variant": "T3"
+   },
+   "sid_version": "SID_BHKM_B256D2_S42"
+  },
+  "S32": {
+   "branching": 32,
+   "depth": 3,
+   "expected": {
+    "items_needing_suffix": 87647,
+    "leaves_count": 32768,
+    "leaves_max": 4,
+    "positions_distinct": [
+     32,
+     32,
+     32,
+     4
+    ],
+    "vocab_size": 102
+   },
+   "kind": "bhkm",
+   "max_iter": 10,
+   "seed": 42,
+   "sid_version": "SID_BHKM_B32D3_S42"
+  },
+  "S512": {
+   "branching": 512,
+   "depth": 3,
+   "expected": {
+    "items_needing_suffix": 0,
+    "leaves_count": 120415,
+    "leaves_max": 1,
+    "positions_distinct": [
+     512,
+     236,
+     1,
+     1
+    ],
+    "vocab_size": 1539
+   },
+   "kind": "bhkm",
+   "max_iter": 10,
+   "seed": 42,
+   "sid_version": "SID_BHKM_B512D3_S42"
+  },
+  "S64": {
+   "branching": 64,
+   "depth": 3,
+   "expected": {
+    "items_needing_suffix": 0,
+    "leaves_count": 120415,
+    "leaves_max": 1,
+    "positions_distinct": [
+     64,
+     64,
+     30,
+     1
+    ],
+    "vocab_size": 195
+   },
+   "kind": "bhkm",
+   "max_iter": 10,
+   "seed": 42,
+   "sid_version": "SID_BHKM_B64D3_S42"
+  }
+ }
+}
