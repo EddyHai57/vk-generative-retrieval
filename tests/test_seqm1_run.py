@@ -346,5 +346,42 @@ class CLITests(unittest.TestCase):
                 run.main([command, '--inputs', 'x', '--inputs-sha', 'y'])
 
 
+class LatencyScriptTests(unittest.TestCase):
+    SCRIPT = ROOT / 'scripts' / 'seqm1_latency_bench.py'
+
+    def _module(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('seqm1_latency_bench', self.SCRIPT)
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        return module
+
+    def test_cpu_small_run_reports_anchor_and_every_requested_arm(self):
+        module = self._module(); out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(module.main(['--device', 'cpu', '--catalog', '2000', '--arms', 'mean', 'pure', '--iters', '6', '--warmup', '2', '--batch', '8']), 0)
+        lines = out.getvalue().strip().splitlines(); self.assertEqual(len(lines), 1)
+        value = json.loads(lines[0])
+        self.assertEqual(set(value['models']), {'anchor', 'mean', 'pure'}); self.assertEqual(set(value['ratio_vs_anchor']), {'mean', 'pure'})
+        self.assertEqual((value['device'], value['threads'], value['catalog']), ('cpu', 1, 2000))
+        for name, row in value['models'].items():
+            for kind in ('offline_ms_per_query', 'online_ms_per_query'):
+                self.assertEqual(set(row[kind]), {'mean', 'p50', 'p95', 'p99', 'n'}, (name, kind)); self.assertGreater(row[kind]['mean'], 0.)
+            self.assertEqual(row['online_ms_per_query']['n'], 6)
+        self.assertGreater(value['models']['mean']['parameters'], value['models']['anchor']['parameters'])
+
+    def test_online_lengths_follow_the_registered_share(self):
+        module = self._module(); g = torch.Generator().manual_seed(3)
+        lengths = [module.online_length(g) for _ in range(4000)]
+        self.assertTrue(all(1 <= n <= 50 for n in lengths))
+        self.assertAlmostEqual(sum(1 for n in lengths if n == 50) / len(lengths), .627 + .373 / 50, delta=.03)
+
+    def test_no_path_arguments_and_users_only(self):
+        module = self._module()
+        dests = {a.dest for a in module.build_parser()._actions} - {'help'}
+        self.assertEqual(dests, {'device', 'arms', 'catalog', 'batch', 'iters', 'warmup'})
+        source = self.SCRIPT.read_text()
+        self.assertNotIn('model.items(', source)                        # the item tower is not part of the measured call
+
+
 if __name__ == '__main__':
     unittest.main()
