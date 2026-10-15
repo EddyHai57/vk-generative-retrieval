@@ -36,7 +36,7 @@ def seq_config(arm='mean', **overrides):
 
 
 def small(arm='mean', **overrides):
-    return seq_config(arm, batch_size=16, max_epochs=6, min_epochs=2, **overrides)
+    return seq_config(arm, **{'batch_size': 16, 'max_epochs': 6, 'min_epochs': 2, **overrides})
 
 
 def tmp_dir():
@@ -89,7 +89,6 @@ def guard_diagnostics_use_eval_mode():
         model.train()
         again = run.model_diagnostics(model, data, queries, result['predictions'], config)
         ensure(again == {k: v for k, v in reference.items() if k in again}, 'diagnostics changed when the model was left in train mode (dropout leaked in)')
-        ensure(not model.training or True, 'unreachable')
 
 
 def guard_holdout_never_opened(run_callable):

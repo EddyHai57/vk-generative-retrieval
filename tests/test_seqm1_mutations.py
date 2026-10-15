@@ -159,5 +159,66 @@ class CandidateSideMutations(unittest.TestCase):
         guard_item_tower_independent_of_users()
 
 
+class RunnerMutations(unittest.TestCase):
+    """Runner-level mutants: M13 M14 M18 M21, the holdout-open guard (L6) and the branch-spec binding (G13)."""
+
+    def test_m13_evaluation_path_puts_the_target_into_the_history(self):
+        from vkgr import retrieval_feat02_run as fr
+        from test_seqm1_leak import guard_export_path_is_target_free, guard_target_fields_do_not_reach_the_user_tower
+        original = fr._tensors2
+        def leaky(batch, idmap, width, feature):
+            return original([{**r, 'history': r['history'][:-1] + [r['target'] if r['target'] in idmap else r['history'][-1]]} for r in batch], idmap, width, feature)
+        detected(self, fr, '_tensors2', leaky, [guard_export_path_is_target_free, guard_target_fields_do_not_reach_the_user_tower])
+
+    def test_m14_diagnostics_exported_in_train_mode(self):
+        from vkgr import retrieval_seqm1_run as run
+        import test_seqm1_run as tr
+        detected(self, run, '_to_eval', lambda model: model.train(), [tr.guard_diagnostics_use_eval_mode])
+
+    def test_m18_branch_parameters_missing_from_the_optimizer(self):
+        from vkgr import retrieval_seqm1_run as run
+        import test_seqm1_run as tr
+        detected(self, run, 'make_optimizer', lambda model, config: torch.optim.AdamW([p for n, p in model.named_parameters() if not n.startswith(('layer', 'order_table'))], lr=config['learning_rate']),
+                 [tr.guard_optimizer_covers_every_parameter])
+
+    def test_m21_temperature_and_negatives_not_pinned(self):
+        from vkgr import retrieval_seqm1_run as run
+        import test_seqm1_run as tr
+        detected(self, run.php, 'validate_config', lambda value, synthetic=False: value, [tr.guard_config_pins_the_anchor_conditions])
+
+    def test_l6_a_runner_that_opens_a_holdout_path_is_caught(self):
+        import tempfile
+        from pathlib import Path
+        from vkgr import retrieval_feat02_run as fr, retrieval_seqm1_run as run
+        import test_seqm1_run as tr
+        original = run.make_optimizer
+
+        def reads_holdout(model, config):
+            open(Path(tempfile.gettempdir()) / ('seqm1-' + tr.HOLDOUT_FRAGMENT + '-split.json'), 'rb')
+            return original(model, config)
+        with mock.patch.object(run, 'make_optimizer', reads_holdout):
+            with tr.tmp_dir() as tmp, self.assertRaises(AssertionError):
+                tr.guard_holdout_never_opened(lambda: run.run_session(Path(tmp) / 'run', fr.synthetic_data(), tr.small('mean', max_epochs=1, min_epochs=1)))
+
+    def test_g13_any_branch_hyper_parameter_breaks_verify(self):
+        from vkgr import retrieval_feat02_run as fr, retrieval_seqm1_run as run
+        import test_seqm1_run as tr
+        data = fr.synthetic_data(); config = tr.small('last')
+        variants = {
+            'post_ln': lambda: mock.patch.object(m, 'make_layer', lambda: torch.nn.TransformerEncoderLayer(64, 4, dim_feedforward=256, dropout=.1, activation='relu', batch_first=True, norm_first=False)),
+            'dropout': lambda: mock.patch.object(m, 'DROPOUT', .2),
+            'heads': lambda: mock.patch.object(m, 'HEADS', 2),
+            'ffn': lambda: mock.patch.object(m, 'FFN', 128),
+            'final_norm_init': lambda: mock.patch.object(m, 'FINAL_NORM_INIT', .2),
+            'order_rows': lambda: mock.patch.object(m, 'ORDER_ROWS', 52)}
+        with tr.tmp_dir() as tmp:
+            value = run.run_session(Path(tmp) / 'run', data, config)
+            for name, patch in variants.items():
+                with patch():
+                    with self.assertRaises(ValueError, msg=name):
+                        run.verify_run(Path(tmp) / 'run' / 'manifest.json', value['manifest_sha256'], data, config)
+            self.assertEqual(run.verify_run(Path(tmp) / 'run' / 'manifest.json', value['manifest_sha256'], data, config)['status'], 'verified')
+
+
 if __name__ == '__main__':
     unittest.main()
