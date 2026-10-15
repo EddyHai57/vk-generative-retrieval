@@ -266,7 +266,7 @@ def paired(new, ctl):
 
 
 def run_ids():
-    return [f'{stem}-s{s}' for stem in ('p-php01-h1-t010', 'p-php02-t005', 'p-php02-t007', 'p-feat04a-a-q2t010', 'p-feat04a-b-f6hist', 'g-gtok01b-t3-b256d3', 'g-tok-t1r-rqvae-b256', 'g-tok-t3-bhkm-b256', 'g-garch01-a1-lr3e-4') for s in SEEDS]
+    return [f'{stem}-s{s}' for stem in ('p-php01-h1-t010', 'p-php02-t005', 'p-php02-t007', 'p-feat04a-a-q2t010', 'p-feat04a-b-f6hist', 'p-feat04b-c-i4-popfresh', 'p-feat04b-d-i5-quality', 'g-gtok01b-t3-b256d3', 'g-tok-t1r-rqvae-b256', 'g-tok-t3-bhkm-b256', 'g-garch01-a1-lr3e-4') for s in SEEDS]
 
 
 def inspect_fits():
@@ -317,13 +317,13 @@ def main():
             except (ValueError, KeyError, OSError) as e:
                 out['archive_summaries'][rid] = {'status': 'UNKNOWN', 'reason': str(e)}
         out['paired'] = {}; out['mechanical'] = {}; out['g5_precheck'] = {}
-        for stem in ('p-php02-t005', 'p-php02-t007', 'p-feat04a-a-q2t010', 'p-feat04a-b-f6hist'):
+        for stem in ('p-php02-t005', 'p-php02-t007', 'p-feat04a-a-q2t010', 'p-feat04a-b-f6hist', 'p-feat04b-c-i4-popfresh', 'p-feat04b-d-i5-quality'):
             pairs = {}
             for s in SEEDS:
                 new, ctl = f'{stem}-s{s}', f'p-php01-h1-t010-s{s}'
                 if new in data and ctl in data: pairs[str(s)] = paired(data[new], data[ctl])
             out['paired'][stem] = pairs
-            out['mechanical'][stem] = classify([pairs[str(s)]['delta_hits'] for s in SEEDS if str(s) in pairs], feature=stem.startswith('p-feat04a'))
+            out['mechanical'][stem] = classify([pairs[str(s)]['delta_hits'] for s in SEEDS if str(s) in pairs], feature=stem.startswith('p-feat04'))
         for stem in ('g-tok-t3-bhkm-b256', 'g-garch01-a1-lr3e-4'):
             out['g5_precheck'][stem] = {}
             for s in SEEDS:
