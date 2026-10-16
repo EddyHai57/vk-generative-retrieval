@@ -39,7 +39,7 @@
 
 ## 后续工程入口（本轮未运行）
 
-`scripts/seq_combo_stack_ops.py` 从stdin接收显式action和私有paths；PATH_KEYS包含infra_root/deployment/ops/source/python/inputs/data_root/template/ops_library/combo_review，不内置真实路径。主owner在私有通道填值；不得把实际parameters.json放进Git。
+`scripts/seq_combo_stack_ops.py` 接收经SHA绑定的私有request JSON，兼容旧stdin；位置operation与可选`--action`均须和request action一致；PATH_KEYS包含infra_root/deployment/ops/source/python/inputs/data_root/template/ops_library/combo_review，不内置真实路径。主owner在私有通道填值；不得把实际parameters.json放进Git。
 
 流程（按下方修复更新）：inventory→固定工作分支/SHA逐文件deploy→preflight（一次检查3config且输出叠加自身逐项矩阵）→smoke-dry/smoke-submit→status→dry→submit（seal/ready/release原子建立唯一owner）→status；不再发start。CUDA脚本生成本作业新synthetic产物，需fullshape CUDA与commit绑定；CPU证明不被准入。train_jobs还要求combo_review私有收据的SHA、verdict=APPROVED、commit=84b160cb0eeb3c53b877f6cf6474276ba06a6ba5；收据必须来自真实独立review，不得由实现者伪造。
 
@@ -61,3 +61,16 @@ fresh RED分批记录：原9个fault/leak/memory guard失败，补intent/result�
 本轮按要求仅做定点回归与CPU synthetic probe，未重复全仓suite；前节两项旧合同失败继续保留。未连接服务器、未push/submit、未读真实数据/test/旧CP，未改main事实源或AGENTS三份草稿。真实GPU PID/context样本、真实CUDA、真实矩阵、detached PPID/断线存活、dry-run仍待主执行者在正式通道取得。PASS矩阵也不解除D-1训练侧self-inclusion限制，不作anchor裁决。
 
 本轮更新后的freeze：226个文件，SHA256 `67563d733cd41356191b5c3b4768c2e4ebe72525a42e034f12a48a75aa7cbb8a`，覆盖新增泄漏helper、显存helper和fault tests；此前223-file freeze为历史记录。
+
+
+## 2026-10-17 首次真实工程检查前的入口接线修复
+
+只修运载接口与执行环境，不改模型、seed、检查项、阈值或owner协议，不新增plan action，不复审。`main(argv=None)`新增`[operation] --request <PRIVATE_JSON> --request-sha <PIN>`，兼容`--action`及旧stdin；文件hash/strict JSON/schema/paths通过才分派，位置operation、每个--action、request action不一致即拒绝。空stdin明确失败，文件模式完全不读stdin，不能用checkpoint或test split文件作request；原--driver路径保持。
+
+从旧P template派生的三个train、唯一verify和CUDA smoke，均移除旧PYTHONPATH并唯一设为新DEP/src，其余已冻结env保持；data-parameters仍引用私有JSON+SHA，不把实际data_root值加进argv。入口仍是dry/submit内封存计划，不另设plan action。
+
+fresh RED为7项失败（缺request入口、继承oldpath）；GREEN为原32+新增7=39项，覆盖request文件篡改/EOF/JSON结构/CLI action冲突、checkpoint/test路径不读取，以及含旧PYTHONPATH模板的3train/verify/smoke。日志在gitignored `cache/seq-combo-stack-request-20261017`。未重复全仓suite，旧两项合同限制仍保留。未push/server/submit，未读取真实数据/test/旧CP；前述真实runtime/CUDA/PPID/断线与dry-run仍由主执行者取得。
+
+本轮request/env接线freeze：227文件（新增一份request/env测试），SHA256 `7c03a259c4fd31cd8de2d2a155d73fd7d0bb1ecb325d4596e792fdce1ab61b2a`；原226-file freeze为前一修复版本。
+
+补充独立CLI进程的synthetic metadata检查：stdin EOF下从pinned request执行只读inventory成功；修改request内容后以原pin调用，在dispatch前拒绝（returncode1）。仅临时metadata JSON，无真实数据/CP/test。`cli-proof.json`与最终39项GREEN日志保留于上述gitignored cache。

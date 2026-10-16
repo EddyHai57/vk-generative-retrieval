@@ -1,6 +1,7 @@
 """Versioned P-SEQ-COMBO-STACK deployment, admission and finite server verifier.
 All server paths come from private parameters JSON. Every action is explicit.
 """
+import argparse
 import copy
 import datetime
 import fcntl
@@ -19,10 +20,14 @@ P3C_SHA='c89b6466c509628f6482b7d7dbc9f51c202ab665075caf580beed64bb3274b5f'
 PATH_KEYS=('infra_root','deployment','ops','source','python','inputs','data_root','template','ops_library','combo_review')
 SEEDS=(42,2024,2025);RIDS=tuple(f'p-seq-combo-stack-s{s}' for s in SEEDS);SMOKE='p-seq-combo-stack-cuda-v1'
 
-def configure(paths):
-    global R,Q,DEP,OPS,SRC,PY,INPUT,P3C,TEMPLATE,LIB,REVIEW,PARAMETERS
+def validate_paths(paths):
     if type(paths) is not dict or set(paths)!=set(PATH_KEYS) or any(type(v) is not str or not Path(v).is_absolute() for v in paths.values()):
         raise ValueError('explicit private absolute paths required')
+    return paths
+
+def configure(paths):
+    global R,Q,DEP,OPS,SRC,PY,INPUT,P3C,TEMPLATE,LIB,REVIEW,PARAMETERS
+    validate_paths(paths)
     PARAMETERS=dict(paths)
     R=Path(paths['infra_root']);Q=R/'queue';DEP=Path(paths['deployment']);OPS=Path(paths['ops']);SRC=Path(paths['source'])
     PY=paths['python'];INPUT=Path(paths['inputs']);P3C=Path(paths['data_root'])/'docs/p3c_validation.md'
@@ -166,6 +171,18 @@ def preflight():
                       'data_hashes':{k:expected[k] for k in ('rows_sha256','queries_sha256','catalog_sha256','support_sha256','content_sha256','side_sha256','weeks_sha256','stats_sha256','stat_bucket_ids_sha256')}}
     return {'status':'preflight_ok','read_at_utc':now(),'source':source,'commit':meta['commit'],'inputs_sha256':meta['inputs_sha256'],'entries':entries,'test_read':False,'new_submit':False}
 
+def deployment_env(job):
+    result=copy.deepcopy(job);values=result.get('env',[])
+    if type(values) is not list or any(type(value) is not str for value in values):raise ValueError('job env must be a list of strings')
+    result['env']=[value for value in values if not value.startswith('PYTHONPATH=')]+['PYTHONPATH='+str(DEP/'src')]
+    return result
+
+def make_smoke_job():
+    job=template()
+    job.update(run_id=SMOKE,cwd=str(DEP),config=str(DEP/f'configs/seq_combo_stack/{RIDS[0]}.json'),inputs=[],disk_gib=1,wall_hours=1.,vram_mib=2048,
+               argv=[PY,'-B','scripts/seq_combo_stack_cuda_check.py',str(R/'runs'/SMOKE/'out')])
+    return deployment_env(job)
+
 def template():
     d=load(TEMPLATE)
     if d['cpu_cores']!=1 or d['ram_mib']!=9216 or d['no_admission'] is not False:raise ValueError('frozen P template changed')
@@ -188,11 +205,11 @@ def train_jobs(req):
         if sha(cp)!=entry['config_sha256']:raise ValueError('preflight config mismatch')
         d=copy.deepcopy(parent);d.update(run_id=rid,seed=seed,cwd=str(DEP),config=str(cp),pinned_manifest=None,vram_mib=vram)
         a=d['argv'];a[0]=PY;a[a.index('-m')+1]='vkgr.retrieval_seq_combo_stack_run';replace(a,'--inputs',str(INPUT));replace(a,'--inputs-sha',meta['inputs_sha256']);replace(a,'--config',str(cp.relative_to(DEP)));replace(a,'--config-sha',sha(cp));replace(a,'--output',str(R/'runs'/rid/'out'));a.extend(['--data-parameters',str(OPS/'parameters.json'),'--data-parameters-sha',sha(OPS/'parameters.json')])
-        d['inputs']=list(dict.fromkeys([*d['inputs'],str(INPUT),str(OPS/'parameters.json')]));jobs.append({'job':d,'expected':entry})
+        d['inputs']=list(dict.fromkeys([*d['inputs'],str(INPUT),str(OPS/'parameters.json')]));jobs.append({'job':deployment_env(d),'expected':entry})
     return jobs
 
 def derive_verify(d,manifest_sha):
-    v=copy.deepcopy(d);rid=d['run_id'];v.update(run_id=rid+'-verify',disk_gib=1,wall_hours=3.,inputs=[*d['inputs'],str(R/'runs'/rid/'out/manifest.json')]);a=v['argv'];a[a.index('-m')+2]='verify';i=a.index('--output');del a[i:i+2];a.extend(['--manifest',str(R/'runs'/rid/'out/manifest.json'),'--manifest-sha',manifest_sha]);return v
+    v=copy.deepcopy(d);rid=d['run_id'];v.update(run_id=rid+'-verify',disk_gib=1,wall_hours=3.,inputs=[*d['inputs'],str(R/'runs'/rid/'out/manifest.json')]);a=v['argv'];a[a.index('-m')+2]='verify';i=a.index('--output');del a[i:i+2];a.extend(['--manifest',str(R/'runs'/rid/'out/manifest.json'),'--manifest-sha',manifest_sha]);return deployment_env(v)
 
 def snapshot(entry):
     job=entry['job'];rid=job['run_id'];t=R/'runs'/rid/'terminal.json';v=R/'runs'/(rid+'-verify')/'terminal.json';result={'run_id':rid,'train_queue':where(Q,rid),'verify_queue':where(Q,rid+'-verify'),'train_status':load(t)['status'] if t.exists() else None,'verify_status':load(v)['status'] if v.exists() else None,'verified':False,'unaccepted':True,'exceptions':[]}
@@ -364,16 +381,42 @@ def read_status():
     answer['status']='ALERT' if any((OPS/name).exists() for name in ('publication-ALERT.json','controller-ALERT.json','summary-deadline.json')) else answer.get('summary-final.json',{}).get('status','observing')
     return answer
 
-def main():
+OPERATIONS=('inventory','deploy','preflight','smoke-dry','smoke-submit','dry','submit','start','status')
+
+def read_request(argv=None):
+    parser=argparse.ArgumentParser(description='Stack operations: pinned private request JSON or legacy stdin')
+    parser.add_argument('operation',nargs='?',choices=OPERATIONS)
+    parser.add_argument('--action',dest='actions',action='append',choices=OPERATIONS,default=[])
+    parser.add_argument('--request');parser.add_argument('--request-sha')
+    args=parser.parse_args(argv)
+    if bool(args.request)!=bool(args.request_sha):parser.error('--request and --request-sha are required together')
+    from vkgr.retrieval_ablation_run import read_pinned,strict_json
+    if args.request:
+        path=Path(args.request)
+        forbidden={'test','testdata','test_data','week_26','week26'}
+        if path.suffix!='.json' or path.name in {'test.json','test-queries.json','test_queries.json'} or forbidden.intersection(path.parts):
+            raise ValueError('request must be metadata JSON, never checkpoint or test split input')
+        req=read_pinned(path,args.request_sha)
+    else:
+        raw=sys.stdin.read()
+        if not raw.strip():raise ValueError('request JSON required on stdin or --request')
+        req=strict_json(raw)
+    if type(req) is not dict or req.get('action') not in OPERATIONS:raise ValueError('request action/schema mismatch')
+    validate_paths(req.get('paths'))
+    operations=([args.operation] if args.operation is not None else [])+args.actions
+    if any(value!=req['action'] for value in operations):raise ValueError('positional operation/--action/request action mismatch')
+    return req
+
+def main(argv=None):
     if '--driver' in sys.argv:
         configure(load(sys.argv[sys.argv.index('--params')+1]));driver();return
-    raw=sys.stdin.read();req=json.loads(raw);configure(req['paths']);act=req['action']
+    req=read_request(argv);configure(req['paths']);act=req['action']
     sys.path.insert(0,str(LIB))
     if act=='inventory':answer=inventory()
     elif act=='deploy':answer=deploy(req)
     elif act=='preflight':answer=preflight()
     elif act in ('smoke-dry','smoke-submit'):
-        identity();d=template();d.update(run_id=SMOKE,cwd=str(DEP),config=str(DEP/f'configs/seq_combo_stack/{RIDS[0]}.json'),inputs=[],disk_gib=1,wall_hours=1.,vram_mib=2048,argv=[PY,'-B','scripts/seq_combo_stack_cuda_check.py',str(R/'runs'/SMOKE/'out')])
+        identity();d=make_smoke_job()
         if exists(Q,R/'runs',SMOKE):raise FileExistsError(SMOKE)
         from vkgr_ops import launcher
         answer={'status':'smoke_dry_ok','prepared':launcher.prepare(d)}

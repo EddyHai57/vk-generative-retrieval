@@ -156,5 +156,5 @@ class FailedReceiptExitTests(unittest.TestCase):
    request={'action':'preflight','paths':{k:str(Path(tmp)/k) for k in m.PATH_KEYS}}
    record={'status':'preflight_failed','leakage_receipt':{'status':'FAIL','checks':{'L2':{'status':'FAIL'}}}}
    with mock.patch.object(m.sys,'stdin',io.StringIO(json.dumps(request))),mock.patch.object(m,'preflight',return_value=record),mock.patch.object(m.sys,'stdout',io.StringIO()):
-    with self.assertRaises(SystemExit) as result:m.main()
+    with self.assertRaises(SystemExit) as result:m.main([])
    self.assertEqual(result.exception.code,2)
