@@ -33,4 +33,9 @@ class Retry(unittest.TestCase):
   with self.assertRaises(ValueError):m.validate_retry_ids(old,old)
   new['deadline_epoch']+=1
   with self.assertRaises(ValueError):m.validate_retry_ids(old,new)
+ def test_dynamic_vram_alone_is_deferred_until_measurement(self):
+  m=module('control',ROOT/'scripts/sid_coll_retry_control.py')
+  self.assertTrue(m.has_dynamic({'argv':['python'],'vram_mib':'@cuda.raw_proof.declared_vram_mib'}))
+  self.assertTrue(m.has_dynamic({'argv':['python','@input.sha'],'vram_mib':0}))
+  self.assertFalse(m.has_dynamic({'argv':['python'],'vram_mib':2048}))
 if __name__=='__main__':unittest.main()

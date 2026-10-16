@@ -86,6 +86,9 @@ def seal(req):
   new(OPS/name,value)
  return {'status':'sealed','read_at_utc':now(),'plan_sha256':sha(OPS/'pipeline-plan.json')}
 
+def has_dynamic(job):
+ return '@' in json.dumps(job,sort_keys=True)
+
 def run(req):
  identity();plan=OPS/'pipeline-plan.json'
  if sha(plan)!=req['plan_sha256']:raise ValueError('new frozen plan changed')
@@ -96,7 +99,7 @@ def run(req):
    prepared[label]={}
    for name,stage in branch['stages'].items():
     if name in REUSED:continue
-    if any(c.startswith('@') for c in stage['job']['argv']):prepared[label][name]={'status':'DEFERRED_DYNAMIC_BINDING'}
+    if has_dynamic(stage['job']):prepared[label][name]={'status':'DEFERRED_DYNAMIC_BINDING'}
     else:prepared[label][name]=op.default_prepare(stage['job'])
   result={'status':'dry_ok','prepared':prepared,'read_at_utc':now()};new(OPS/'dry-v2.json',result);return result
  out=OPS/'driver-start-v2.json'
