@@ -10,6 +10,13 @@ class CUDAContract(unittest.TestCase):
    with self.assertRaises(ValueError):m.declare_vram(x)
  def test_fullshape(self):
   m=self.load();rows=m.synthetic_rows([1,2,3],512,50);self.assertEqual(len(rows),512);self.assertEqual(len(rows[0]['history']),50);self.assertNotEqual(rows[0]['target'],rows[0]['history'][-1])
+ def test_real_codec_protocol_has_catalog_depth(self):
+  import numpy as np
+  from vkgr.sid_v2 import build_codec
+  codec=build_codec(np.array([1,2],dtype=np.uint32),np.array([[0,0,0,0],[1,0,0,0]],dtype=np.uint32),256)
+  self.assertFalse(hasattr(codec,'depth'))
+  self.load().check_decoder_shape(codec,{'beam':100})
+  with self.assertRaises(ValueError):self.load().check_decoder_shape(codec,{'beam':50})
  def test_seed_only(self):
   m=self.load();base={'seed':42,'beam':100};m.check_seed_configs({42:base,2024:{**base,'seed':2024},2025:{**base,'seed':2025}})
   with self.assertRaises(ValueError):m.check_seed_configs({42:base,2024:{**base,'seed':2024,'beam':50},2025:{**base,'seed':2025}})

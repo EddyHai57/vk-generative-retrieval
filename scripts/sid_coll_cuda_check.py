@@ -33,6 +33,11 @@ def check_seed_configs(configs):
             raise ValueError('three configurations must differ only by seed')
 
 
+def check_decoder_shape(codec,config):
+    # _ValidatedCodec exposes its semantic depth through the catalog protocol.
+    if codec.catalog.depth!=3 or config['beam']!=100:
+        raise ValueError('frozen decoder shape changed')
+
 def _checked(spec,role):
     from vkgr import generative_data as gd
     r=spec['refs'][role]
@@ -66,7 +71,7 @@ def context(spec,scratch):
         raise ValueError('formal real input required')
     if (len(ctx.catalog),len(ctx.examples),len(ctx.queries))!=(120415,86785,2520):
         raise ValueError('real input shape differs from frozen T3')
-    if ctx.codec.depth!=3 or configs[42]['beam']!=100:raise ValueError('frozen decoder shape changed')
+    check_decoder_shape(ctx.codec,configs[42])
     torch.set_num_threads(1)
     runtime=g._runtime(False)
     return g,ctx,sid,configs,runtime
