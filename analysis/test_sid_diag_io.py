@@ -15,6 +15,17 @@ class IOTests(unittest.TestCase):
     def artifact(self, name, payload):
         p = self.root/name; p.write_bytes(payload)
         return {'path': str(p), 'sha256': hashlib.sha256(payload).hexdigest()}
+    def test_missing_historical_receipts_stay_unknown_not_verified(self):
+        missing={'terminal':{'status':'succeeded'},'verified':False,'verify':{'jobs':[]}}
+        self.assertEqual(d.unaccepted_legacy({'g-g4-rand-s42':missing}),{'g-g4-rand-s42':'UNKNOWN: archived verifier receipt not found; no predictions read'})
+        self.assertFalse(missing['verified'])
+        u={'status':'UNKNOWN','reason':'missing raw verified'}
+        report=d.render_report({'inventory':{'threshold_source':{}},'A':{},'B':{'random':{'42':u}},'C':{'random':{'42':u}},'C_delta_vs_same_seed_T3':{},'D':{},'decomposition':{}})
+        self.assertIn('UNKNOWN',report)
+        self.assertEqual(d.mean_tree({'42':u,'2024':u,'2025':u})['status'],'UNKNOWN')
+        with self.assertRaises(ValueError):d.unaccepted_legacy({'g-tok-t3-bhkm-b256-s42':missing})
+        with self.assertRaises(ValueError):d.unaccepted_legacy({'g-g4-rand-s42':{**missing,'verify':{'jobs':[{'terminal':{'status':'failed'}}]}}})
+        self.assertEqual(d.unaccepted_legacy({'g-tok-t3-bhkm-b256-s42':{'verified':True}}),{})
     def test_prepared_manifest_registered_role(self):
         self.assertEqual(d.prepared_metadata_path({'prepared':'/fixture/prepared'}),Path('/fixture/prepared/prepare-manifest.json'))
     def test_hash_and_scope(self):

@@ -4,7 +4,7 @@ Only new own paths may be written. Default stdin-source mode is read-only.
 import datetime,fcntl,hashlib,json,os,subprocess,sys,time
 from pathlib import Path
 R=Path('/workspace/vkgr-infra01-root');Q=R/'queue'
-DEP=Path('/workspace/vkgr-sidfix-s0-code-v2');OPS=Path('/workspace/vkgr-sidfix-s0-ops-v2')
+DEP=Path('/workspace/vkgr-sidfix-s0-code-v3');OPS=Path('/workspace/vkgr-sidfix-s0-ops-v3')
 SRC=Path('/workspace/vkgr-b1-src');PY='/workspace/vkgr-p6-20261006t2050/code-v1/.venv/bin/python'
 MODES={'first_batch':'sid-fix-s0-first-v1','a1_b1024':'sid-fix-s0-a1b1024-v1'}
 def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -72,7 +72,8 @@ def preflight(req):
  if plan is None:raise ValueError('explicit metadata-discovered plan required')
  if plan['mode']!=mode:raise ValueError('plan mode mismatch')
  result=mod.collect_inventory(plan)
- if not all(v.get('verified') for v in result['runs'].values()):raise ValueError('all raw verifiers required')
+ # Missing historical receipts remain explicitly UNKNOWN; runner never reads their predictions.
+ if mode=='a1_b1024' and result.get('unaccepted_runs'):raise ValueError('A1 confirm requires all three raw verified')
  return {'status':'preflight_ok','read_at_utc':now(),'plan':plan,'inventory':result}
 
 def seal(req):

@@ -197,7 +197,7 @@ def run(plan,outdir):
     if any(outdir.resolve().is_relative_to(Path(ref['path']).parent.resolve()) for ref in [plan['history'],plan['catalog'],plan['train_audit'],*[r for r in plan['bundles'].values() if 'path' in r]]):
         raise ValueError('output cannot be inside an input artifact directory')
     inventory=collect_inventory(plan)
-    if not all(s['verified'] for s in inventory['runs'].values()): raise ValueError('all registered run verifiers must pass')
+    unaccepted=inventory['unaccepted_runs']
     hist=read_json(plan['history']); catalog=read_json(plan['catalog'])
     if len(catalog)!=120415 or len(set(catalog))!=len(catalog) or archive.plain_digest(catalog)!=hist['catalog_sha256'] or plan['catalog']['sha256']!=hist['binding']['catalog_sha']: raise ValueError('frozen catalog mismatch')
     queries=read_json({'path':str(Path(plan['history']['path']).parent/'validation-l50.json'),'sha256':hist['artifacts']['validation-l50.json']})
@@ -218,6 +218,10 @@ def run(plan,outdir):
     for label,seeds in plan['runs'].items():
         result['B'][label]={}; result['C'][label]={}
         for seed,rid in seeds.items():
+            if rid in unaccepted:
+                result['B'][label][str(seed)]={'status':'UNKNOWN','reason':unaccepted[rid]}
+                result['C'][label][str(seed)]={'status':'UNKNOWN','reason':unaccepted[rid]}
+                continue
             preds,summary=load_predictions(rid,queries,hist,inventory['runs'][rid],catalog)
             sidlabel={'A1B16':'B16','A1T3':'T3','A1B1024':'B1024'}.get(label,label)
             if sidlabel in mappings: result['B'][label][str(seed)]=metrics.prediction_metrics(targets,preds,mappings[sidlabel])
@@ -231,7 +235,7 @@ def run(plan,outdir):
     for label,rows in result['C'].items():
         ref='A1T3' if label.startswith('A1') else 'T3'
         if ref not in result['C']: continue
-        result['C_delta_vs_same_seed_T3'][label]={seed:{b:value['bins'][b]['hits']-result['C'][ref][seed]['bins'][b]['hits'] for b in value['bins']} for seed,value in rows.items()}
+        result['C_delta_vs_same_seed_T3'][label]={seed:{b:value['bins'][b]['hits']-result['C'][ref][seed]['bins'][b]['hits'] for b in value['bins']} for seed,value in rows.items() if 'bins' in value and 'bins' in result['C'][ref][seed]}
     result['read_artifacts_sha256']={**inventory['read_artifacts_sha256'],**READS,**archive.READS}; result['restrictions']={'test_read':False,'checkpoint_read':False,'embedding_read':False,'training':False,'raw_history':'all observed train rows; physical week,row order; repeats retained'}
     outdir.mkdir(parents=True,exist_ok=False)
     (outdir/'result.json').write_bytes(archive.canonical(result))
@@ -252,11 +256,15 @@ def render_report(result):
     lines.extend(['','## B 每位预测','', '|配置|seed|in-catalog|OOV|top1 前1/2/3|top50 前1/2/3|item hits|', '|---|---|---:|---:|---|---|---:|'])
     for label,rows in result['B'].items():
         for seed,value in rows.items():
+            if value.get('status')=='UNKNOWN':
+                lines.append('|'+label+'|'+seed+'|UNKNOWN||||'+value['reason']+'|');continue
             prefix=value['prefix_by_k']; one=[prefix[str(k)]['top1_rate'] for k in (1,2,3)]; fifty=[prefix[str(k)]['top50_rate'] for k in (1,2,3)]
             lines.append('|'+ '|'.join(map(str,[label,seed,value['n_in_catalog'],value['n_oov'],one,fifty,value['exact_item']['top50_hits']]))+'|')
     lines.extend(['','三 seed 均值详见 result.json 的 B_seed_means。','','## C 热度命中与相对同 seed T3 增益','','|配置|seed|high|mid|low|unsupported|OOV|同 seed 差|','|---|---|---:|---:|---:|---:|---:|---|'])
     for label,rows in result['C'].items():
         for seed,value in rows.items():
+            if value.get('status')=='UNKNOWN':
+                lines.append('|'+label+'|'+seed+'|UNKNOWN|||||'+value['reason']+'|');continue
             hits=[value['bins'][b]['hits'] for b in ('high','mid','low','unsupported','oov')]
             delta=result['C_delta_vs_same_seed_T3'].get(label,{}).get(seed)
             lines.append('|'+ '|'.join(map(str,[label,seed,*hits,delta]))+'|')
@@ -350,17 +358,29 @@ def assert_train_source_control(plan,history,inventory=None):
     return {'run_id':rid,'manifest_path':state['manifest_path'],'manifest_sha256':state['manifest_sha256'],'prepared_sha256':binding['prepared_sha'],'verified':True,'role':'metadata_only_train_source_provenance'}
 
 
+LEGACY_RECEIPT_GAPS={'g-hist-v2-l50-s2025','g-g4-rand-s42','g-g4-rand-s2024','g-g4-rand-s2025'}
+def unaccepted_legacy(states):
+    unknown={}
+    for rid,state in states.items():
+        if state.get('verified'):continue
+        if rid not in LEGACY_RECEIPT_GAPS or (state.get('terminal') or {}).get('status')!='succeeded' or state.get('verify',{}).get('jobs'):
+            raise ValueError('unaccepted non-legacy or failed verifier: '+rid)
+        unknown[rid]='UNKNOWN: archived verifier receipt not found; no predictions read'
+    return unknown
+
+
 def assert_metadata_bindings(plan,inventory):
     verify_bundle_bindings(plan,inventory)
     history=read_json(plan['history'])
     inventory['train_source_control']=assert_train_source_control(plan,history,inventory)
-    if not all(state.get('verified') for state in inventory['runs'].values()): raise ValueError('all registered run verifiers must pass before admission')
+    inventory['unaccepted_runs']=unaccepted_legacy(inventory['runs'])
     inventory['read_artifacts_sha256'].update({**READS,**archive.READS})
 
 
 def mean_tree(rows):
     """Arithmetic mean across three seeds of numeric B metrics."""
     values=list(rows.values())
+    if any(x.get('status')=='UNKNOWN' for x in values):return {'status':'UNKNOWN','reason':'not all three seed archives accepted'}
     def average(v):
         first=v[0]
         if isinstance(first,dict): return {k:average([x[k] for x in v]) for k in first}
