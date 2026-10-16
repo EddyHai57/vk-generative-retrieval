@@ -113,6 +113,13 @@ def prepared(req):
  result=launcher.prepare(spec);metadata_guard(spec,result)
  return spec,result
 
+def report_proof(path):
+ path=Path(path)
+ if path.is_symlink() or path.stat().st_size>1024*1024:raise ValueError('unsafe aggregate report')
+ text=path.read_text()
+ if not text.startswith('# SID-FIX S0') or not all('## '+k+' ' in text for k in 'ABCD'):raise ValueError('missing diagnostic report sections')
+ return {'path':str(path),'sha256':sha(path),'size_bytes':path.stat().st_size,'sections':list('ABCD')}
+
 def status():
  result=inventory();result['runs']={}
  if DEP.exists():
@@ -126,6 +133,9 @@ def status():
    if p.exists():v[name]=load(p);v[name+'_sha256']=sha(p)
   p=rd/'out/diagnostic/result.json'
   if p.exists():v['result']=load(p);v['result_sha256']=sha(p)
+  report=rd/'out/diagnostic/report.md'
+  if report.exists():v['report']=report_proof(report)
+  if v.get('terminal.json',{}).get('status')=='succeeded' and (not p.exists() or not report.exists()):raise ValueError('successful diagnostic missing output artifacts')
   result['runs'][rid]=v
  return result
 

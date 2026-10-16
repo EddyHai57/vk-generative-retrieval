@@ -46,6 +46,13 @@ class OpsTests(unittest.TestCase):
   self.assertEqual(m.deployment_run_ids({'scope_mode':'a1_b1024'}),('sid-fix-s0-a1b1024-v1',))
   self.assertEqual(set(m.deployment_run_ids({})),{'sid-fix-s0-first-v1','sid-fix-s0-a1b1024-v1'})
   with self.assertRaises(ValueError):m.deployment_run_ids({'scope_mode':'unknown'})
+ def test_report_artifact_is_read_and_all_sections_exist(self):
+  m=self.module()
+  with tempfile.TemporaryDirectory() as t:
+   p=Path(t)/'report.md';p.write_text('# SID-FIX S0\n## A structure\n## B prefixes\n## C popularity\n## D lift\n')
+   proof=m.report_proof(p);self.assertEqual(proof['sha256'],m.sha(p));self.assertEqual(proof['sections'],['A','B','C','D'])
+   p.write_text('# SID-FIX S0\n## A structure\n')
+   with self.assertRaises(ValueError):m.report_proof(p)
  def test_modes_closed(self):
   m=self.module()
   for mode in ('all','train','test'):
