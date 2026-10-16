@@ -61,6 +61,39 @@ def new(path,value):
     if any(x.is_symlink() for x in (p,*p.parents)):raise ValueError('symlink output prohibited')
     with p.open('xb') as f:f.write(payload);f.flush();os.fsync(f.fileno())
 
+def write_summary(path,value):
+    """Batch reports are not launcher records. Keep their independent finite bound."""
+    payload=encoded(value)
+    if len(payload)>=2*1024*1024:raise ValueError('batch summary exceeds 2MiB')
+    p=Path(path)
+    if any(x.is_symlink() for x in (p,*p.parents)):raise ValueError('symlink output prohibited')
+    with p.open('xb') as f:f.write(payload);f.flush();os.fsync(f.fileno())
+
+def diagnostic_summary(proof):
+    result={k:{'status':'UNKNOWN','reason':'diagnostic artifact absent'} for k in ('A','B','C','D','Dprime')}
+    result['sources']={}
+    for name in ('mapping_diagnostics','prediction_diagnostics'):
+        ref=proof.get('proofs',{}).get(name)
+        if ref is None:continue
+        value,_=read(ref['path'],ref['sha256'])
+        result['sources'][name]=copy.deepcopy(ref)
+        for key in ('A','B','C','D','Dprime','C_delta_vs_T3'):
+            if key in value:result[key]=value[key]
+    return result
+
+def complete_snapshot(result,plan):
+    result['unaccepted']=[]
+    for label,branch in plan['branches'].items():
+        state=result['branches'][label];stages=state.setdefault('stages',{})
+        for name,stage in branch['stages'].items():
+            if name not in stages:
+                screened=state.get('status')=='complete_low' and name not in BASE
+                stages[name]={'run_id':stage['job']['run_id'],'status':'SKIPPED_SCREENED_OUT' if screened else 'UNKNOWN',
+                              'unaccepted':not screened,'reason':'preregistered screening' if screened else 'not yet accepted'}
+            if stages[name].get('unaccepted',True):
+                result['unaccepted'].append({'branch':label,'run_id':stages[name]['run_id'],'status':stages[name]['status']})
+    return result
+
 def at(value,key):
     for part in key.split('.'):
         if not isinstance(value,dict) or part not in value:raise ValueError('missing receipt field: '+key)
@@ -158,8 +191,11 @@ def inspect_stage(plan,stage,accepted):
         if any(at(proof,k)!=v for k,v in expected.items()):raise ValueError('raw proof / frozen identity mismatch')
         result.update(status='accepted',accepted=True,unaccepted=False,proof_path=stage['proof']['path'],proof_sha256=pin)
         summary=proof.get('summary',proof)
-        result['summary']={k:summary.get(k) for k in ('commit','config_sha256','data_sha256','manifest_sha256','prediction_sha256','best_epoch','stop_epoch','R50','N50','hits','A','B','C','D','Dprime') if k in summary}
+        result['summary']={k:summary.get(k) for k in ('commit','config_sha256','data_sha256','manifest_sha256','prediction_sha256','prediction_sha256_kind','prediction_computation_sha256','prediction_manifest_file_sha256','best_epoch','stop_epoch','R50','N50','hits','A','B','C','D','Dprime') if k in summary}
         if 'binding' in proof:result['binding']=proof['binding']
+        result['artifacts']=copy.deepcopy(proof.get('proofs',{}))
+        if any(n in proof.get('proofs',{}) for n in ('mapping_diagnostics','prediction_diagnostics')):
+            result['diagnostics']=diagnostic_summary(proof)
         accepted_proof={**proof,'receipt_sha256':pin}
         return result,accepted_proof
     if q['pending'] or q['claimed']:result['status']='queued';return result,None
@@ -183,7 +219,7 @@ def tick(plan,now=None,submitter=None,submit=True):
         if submit and not common_alert.exists():
             common_alert.parent.mkdir(parents=True,exist_ok=True)
             new(common_alert,{'reason':common_error,'at_utc':utc()})
-        result['branches']={b:{'status':'ALERT','reason':common_error,'stages':{name:{'run_id':stage['job']['run_id'],'status':'UNKNOWN','unaccepted':True} for name,stage in branch['stages'].items()},'unaccepted':True} for b,branch in plan['branches'].items()};return result
+        result['branches']={b:{'status':'ALERT','reason':common_error,'stages':{name:{'run_id':stage['job']['run_id'],'status':'UNKNOWN','unaccepted':True} for name,stage in branch['stages'].items()},'unaccepted':True} for b,branch in plan['branches'].items()};return complete_snapshot(result,plan)
     for label,branch in plan['branches'].items():
         accepted={};state={'status':'running','stages':{},'screening':'PENDING','unaccepted':True};result['branches'][label]=state
         alert_path=Path(plan['control_dir'])/('alert-'+label+'.json')
@@ -226,7 +262,7 @@ def tick(plan,now=None,submitter=None,submit=True):
         if len(completed)==2 and all(completed):state.update(status='complete',unaccepted=False)
     if any(s['status']=='ALERT' for s in result['branches'].values()):result['status']='ALERT'
     elif all(s['status'] in ('complete','complete_low') for s in result['branches'].values()):result['status']='complete'
-    return result
+    return complete_snapshot(result,plan)
 
 
 def load_plan(path,pin):
@@ -340,9 +376,9 @@ def driver(plan_path,pin,out):
         while True:
             # Detect changed frozen plan before every action; deadline cannot reset.
             current=load_plan(plan_path,pin)
-            result=tick(current);result['event_wait']=wake;new(ctl/('summary-'+str(time.time_ns())+'.json'),result)
+            result=tick(current);result['event_wait']=wake;write_summary(ctl/('summary-'+str(time.time_ns())+'.json'),result)
             terminal=all(s['status'] in ('complete','complete_low','ALERT') for s in result['branches'].values())
-            if terminal or time.time()>=plan['deadline_epoch']:new(out,result);waiter.close();return result
+            if terminal or time.time()>=plan['deadline_epoch']:write_summary(out,result);waiter.close();return result
             wake=waiter.wait(POLLS,deadline_epoch=plan['deadline_epoch'])
 
 
@@ -377,5 +413,5 @@ def main():
         result={'status':'started_waiting_for_reparent','pid':child.pid,'control_dir':str(ctl),'deadline_epoch':plan['deadline_epoch']}
     elif a.action=='dry':result=dry(plan)
     else:result=tick(plan,submit=a.action=='tick')
-    new(out,result);print(json.dumps({'status':result['status'],'output':str(out)}))
+    write_summary(out,result);print(json.dumps({'status':result['status'],'output':str(out)}))
 if __name__=='__main__':main()

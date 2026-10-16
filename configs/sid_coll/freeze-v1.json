@@ -1,0 +1,39 @@
+{
+  "base": "c1c4b7413b4ae794894fc78b98828ab26029a487",
+  "max_core03_runs": 6,
+  "new_checkpoint_permission": "new runs may verify their own new checkpoints; only M1mean42best is authorized among existing checkpoints",
+  "review_findings": "P1 P2 engineering RED-GREEN closed; see review report",
+  "reviewed_head": "61a039fc8e350d3eecb602a68aaf405e0f51d49b",
+  "schema": "sid-coll-freeze-v1",
+  "science_rule": "decision_log night SID-FIX sections4-5; FINAL card",
+  "scientific_and_ops_files": {
+    "configs/sid_coll/fit-coll-c1.json": "9939460c094fa4d2158662f829a53445a13173aec261842b8f67696585b2bc36",
+    "configs/sid_coll/fit-coll-c2.json": "907782a31dfb50dc3c9253f5c18d0de431309171de6e9e69e82b6894cdaee714",
+    "configs/sid_coll/g-coll-c1-s2024.json": "5afa1e52d07b568d782dead2ccacf3a51c79c254f0b6827272f1d04720446e60",
+    "configs/sid_coll/g-coll-c1-s2025.json": "e2c3d771e57813f490cc23bf25f14783c7f776e01725fc537515ebdb88fe1bf7",
+    "configs/sid_coll/g-coll-c1-s42.json": "d6e4ebba1971788b593e17433d06c20c85eea570cd0ec0a7146d5da53d45818a",
+    "configs/sid_coll/g-coll-c2-s2024.json": "eeb864f52ade96b8e9163b30536d715f8e3a786a354fc9243ed00fb92d51b1dc",
+    "configs/sid_coll/g-coll-c2-s2025.json": "2ca6ba9e2a4f1eb82bf6c24ac0bf182764d4e1b41185d548f3b8a15a3de18ee9",
+    "configs/sid_coll/g-coll-c2-s42.json": "788248e0d71dec364b7218b3237d3e8f1702824a26d7e92598b794e55a217277",
+    "scripts/sid_coll_control.py": "7aa0db14ca6a26214a97d16bfbc18201a0f5e2e61902049ff5fd140c2358a3dc",
+    "scripts/sid_coll_cuda_check.py": "a8f5893a62c015b8aab0ad7f872c63f086a81460bedd40da78133602183a46fd",
+    "scripts/sid_coll_job_entry.py": "383172e46676c417fc190f8ce32d2a97db60cb3888269a8507357ade7d88740a",
+    "scripts/sid_coll_metadata_read.py": "356e985b000c3aec9392b252e2fd3b81e8bf1849cb156d8bbf0b98da04af6532",
+    "scripts/sid_coll_ops.py": "39cd1733f6b3e40c8c8bb8f5cb2c336cf3fb078c3d0fc66611c2729f82307174",
+    "scripts/sid_coll_plan.py": "cfd260cc88fb45c8919e9f245cdcd44ad60dd7995236aed55e12a0d7bb41b0fe",
+    "scripts/sid_coll_status_read.py": "f7c3535c30494a0e485bfc4c8afcfb0a41401b774b25c9f857742882613a358b",
+    "src/vkgr/generative_coll_run.py": "025d6869915ecaa31c27e940c28e02033c095348b60cbecc7e6af938e50f0df2",
+    "src/vkgr/sid_coll_export.py": "0d7541e199dcb5397a37b6cc8eec24b9c94b3925b22100725b3fe2c935ab29fc",
+    "src/vkgr/sid_coll_run.py": "ffd4ce26ba4c79babba3c542080c95d45fcf9eedb490217f70b5eac4841cfef9",
+    "src/vkgr/sid_coll_sgns.py": "2cc25d1997c12fe1e262e455e6644980186b5b9d0e00805014dee3148675876d",
+    "src/vkgr/sid_coll_v1.py": "48975e424fb21b00d2e0d1fffc4541c338cf9df5c3711fee9005a0266d33191c"
+  },
+  "seeds": [
+    42,
+    2024,
+    2025
+  ],
+  "supplement_hits_min": 260,
+  "task_id": "SID-COLL-S1-EXEC-20261016",
+  "test_gate": "closed"
+}

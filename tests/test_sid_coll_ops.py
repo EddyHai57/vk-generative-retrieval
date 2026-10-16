@@ -19,6 +19,45 @@ class OpsTests(unittest.TestCase):
     stages[branch]['stages'][name]={'job':{'schema':'vkgr-queue-job-v1','run_id':rid,'argv':['python','--pin','@input.manifest_sha256'] if name not in ('input_preflight','input') else ['python'],'config':None},'proof':{'path':str(self.root/'runs'/rid/'out/proof.json'),'expected':{'status':'verified','run_id':rid,'commit':'a'*40,'config_sha256':'b'*64,'data_sha256':'c'*64}}}
   self.plan={'schema':'vkgr-sid-coll-plan-v1','root':str(self.root),'control_dir':str(self.root/'controller'),'created_epoch':1000,'deadline_epoch':1000+48*3600,'common_refs':[],'branches':stages}
   self.submitted=[]
+ def test_large_summary_has_separate_bound(self):
+  value={'status':'complete','binding':'x'*65687}
+  path=self.root/'summary.json'
+  with self.assertRaises(ValueError):self.m.new(path,value)
+  self.m.write_summary(path,value)
+  self.assertEqual(json.loads(path.read_text()),value)
+ def test_real_driver_periodic_and_final_large_complete_batch(self):
+  from unittest.mock import patch
+  import hashlib
+  for branch in self.plan['branches']:
+   for name in self.m.STAGES:
+    self.complete(branch,name)
+    p=Path(self.plan['branches'][branch]['stages'][name]['proof']['path'])
+    proof=json.loads(p.read_text());proof['binding']={'data':{'artifact'+str(i):'f'*64 for i in range(30)}}
+    proof['summary']={'hits':260,'prediction_sha256_kind':'prediction_computation_sha256',
+      'prediction_computation_sha256':'e'*64,'prediction_manifest_file_sha256':'f'*64}
+    p.write_text(json.dumps(proof))
+  plan=self.root/'plan.json';plan.write_text(json.dumps(self.plan));pin=hashlib.sha256(plan.read_bytes()).hexdigest()
+  final=self.root/'final-summary.json'
+  with patch.object(self.m.os,'getppid',return_value=1),patch.object(self.m.time,'time',return_value=1001):
+   result=self.m.driver(str(plan),pin,str(final))
+  self.assertEqual(result['status'],'complete');self.assertGreater(final.stat().st_size,48*1024)
+  snapshots=list((self.root/'controller').glob('summary-*.json'));self.assertEqual(len(snapshots),1)
+  self.assertEqual(json.loads(final.read_text())['branches']['C1p']['stages']['verify42']['summary']['prediction_sha256_kind'],'prediction_computation_sha256')
+ def test_diagnostics_hash_and_types_are_preserved(self):
+  diag=self.root/'diagnostics.json';diag.write_text(json.dumps({'A':{'items':3},'D':{'x':0},'Dprime':{'x':'STRUCT_NA'}}))
+  ref={'path':str(diag),'sha256':__import__('hashlib').sha256(diag.read_bytes()).hexdigest()}
+  value=self.m.diagnostic_summary({'proofs':{'mapping_diagnostics':ref}})
+  self.assertEqual(value['A'],{'items':3});self.assertEqual(value['Dprime'],{'x':'STRUCT_NA'})
+  self.assertEqual(value['B']['status'],'UNKNOWN');self.assertEqual(value['sources']['mapping_diagnostics'],ref)
+  diag.write_text('{}')
+  with self.assertRaises(ValueError):self.m.diagnostic_summary({'proofs':{'mapping_diagnostics':ref}})
+ def test_all_registered_runs_remain_in_summary(self):
+  self.complete('C1p','input_preflight',status='failed')
+  value=self.m.tick(self.plan,now=1001,submitter=self.submit)
+  state=value['branches']['C1p']
+  self.assertEqual(set(state['stages']),set(self.m.STAGES))
+  self.assertEqual(state['stages']['train2025']['status'],'UNKNOWN')
+  self.assertTrue(value['unaccepted'])
  def tearDown(self):self.tmp.cleanup()
  def submit(self,root,job):
   self.submitted.append(job['run_id']);p=root/'queue/pending'/('1-'+job['run_id']+'.json');p.write_text(json.dumps(job));return p

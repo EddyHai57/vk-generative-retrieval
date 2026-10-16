@@ -20,3 +20,5 @@
 - 授权：Eddy明确允许新作业verify读取自己新产物；旧CP仍仅M1mean42best。H5a/b为新输入族已冻结合同，不改旧GTOK门禁。
 - 实现：SGNS/新合同/C2短任务在互不相交新增文件实现；唯一服务器owner不变。独立review尚未开始，未提交S1科学作业。
 - 待验收：ops/driver、真实数据source-lock、全套回归、whole review、push/deploy、真实门禁与队列。
+
+- 实现与一次whole review完成：reviewed61a039f，P1汇总体积/P2诊断及SHA类型遗漏，普通工程fresh RED→GREEN关闭，无科学规则变更，无二次review。67项S1＋12项analysis通过；旧tokenizer156通过、旧registry不一致为基底问题未改。公共freeze记录源/config SHA，正式服务器门禁尚未执行。
