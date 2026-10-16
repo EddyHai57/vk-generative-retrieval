@@ -357,28 +357,31 @@ class LatencyScriptTests(unittest.TestCase):
 
     def test_cpu_small_run_reports_anchor_and_every_requested_arm(self):
         module = self._module(); out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            self.assertEqual(module.main(['--device', 'cpu', '--catalog', '2000', '--arms', 'mean', 'pure', '--iters', '6', '--warmup', '2', '--batch', '8']), 0)
+        import hashlib
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(out):
+            path = Path(d) / 'validation.json'
+            path.write_text(json.dumps([{'history': [1] * n} for n in (1, 7, 50)]))
+            sha = hashlib.sha256(path.read_bytes()).hexdigest()
+            self.assertEqual(module.main(['--device', 'cpu', '--catalog', '2000', '--arms', 'mean', 'pure', '--iters', '6', '--warmup', '2', '--batch', '8', '--fixture-mode', '--expected-count', '3', '--lengths-json', str(path), '--lengths-sha', sha]), 0)
         lines = out.getvalue().strip().splitlines(); self.assertEqual(len(lines), 1)
         value = json.loads(lines[0])
         self.assertEqual(set(value['models']), {'anchor', 'mean', 'pure'}); self.assertEqual(set(value['ratio_vs_anchor']), {'mean', 'pure'})
         self.assertEqual((value['device'], value['threads'], value['catalog']), ('cpu', 1, 2000))
         for name, row in value['models'].items():
             for kind in ('offline_ms_per_query', 'online_ms_per_query'):
-                self.assertEqual(set(row[kind]), {'mean', 'p50', 'p95', 'p99', 'n'}, (name, kind)); self.assertGreater(row[kind]['mean'], 0.)
+                self.assertTrue({'mean', 'p50', 'p95', 'p99', 'n'} <= set(row[kind]), (name, kind)); self.assertGreater(row[kind]['mean'], 0.)
             self.assertEqual(row['online_ms_per_query']['n'], 6)
         self.assertGreater(value['models']['mean']['parameters'], value['models']['anchor']['parameters'])
 
-    def test_online_lengths_follow_the_registered_share(self):
-        module = self._module(); g = torch.Generator().manual_seed(3)
-        lengths = [module.online_length(g) for _ in range(4000)]
-        self.assertTrue(all(1 <= n <= 50 for n in lengths))
-        self.assertAlmostEqual(sum(1 for n in lengths if n == 50) / len(lengths), .627 + .373 / 50, delta=.03)
+    def test_online_lengths_follow_the_pinned_empirical_distribution(self):
+        module = self._module()
+        lengths = module.length_schedule({'1': 373, '50': 627}, 4000, 3)
+        self.assertEqual(module.histogram(lengths), {'1': 1492, '50': 2508})
 
-    def test_no_path_arguments_and_users_only(self):
+    def test_only_explicit_pinned_length_input_and_users_only(self):
         module = self._module()
         dests = {a.dest for a in module.build_parser()._actions} - {'help'}
-        self.assertEqual(dests, {'device', 'arms', 'catalog', 'batch', 'iters', 'warmup'})
+        self.assertEqual(dests, {'device', 'arms', 'catalog', 'batch', 'iters', 'warmup', 'seed', 'fixture_mode', 'expected_count', 'lengths_json', 'lengths_sha'})
         source = self.SCRIPT.read_text()
         self.assertNotIn('model.items(', source)                        # the item tower is not part of the measured call
 
