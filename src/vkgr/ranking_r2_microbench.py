@@ -99,7 +99,7 @@ def main(argv=None):
     rows, catalog = load_training(args.prepared, args.prepared_sha256, args.history, args.history_sha256)
     sampled = r.sample_training_indices(len(rows))
     sid = g6._load_sid_v2(args.sid, args.sid_sha256, args.content, args.content_sha256, catalog, False)
-    if sid.info['sid_version'] != config['sid'] or sid.codec.depth != 3 or sid.codec.catalog.branching != 256:
+    if sid.info['sid_version'] != config['sid'] or sid.codec.catalog.depth != 3 or sid.codec.catalog.branching != 256:
         raise ValueError('formal T3 B256D3 bundle required')
     torch.manual_seed(config['seed'])
     torch.cuda.manual_seed_all(config['seed'])

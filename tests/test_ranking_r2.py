@@ -145,7 +145,9 @@ class RuntimeBinding(unittest.TestCase):
         events = []
         config = json.loads(Path('configs/gtok01b/g-gtok-a1-t3-b256d3-s42.json').read_text())
         profile = {'deterministic_algorithms': True, 'allow_tf32': False, 'device': 'cuda:0'}
-        codec = SimpleNamespace(depth=3, catalog=SimpleNamespace(branching=256))
+        from vkgr.sid_v2 import build_codec
+        import numpy as np
+        codec = build_codec(np.array([11,12], dtype=np.uint32), np.array([[0,0,0,0],[1,0,0,0]],dtype=np.uint32),256)
         sid = SimpleNamespace(info={'sid_version': config['sid']}, codec=codec)
         model = SimpleNamespace(spec={})
         def runtime(engineering):
