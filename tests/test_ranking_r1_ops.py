@@ -63,7 +63,7 @@ class ProofBinding(unittest.TestCase):
         pf = {'status': 'preflight_ok', 'source_commit': 'a'*40, 'data_binding_sha256': 'b'*64,
               'sid_manifest_sha256': 'c'*64, 'runtime': {'allow_tf32': False}, 'model_shape': {'vocab': 100}, 'entries': []}
         proof = {'status': 'cuda_engineering_verified', 'source_commit': 'a'*40, 'synthetic_grad_steps': 2, 'reload_decode_equal': True,
-                 'measured_mib': 6000, 'declared_vram_mib': 6912, 'data_binding_sha256': 'd'*64,
+                 'measured_mib': 6000, 'declared_vram_mib': 6912, 'memory_measurement': {'pid': 123, 'context_process_mib': 1., 'context_reserved_mib': 1., 'samples': [{'stage': 'train', 'own_process_mib': 6000., 'reserved_mib': 6000., 'max_reserved_mib': 6000., 'max_allocated_mib': 5900.}]}, 'data_binding_sha256': 'd'*64,
                  'sid_manifest_sha256': 'c'*64, 'runtime': {'allow_tf32': False}, 'model_shape': {'vocab': 100}}
         with patch.object(m, 'identity'), patch.object(m, 'load', side_effect=[pf, proof]), patch.object(m, 'derive_job') as derive:
             with self.assertRaisesRegex(ValueError, 'preflight/CUDA binding'):
@@ -99,15 +99,21 @@ class Derivation(unittest.TestCase):
 
 
 class DetachedDriver(unittest.TestCase):
-    def test_driver_launcher_detaches_stdin_and_process_session(self):
+    def test_driver_launcher_detaches_but_does_not_accept_missing_ready_ack(self):
+        import json
         from unittest.mock import patch
         from types import SimpleNamespace
         m = module()
         with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
             req = {'ops': temp, 'python': 'runtime-python', 'source_commit': 'a'*40}
-            with patch.object(m, 'identity'), patch.object(m, 'load', return_value={'source_commit': 'a'*40, 'deadline_epoch': time.time()+3600}), \
-                 patch.object(m.subprocess, 'Popen', return_value=SimpleNamespace(pid=123)) as popen:
-                result = m.start_driver(req, 'private-request.json')
-            self.assertEqual(result['pid'], 123)
+            (root/'request.json').write_text(json.dumps(req))
+            (root/'plan.json').write_text(json.dumps({'source_commit': 'a'*40, 'deadline_epoch': time.time()+3600}))
+            with patch.object(m, 'identity'), patch.object(m, 'READY_TIMEOUT_SECONDS', .01), \
+                 patch.object(m.subprocess, 'Popen', return_value=SimpleNamespace(pid=123, poll=lambda: 0)) as popen:
+                with self.assertRaises(TimeoutError):
+                    m.start_driver(req, root/'request.json')
             self.assertTrue(popen.call_args.kwargs['start_new_session'])
             self.assertEqual(popen.call_args.kwargs['stdin'], m.subprocess.DEVNULL)
+            self.assertFalse((root/'publish-release.json').exists())
+            self.assertEqual(json.loads((root/'controller-ALERT.json').read_text())['controller_publications'], 0)

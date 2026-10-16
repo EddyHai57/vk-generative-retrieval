@@ -27,3 +27,5 @@
 本地 synthetic train/eval/save best+last/verify 已验证，context 加载使用显式 synthetic fixture 注入；这不等于真实 loader/preflight 已通过。原 frozen 文档 pin 漂移没有修改；真实只读 PF 必须首次核对指定已验收 G 数据通道。
 
 服务器部署、真实 PF、CUDA/full-shape 预演、显存声明、dry-run、三 seed 训练与 verify 均尚未执行，由主 owner 在一次独立 review 通过后推进。
+
+工程review关闭：唯一HIGH改为sealed plan→detached PPID1 ready→release，driver唯一发布并接续已发布训练verify；唯一MEDIUM改为本PID nvidia-smi/context+allocator峰值证据及gate重算。只修ops/tests/docs，科学规则不变，不复审。source/deployment pin采用修复后新commit，重新生成本次PF/CUDA/dry-run收据，不复用旧ops SHA准入证据。
