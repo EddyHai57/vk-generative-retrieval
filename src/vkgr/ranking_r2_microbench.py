@@ -80,6 +80,7 @@ def main(argv=None):
         parser.add_argument('--' + name, required=True, type=Path)
         parser.add_argument('--' + name + '-sha256', required=True)
     parser.add_argument('--config', required=True, type=Path, help='unchanged seed42 A1/T3 config; bytes checked against scientific base')
+    parser.add_argument('--preflight', action='store_true', help='validate real training inputs and SID, without model construction or decoding')
     parser.add_argument('--queries', type=int, default=128, help='timed prefix of the fixed 20000 train sample; 1..20000')
     args = parser.parse_args(argv)
     if not 1 <= args.queries <= 20000:
@@ -101,6 +102,17 @@ def main(argv=None):
     sid = g6._load_sid_v2(args.sid, args.sid_sha256, args.content, args.content_sha256, catalog, False)
     if sid.info['sid_version'] != config['sid'] or sid.codec.catalog.depth != 3 or sid.codec.catalog.branching != 256:
         raise ValueError('formal T3 B256D3 bundle required')
+    if len(rows)!=86785 or len(catalog)!=120415:
+        raise ValueError('frozen training/catalog population required')
+    if args.preflight:
+        import datetime
+        print(json.dumps({'status':'preflight_ok','read_at_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'execution_commit':execution_commit(),'source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            'input_sha256':{k:getattr(args,k+'_sha256') for k in ('prepared','history','sid','content')},
+            'config_sha256':A1_T3_CONFIG_SHA256,'rows':len(rows),'catalog':len(catalog),'sample_count':len(sampled),
+            'sample_indices_sha256':hashlib.sha256(json.dumps(sampled,separators=(',',':')).encode()).hexdigest(),
+            'runtime':runtime,'engineering':False,'validation_read':False,'test_read':False,'checkpoint_read':False,'model_constructed':False},sort_keys=True))
+        return
     torch.manual_seed(config['seed'])
     torch.cuda.manual_seed_all(config['seed'])
     model = make_model_arch_d(sid.codec, config, device=runtime['device'])

@@ -161,7 +161,7 @@ class RuntimeBinding(unittest.TestCase):
         with ExitStack() as stack:
             for target, kwargs in [
                 ('vkgr.ranking_r2_microbench._read', {'return_value': config}),
-                ('vkgr.ranking_r2_microbench.load_training', {'return_value': ([{}] * 20000, [])}),
+                ('vkgr.ranking_r2_microbench.load_training', {'return_value': ([{}] * 86785, list(range(120415)))}),
                 ('vkgr.generative_g6_run._runtime', {'side_effect': runtime}),
                 ('vkgr.generative_g6_run._load_sid_v2', {'return_value': sid}),
                 ('vkgr.generative_g6_model.make_model_arch_d', {'side_effect': factory}),
@@ -175,5 +175,11 @@ class RuntimeBinding(unittest.TestCase):
             output = io.StringIO()
             with redirect_stdout(output):
                 mb.main([x for n in ('prepared', 'history', 'sid', 'content') for x in ('--'+n, 'synthetic', '--'+n+'-sha256', '0'*64)] + ['--config', 'synthetic'])
-        self.assertEqual(events, ['runtime', 'model'])
+            first_events = events.copy()
+            events.clear()
+            preflight_output = io.StringIO()
+            with patch('vkgr.generative_g6_model.make_model_arch_d', side_effect=AssertionError('preflight must not construct model')), redirect_stdout(preflight_output):
+                mb.main([x for n in ('prepared', 'history', 'sid', 'content') for x in ('--'+n, 'synthetic', '--'+n+'-sha256', '0'*64)] + ['--config', 'synthetic', '--preflight'])
+            self.assertEqual(json.loads(preflight_output.getvalue())['status'],'preflight_ok')
+        self.assertEqual(first_events, ['runtime', 'model'])
         self.assertEqual(json.loads(output.getvalue())['runtime'], profile)
