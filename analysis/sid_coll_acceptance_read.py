@@ -1,7 +1,7 @@
 """Independent, bounded raw-receipt readback; no writes, weights or arrays.
 Scientific deployment remains fixed; this later reader does not redeploy it.
 """
-import datetime,hashlib,json,os
+import datetime,hashlib,json,os,math
 from pathlib import Path
 R=Path('/workspace/vkgr-infra01-root');OPS=Path('/workspace/vkgr-sid-coll-ops-v1')
 COMMIT='079d6bd35ae74317b29408cd43d3ec35de77c1eb'
@@ -25,6 +25,47 @@ def accept(terminal,claimed,rejected,receipt,expected,raw_status=None):
 
 def result_fields(raw):
  return {k:v for k,v in raw.items() if k in ('Dprime','aliases','epochs','epoch_runs','read_at_utc','task_id','restrictions')}
+
+def epoch_rows(manifest):
+ rows=[]
+ for value in manifest.get('epochs',[]):
+  a=value.get('metrics',{}).get('metrics',{}).get('all_eligible',{});n=a.get('count');r=a.get('recall@50');h='UNKNOWN'
+  if type(n) is int and n>0 and type(r) in (int,float) and math.isfinite(r) and abs(r*n-round(r*n))<1e-7:h=round(r*n)
+  rows.append({'epoch':value.get('epoch'),'R50':r,'N50':a.get('ndcg@50'),'count':n,'hits_derived':h})
+ return {'best_epoch':manifest.get('selection',{}).get('best_epoch'),'stop_epoch':manifest.get('selection',{}).get('epoch'),'epochs':rows,'hits_method':'derived from exact stored recall times count; descriptive only'}
+
+def small_metadata(root):
+ # These are immutable small manifests only; no failed job is rerun.
+ first,fref=read(root/'runs/sid-fix-s0-first-v1/out/diagnostic/result.json','a2e93d69bfb79af2c94e344aa5368e7604825777acc3ed6f2f6cde37c5db1924')
+ ids=['g-hist-v2-l50-s2025','g-g4-rand-s42','g-g4-rand-s2024','g-g4-rand-s2025']
+ targets={rid:first['inventory']['runs'][rid] for rid in ids};aliases={rid:{'status':'UNKNOWN','receipts':[]} for rid in ids};skipped=0
+ for q in sorted((root/'queue/claimed').glob('*.json')):
+  # Avoid even incidental historical test-named metadata; never open test artifacts.
+  if 'test' in q.name.lower():skipped+=1;continue
+  job,jref=read(q);argv=job.get('argv',[])
+  if argv.count('--manifest')!=1 or argv.count('--manifest-sha')!=1:continue
+  path=argv[argv.index('--manifest')+1];pin=argv[argv.index('--manifest-sha')+1]
+  for rid,target in targets.items():
+   if path!=target['manifest_path'] or pin!=target['manifest_sha256']:continue
+   alias=job['run_id'];rd=root/'runs'/alias;records=[];terminal={}
+   if (rd/'terminal.json').exists():terminal,tref=read(rd/'terminal.json')
+   for file in (rd/'out/verify.json',rd/'out/manifest.json',rd/'logs/stdout.log'):
+    if not file.exists():continue
+    body,bref=read(file)
+    candidates=[body] if isinstance(body,dict) else []
+    if isinstance(body,str):
+     for line in body.splitlines():
+      try:candidates.append(json.loads(line))
+      except ValueError:pass
+    if any(isinstance(x,dict) and x.get('status')=='verified' and all(x.get(k,pin)==pin for k in ('manifest_sha256','run_manifest_sha256')) for x in candidates):records.append(bref)
+   found=terminal.get('status')=='succeeded' and terminal.get('exit_code')==0 and bool(records)
+   aliases[rid]['receipts'].append({'alias_run_id':alias,'target_manifest_sha256':pin,'claimed':jref,'raw_verified_evidence':records,'terminal':terminal,'verified_receipt_found':found})
+   if found:aliases[rid]['status']='verified_receipt_found'
+ a1,aref=read(root/'runs/sid-fix-s0-a1b1024-v1/out/diagnostic/result.json','ce587ba5513109652945bf656eba5fcef156f7471daadba79b9ee50be10beb41');epochs={}
+ for seed in (42,2024,2025):
+  rid='g-gtok02-a1-b1024d3-s'+str(seed);v=a1['inventory']['runs'][rid]
+  raw,ref=read(v['manifest_path'],v['manifest_sha256']);epochs[rid]={**epoch_rows(raw),'manifest_ref':ref,'original_verify_recorded':v['verified']}
+ return {'legacy_aliases':aliases,'alias_scan_limit':'claimed metadata only; historical test-named queue files skipped','skipped_test_named_metadata':skipped,'a1_epochs':epochs,'immutable_source_refs':[fref,aref]}
 
 def run(root=R,ops=OPS):
  root=Path(root);ops=Path(ops);result={'read_at_utc':now(),'scientific_commit':COMMIT,'runs':{},'checkpoint_read':False,'test_read':False}
@@ -66,5 +107,6 @@ def run(root=R,ops=OPS):
  summaries=sorted((ops/'controller').glob('summary-*.json'))
  if summaries:
   value,ref=read(summaries[-1]);result['latest_summary_ref']=ref;result['driver_status']={k:value.get(k) for k in ('status','event_wait','deadline_epoch')}
+ result.update(small_metadata(root))
  return result
 if __name__=='__main__':print(json.dumps(run(),sort_keys=True,allow_nan=False))
