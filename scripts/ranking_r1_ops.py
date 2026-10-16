@@ -1,0 +1,386 @@
+"""R1 pinned preflight/CUDA proof/dry-run/3-seed publication and finite verify driver.
+
+All locations and existing scheduler integration are supplied in a locally private
+request JSON. No SSH, deployment, deletion, retry, checkpoint reuse or model calls.
+"""
+import argparse
+import copy
+import fcntl
+import hashlib
+import io
+import json
+import math
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+sys.dont_write_bytecode = True
+ENTRY = 'vkgr.ranking_r1_run'
+SEEDS = (42, 2024, 2025)
+
+
+def sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def load(path):
+    return json.loads(Path(path).read_text())
+
+
+def new(path, value):
+    with Path(path).open('x') as stream:
+        json.dump(value, stream, sort_keys=True, allow_nan=False)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def flag(argv, name):
+    if argv.count(name) != 1:
+        raise ValueError('exactly one argument required: ' + name)
+    return argv[argv.index(name) + 1]
+
+
+def replace(argv, name, value):
+    flag(argv, name)
+    argv[argv.index(name) + 1] = str(value)
+
+
+def valid_deadline(deadline):
+    return type(deadline) in (int, float) and math.isfinite(deadline) and 0 < deadline-time.time() <= 48*3600
+
+
+def declared_vram(measured):
+    if type(measured) not in (int, float) or not math.isfinite(measured) or measured <= 0:
+        raise ValueError('positive finite measured CUDA MiB required')
+    return math.ceil(measured * 1.15 / 256) * 256
+
+
+def identity(req):
+    root = Path(req['deployment'])
+    actual = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+    if actual != req['source_commit'] or len(actual) != 40:
+        raise ValueError('deployed commit differs from pinned source')
+    if not req['files']:
+        raise ValueError('explicit deployed file hashes required')
+    for name, expected in req['files'].items():
+        path = Path(name)
+        if path.is_absolute() or '..' in path.parts or sha(root/path) != expected:
+            raise ValueError('deployed source byte mismatch: ' + name)
+    required = {'src/vkgr/ranking_r1.py', 'src/vkgr/ranking_r1_run.py', 'src/vkgr/ranking_r1_data.py', 'scripts/ranking_r1_ops.py'}
+    if not required <= set(req['files']):
+        raise ValueError('new runtime and ops files must be pinned')
+    sys.path.insert(0, str(root/'src'))
+    from vkgr import ranking_r1_run as run
+    if not set(run.G6_MEMBERS) <= set(req['files']):
+        raise ValueError('all scientific source members must be deployment-pinned')
+    return run
+
+
+def derive_job(req, seed, vram=6656):
+    if seed not in SEEDS:
+        raise ValueError('fixed three seeds only')
+    root, runs = Path(req['deployment']), Path(req['runs'])
+    template = load(req['templates'][str(seed)])
+    if [template[k] for k in ('cpu_cores', 'ram_mib', 'vram_mib', 'wall_hours', 'disk_gib', 'no_admission')] != [1, 18432, 6656, 24., 4, False]:
+        raise ValueError('original A1/T3 template resources changed')
+    argv = template['argv']
+    if argv[argv.index('-m')+1:argv.index('-m')+3] != ['vkgr.generative_g6_run', 'train']:
+        raise ValueError('original A1/T3 training template required')
+    config_path = root/f'configs/ranking_r1/g-ranking-r1-t08-s{seed}.json'
+    config = load(config_path)
+    old = load(template['config'])
+    expected = dict(old, schema='g-ranking-r1-run-v1', task_id='G-RANK-R1', temperature=.8)
+    if config != expected or config['seed'] != seed or config['sid'] != 'SID_BHKM_B256D3_S42':
+        raise ValueError('only registered temperature/schema/task may differ from same-seed A1/T3')
+    job = copy.deepcopy(template)
+    rid = f'g-ranking-r1-t08-s{seed}'
+    job.update(run_id=rid, seed=seed, cwd=str(root), config=str(config_path), vram_mib=vram, pinned_manifest=req['pinned_manifest'])
+    a = job['argv']
+    a[0] = req['python']
+    a[a.index('-m')+1] = ENTRY
+    for name, value in {'--config': str(config_path.relative_to(root)), '--config-sha': sha(config_path),
+                        '--output': str(runs/rid/'out'), '--scratch': str(runs/rid/'scratch')}.items():
+        replace(a, name, value)
+    job['env'] = [e for e in job['env'] if not e.startswith(('VKGR_PINNED_MANIFEST=', 'VKGR_DECODE', 'VKGR_EVAL_WORKERS=', 'VKGR_DATA_ROOT='))]
+    job['env'] += ['VKGR_PINNED_MANIFEST='+req['pinned_manifest'], 'VKGR_DECODE=batched', 'VKGR_DECODE_BATCH=1', 'VKGR_EVAL_WORKERS=1', 'VKGR_DATA_ROOT='+str(Path(req['data_root']).resolve(strict=True))]
+    return job
+
+
+def derive_verify(job, manifest_sha, runs):
+    verify = copy.deepcopy(job)
+    rid = job['run_id']
+    manifest = str(Path(runs)/rid/'out/manifest.json')
+    vrid = rid+'-verify'
+    verify.update(run_id=vrid, config=None, wall_hours=2., disk_gib=1,
+                  inputs=list(dict.fromkeys([*job['inputs'], manifest])))
+    a = verify['argv']
+    a[a.index('-m')+2] = 'verify'
+    for name in ('--config', '--config-sha'):
+        i = a.index(name)
+        del a[i:i+2]
+    i = a.index('--output')
+    a[i:i] = ['--manifest', manifest, '--manifest-sha', manifest_sha]
+    replace(a, '--output', Path(runs)/vrid/'out')
+    replace(a, '--scratch', Path(runs)/vrid/'scratch')
+    return verify
+
+
+def configure(job):
+    for key in list(os.environ):
+        if key.startswith('VKGR_'):
+            del os.environ[key]
+    os.environ.update(dict(e.split('=', 1) for e in job['env']))
+    import torch
+    torch.set_num_threads(1)
+
+
+def prepare(req):
+    run = identity(req)
+    job = derive_job(req, 42)
+    configure(job)
+    a = job['argv']
+    config = load(job['config'])
+    scratch = Path(req['ops'])/f'preflight-scratch-{time.time_ns()}'
+    context, engineering, sid = run._contexts(Path(req['deployment']), Path(flag(a, '--prepared')), flag(a, '--prepared-sha'),
+        Path(flag(a, '--history-manifest')), flag(a, '--history-sha'), Path(flag(a, '--sid-manifest')), flag(a, '--sid-sha'),
+        Path(flag(a, '--content')), flag(a, '--content-sha'), config, scratch)
+    if engineering is not False or context.binding['synthetic'] is not False or sid.info['engineering'] is not False:
+        raise ValueError('formal engineering=False input path required')
+    if sid.info['sid_version'] != config['sid'] or sid.info['manifest_sha256'] != flag(a, '--sid-sha'):
+        raise ValueError('SID source differs from same-seed A1/T3')
+    runtime = run._runtime(False)
+    return run, context, sid, runtime, scratch
+
+
+def preflight(req):
+    run, context, sid, runtime, scratch = prepare(req)
+    entries = []
+    for seed in SEEDS:
+        job = derive_job(req, seed)
+        config = load(job['config'])
+        run.validate_config(config, False)
+        # All same-seed original inputs must remain byte-for-byte identical.
+        a = job['argv']
+        for name in ('--prepared', '--history-manifest', '--sid-manifest', '--content'):
+            pin_name = {'--history-manifest': '--history-sha', '--sid-manifest': '--sid-sha'}.get(name, name+'-sha')
+            if flag(a, name) != flag(derive_job(req, 42)['argv'], name) or sha(flag(a, name)) != flag(a, pin_name):
+                raise ValueError('same-input identity drift: '+name)
+        run.gr._seed(seed)
+        model = run.make_model_arch_d(context.codec, config, device=runtime['device'])
+        binding = run._binding(Path(req['deployment']), context, config, runtime, model, flag(a, '--prepared-sha'), flag(a, '--history-sha'), sid)
+        entries.append({'job': job, 'expected_binding_sha256': run._digest(binding), 'source': binding['source'], 'config_sha256': sha(job['config'])})
+        model_shape = model.spec
+        del model
+    return {'status': 'preflight_ok', 'source_commit': req['source_commit'], 'entries': entries, 'runtime': runtime,
+            'data_binding_sha256': run._digest(context.binding), 'sid_manifest_sha256': sid.info['manifest_sha256'],
+            'model_shape': model_shape, 'shape': {'vocab_size': context.codec.vocab_size, 'depth': context.codec.depth, 'items': len(context.catalog),
+                      'examples': len(context.examples), 'queries': len(context.queries)}, 'test_read': False, 'scratch': str(scratch)}
+
+
+def cuda_preview(req):
+    import torch
+    run, context, sid, runtime, scratch = prepare(req)
+    config = load(derive_job(req, 42)['config'])
+    run.gr._seed(42)
+    model = run.make_model_arch_d(context.codec, config, device=runtime['device'])
+    from vkgr.sid_depth import SIDTokensLD
+    tokens = SIDTokensLD(context.codec, 50)
+    ids = [int(i) for i in context.catalog]
+    rows = [{'history': [ids[(i+j) % len(ids)] for j in range(50)], 'target': ids[(i+50) % len(ids)]} for i in range(512)]
+    optimizer = run.ga.make_optimizer_arch(model, config)
+    guard = run._guard(False, scratch, runtime['device'])
+    torch.cuda.reset_peak_memory_stats()
+    for _ in range(2):
+        guard()
+        run.train_batch_d(model, optimizer, rows, context.codec, tokens, config, runtime['device'])
+    model.eval()
+    before = run.sdb.decode_histories_batched_d(model, tokens, [rows[0]['history']], 100, 1)
+    buffer = io.BytesIO()
+    torch.save(model.state_dict(), buffer)
+    buffer.seek(0)
+    state = torch.load(buffer, map_location='cpu', weights_only=True)
+    del optimizer, model
+    torch.cuda.empty_cache()
+    reloaded = run.make_model_arch_d(context.codec, config, device=runtime['device'])
+    reloaded.load_state_dict(state)
+    after = run.sdb.decode_histories_batched_d(reloaded, tokens, [rows[0]['history']], 100, 1)
+    if before != after:
+        raise ValueError('new engineering checkpoint in-memory reload/decode mismatch')
+    torch.cuda.synchronize()
+    measured = max(torch.cuda.max_memory_allocated(), torch.cuda.max_memory_reserved()) / 2**20
+    return {'status': 'cuda_engineering_verified', 'source_commit': req['source_commit'], 'runtime': runtime,
+            'config_sha256': sha(derive_job(req, 42)['config']), 'synthetic_grad_steps': 2, 'reload_decode_equal': True,
+            'data_binding_sha256': run._digest(context.binding), 'sid_manifest_sha256': sid.info['manifest_sha256'],
+            'model_shape': reloaded.spec, 'measured_mib': measured, 'declared_vram_mib': declared_vram(measured), 'test_read': False}
+
+
+def where(queue, rid):
+    return {k: sorted((Path(queue)/k).glob('*-'+rid+'.json')) for k in ('pending', 'claimed', 'rejected')}
+
+
+def exists(queue, runs, rid):
+    return (Path(runs)/rid).exists() or any(where(queue, rid).values()) or any(rid in p.name for p in Path(queue).glob('*/.*.tmp'))
+
+
+def publish(queue, runs, job):
+    queue = Path(queue)
+    with (queue/'.ranking-r1-publish.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if exists(queue, runs, job['run_id']):
+            raise FileExistsError(job['run_id'])
+        name = f"{time.time_ns():020d}-{job['run_id']}.json"
+        temp = queue/'pending'/('.'+name+'.tmp')
+        new(temp, job)
+        temp.rename(queue/'pending'/name)
+
+
+def launcher_prepare(req, job):
+    sys.path.insert(0, req['scheduler_ops'])
+    from vkgr_ops import launcher
+    return launcher.prepare(job)
+
+
+def dry_run(req):
+    identity(req)
+    pf, proof = load(req['preflight_receipt']), load(req['cuda_receipt'])
+    if pf['status'] != 'preflight_ok' or proof['status'] != 'cuda_engineering_verified' or any(x['source_commit'] != req['source_commit'] for x in (pf, proof)):
+        raise ValueError('matching real preflight and CUDA proof required')
+    if proof['reload_decode_equal'] is not True or proof['synthetic_grad_steps'] != 2 or proof['declared_vram_mib'] != declared_vram(proof['measured_mib']):
+        raise ValueError('full-shape CUDA proof mismatch')
+    if any(proof.get(k) != pf.get(k) or k not in proof or k not in pf for k in ('data_binding_sha256', 'sid_manifest_sha256', 'runtime', 'model_shape')):
+        raise ValueError('preflight/CUDA binding mismatch')
+    if len(pf['entries']) != 3:
+        raise ValueError('all three preflight seeds required')
+    entries = []
+    for seed, entry in zip(SEEDS, pf['entries']):
+        wanted = derive_job(req, seed, proof['declared_vram_mib'])
+        original = dict(wanted, vram_mib=6656)
+        if entry['job'] != original or entry['config_sha256'] != sha(wanted['config']):
+            raise ValueError('preflight job/config differs from current deployment')
+        launcher_prepare(req, wanted)
+        entries.append(dict(entry, job=wanted))
+    if len(entries) != 3:
+        raise ValueError('all three seeds required')
+    return {'status': 'dry_run_ok', 'entries': entries, 'source_commit': req['source_commit'],
+            'preflight_sha256': sha(req['preflight_receipt']), 'cuda_sha256': sha(req['cuda_receipt'])}
+
+
+def submit(req):
+    plan = dry_run(req)
+    if not valid_deadline(req['deadline_epoch']):
+        raise ValueError('fixed future deadline at most 48h required')
+    for entry in plan['entries']:
+        if exists(req['queue'], req['runs'], entry['job']['run_id']):
+            raise FileExistsError(entry['job']['run_id'])
+    plan.update(deadline_epoch=req['deadline_epoch'], submitted_at=time.time())
+    new(Path(req['ops'])/'plan.json', plan)
+    for entry in plan['entries']:
+        publish(req['queue'], req['runs'], entry['job'])
+    return {'status': 'submitted', 'run_ids': [e['job']['run_id'] for e in plan['entries']], 'deadline_epoch': plan['deadline_epoch']}
+
+
+def observe(req, entry):
+    runs, queue = Path(req['runs']), Path(req['queue'])
+    job = entry['job']
+    rid = job['run_id']
+    train_terminal, verify_terminal = runs/rid/'terminal.json', runs/(rid+'-verify')/'terminal.json'
+    status = load(train_terminal)['status'] if train_terminal.exists() else None
+    state = {'run_id': rid, 'train_status': status, 'verified': False, 'settled': False}
+    if any(where(queue, x)['rejected'] for x in (rid, rid+'-verify')):
+        reasons = {}
+        for rejected_rid in (rid, rid+'-verify'):
+            for rejected in where(queue, rejected_rid)['rejected']:
+                for reason in (rejected.with_suffix('.reason'), Path(str(rejected)+'.reason')):
+                    if reason.exists():
+                        reasons[reason.name] = reason.read_text()[:4096]
+        return dict(state, settled=True, status='ALERT', reason='queue rejection; no retry', rejection_reasons=reasons)
+    if status is not None and status != 'succeeded':
+        return dict(state, settled=True, status='ALERT', reason='training terminal failure; no retry')
+    if status == 'succeeded':
+        claimed = where(queue, rid)['claimed']
+        if len(claimed) != 1 or any(load(claimed[0]).get(k) != v for k, v in job.items()):
+            raise ValueError('claimed training job differs from submitted plan')
+        manifest_path = runs/rid/'out/manifest.json'
+        manifest = load(manifest_path)
+        run = identity(req)
+        if manifest['config'] != load(job['config']) or run._digest(manifest['binding']) != entry['expected_binding_sha256']:
+            raise ValueError('training manifest binding/config mismatch')
+        verify = derive_verify(job, sha(manifest_path), runs)
+        if not exists(queue, runs, rid+'-verify'):
+            launcher_prepare(req, verify)
+            publish(queue, runs, verify)
+        if verify_terminal.exists():
+            candidates = where(queue, rid+'-verify')['claimed']
+            if len(candidates) != 1 or any(load(candidates[0]).get(k) != v for k, v in verify.items()):
+                raise ValueError('claimed verify job differs from expected')
+            records = []
+            for line in (runs/(rid+'-verify')/'logs/stdout.log').read_text().splitlines():
+                try:
+                    records.append(json.loads(line))
+                except ValueError:
+                    pass
+            verified = load(verify_terminal)['status'] == 'succeeded' and any(isinstance(x, dict) and x.get('status') == 'verified' for x in records)
+            state.update(verified=verified, settled=True, status='verified' if verified else 'ALERT')
+    return state
+
+
+def driver(req):
+    identity(req)
+    ops = Path(req['ops'])
+    plan = load(ops/'plan.json')
+    if plan['source_commit'] != req['source_commit'] or plan['deadline_epoch']-plan['submitted_at'] > 48*3600:
+        raise ValueError('immutable finite driver plan required')
+    until = time.monotonic() + 5
+    while os.getppid() != 1 and time.monotonic() < until:
+        time.sleep(.1)
+    if os.getppid() != 1:
+        raise ValueError('driver must run detached with PPID=1')
+    with (ops/'driver.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        new(ops/'driver-pid.json', {'pid': os.getpid(), 'ppid': os.getppid(), 'deadline_epoch': plan['deadline_epoch'], 'poll_seconds': 900})
+        while time.time() < plan['deadline_epoch']:
+            states = []
+            for entry in plan['entries']:
+                try:
+                    states.append(observe(req, entry))
+                except Exception as exc:
+                    states.append({'run_id': entry['job']['run_id'], 'settled': True, 'verified': False, 'status': 'ALERT', 'reason': type(exc).__name__+': '+str(exc)})
+            value = {'utc_epoch': time.time(), 'runs': states,
+                     'status': 'verified' if all(s['verified'] for s in states) else 'ALERT' if any(s.get('status') == 'ALERT' for s in states) else 'running'}
+            new(ops/f'summary-{time.time_ns()}.json', value)
+            if all(s['settled'] for s in states):
+                new(ops/'summary-final.json', value)
+                return value
+            time.sleep(min(900, max(0, plan['deadline_epoch']-time.time())))
+        result = {'status': 'ALERT', 'reason': 'immutable 48h deadline expired; no job killed or retried'}
+        new(ops/'summary-final.json', result)
+        return result
+
+
+def start_driver(req, request_path):
+    identity(req)
+    ops = Path(req['ops'])
+    plan = load(ops/'plan.json')
+    if plan['source_commit'] != req['source_commit'] or not valid_deadline(plan['deadline_epoch']):
+        raise ValueError('unexpired fixed driver plan required')
+    # Exclusive output prevents accidental duplicate dispatch. The child additionally
+    # owns a nonblocking lock and an exclusive PID receipt; no restart/retry path.
+    with (ops/'driver.log').open('x') as log:
+        child = subprocess.Popen([req['python'], '-B', str(Path(__file__).resolve()), 'driver', '--request', str(Path(request_path).resolve())],
+                                 stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
+    return {'status': 'driver_dispatched', 'pid': child.pid, 'deadline_epoch': plan['deadline_epoch']}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('preflight', 'cuda-preview', 'dry-run', 'submit', 'start-driver', 'driver'))
+    parser.add_argument('--request', required=True)
+    args = parser.parse_args()
+    req = load(args.request)
+    actions = {'preflight': preflight, 'cuda-preview': cuda_preview, 'dry-run': dry_run, 'submit': submit, 'start-driver': lambda value: start_driver(value, args.request), 'driver': driver}
+    print(json.dumps(actions[args.action](req), sort_keys=True, allow_nan=False))
+
+
+if __name__ == '__main__':
+    main()
