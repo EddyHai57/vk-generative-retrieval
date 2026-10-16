@@ -16,4 +16,12 @@ class Capacity(unittest.TestCase):
   p=m.patched_plan(old,39168);self.assertEqual(p['deadline_epoch'],12)
   for b in p['branches']:p['branches'][b]['stages']['cuda']['job']['vram_mib']=39312
   self.assertEqual(p,old)
+ def test_partial_metadata_is_never_reported_as_success(self):
+  import tempfile
+  from unittest.mock import patch
+  m=self.module()
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);plan=root/'plan.json';plan.write_text('{}')
+   with patch.object(m,'NEWPLAN',plan),patch.object(m,'BACKUP',root/'backup'):
+    self.assertEqual(m.status()['status'],'UNACCEPTED_PARTIAL')
 if __name__=='__main__':unittest.main()

@@ -114,6 +114,21 @@ def apply(req):
   child=subprocess.Popen([PY,'-c',handoff,*command],cwd=DEP,env=env,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,start_new_session=True,close_fds=True)
  result={**preview,'status':'capacity_metadata_repaired_observer_unconfirmed','old_pid':pid,'new_pid':child.pid,'backup_dir':str(BACKUP),'plan_overwritten':False,'gate_changed':False}
  new(BACKUP/'applied.json',result);return result
+
+def status():
+ if not (BACKUP/'applied.json').exists():return {'status':'UNACCEPTED_PARTIAL','read_at_utc':now(),'new_plan_exists':NEWPLAN.exists()}
+ result=load(BACKUP/'applied.json');control,_,_=libs();op=control.old_ops();plan=op.load_plan(NEWPLAN,result['new_plan_sha256']);summary=op.tick(plan,submit=False)
+ for branch in summary['branches'].values():
+  for stage in branch.get('stages',{}).values():
+   if stage.get('accepted'):
+    raw,_=op.read(stage['proof_path'],stage['proof_sha256']);stage['receipt_status']=raw['status']
+    ref=raw.get('proofs',{}).get('verification')
+    if ref:stage['raw_verification'],_=op.read(ref['path'],ref['sha256'])
+ driver=None;p=OPS/'controller/driver-pid-v3.json'
+ if p.exists():
+  driver=load(p);proc=Path('/proc')/str(driver['pid']);driver['alive']=proc.exists()
+  if (proc/'stat').exists():driver['actual_ppid']=int((proc/'stat').read_text().rsplit(')',1)[1].split()[1])
+ return {'status':'capacity_repaired_readback','read_at_utc':now(),'summary':summary,'driver':driver,'new_plan_sha256':result['new_plan_sha256'],'original_deadline_epoch':result['deadline_epoch']}
 if __name__=='__main__':
- req=json.load(sys.stdin) if sys.argv[0]=='-c' else {'action':'prepare'}
- print(json.dumps(apply(req) if req.get('action')=='apply' else prepare(),sort_keys=True,allow_nan=False))
+ req=json.load(sys.stdin) if sys.argv[0]=='-c' else {'action':'status' if NEWPLAN.exists() else 'prepare'}
+ print(json.dumps(apply(req) if req.get('action')=='apply' else status() if req.get('action')=='status' else prepare(),sort_keys=True,allow_nan=False))
