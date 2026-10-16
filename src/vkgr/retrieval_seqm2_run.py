@@ -311,8 +311,129 @@ def ablation_g0(model, data, queries, config, best_epoch, best_recall, check=Non
 
 # ---------------------------------------------------------------- binding / run
 
+CONTROL_DATA_KEYS = ('rows_sha256', 'queries_sha256', 'catalog_sha256', 'support_sha256', 'content_sha256')
+CONTROL_INPUT_KEYS = ('prepared_sha', 'query_sha', 'catalog_sha', 'history_manifest_sha256', 'side_manifest_sha256', 'inputs_sha256')
+
+
+def _control_hex(value, length=64):
+    import re
+    return type(value) is str and re.fullmatch(r'[0-9a-fA-F]{%d}' % length, value) is not None
+
+
+def control_audit_sha256(audit):
+    """Canonical seal format shared with admission: sorted default JSON, no newline."""
+    import hashlib
+    return hashlib.sha256(json.dumps(audit, sort_keys=True, allow_nan=False).encode()).hexdigest()
+
+
+def validate_control_audit(audit):
+    """Validate sealed archive metadata, without reopening old predictions or stdout."""
+    if (type(audit) is not dict or audit.get('schema') != 'seqm2-m1-controls-v1'
+            or audit.get('seeds') != [42, 2024, 2025]):
+        raise ValueError('M1 control audit schema/seeds mismatch')
+    controls = audit.get('controls'); ledger = audit.get('read_artifacts_sha256')
+    if (type(controls) is not dict or set(controls) != {f'p-seqm1-mean-s{s}' for s in (42,2024,2025)}
+            or type(ledger) is not dict or not ledger
+            or any(type(p) is not str or not p or not _control_hex(h) for p,h in ledger.items())):
+        raise ValueError('M1 control audit population/ledger mismatch')
+
+    def ledger_pin(record, path_key='path', hash_key='sha256'):
+        if (type(record) is not dict or type(record.get(path_key)) is not str or not record[path_key]
+                or not _control_hex(record.get(hash_key)) or ledger.get(record[path_key]) != record[hash_key]):
+            raise ValueError('M1 control artifact pin/ledger mismatch')
+
+    shared = None
+    for seed in (42,2024,2025):
+        rid = f'p-seqm1-mean-s{seed}'; entry = controls[rid]
+        if (type(entry) is not dict or entry.get('run_id') != rid or type(entry.get('seed')) is not int
+                or entry['seed'] != seed or entry.get('verified') is not True or entry.get('arm') != 'mean'
+                or type(entry.get('best_epoch')) is not int or not 1 <= entry['best_epoch'] <= 100
+                or type(entry.get('summary')) is not dict):
+            raise ValueError('M1 control run/seed/selection identity mismatch')
+        for path_key,hash_key in (('manifest_path','manifest_sha256'),('predictions_path','predictions_sha256'),
+                ('history_manifest_path','history_manifest_sha256'),('query_file_path','query_file_sha256')):
+            ledger_pin(entry,path_key,hash_key)
+        if entry['manifest_path'] == entry['predictions_path']:
+            raise ValueError('M1 manifest/predictions identity collision')
+        source = entry.get('source')
+        if (type(source) is not dict or not _control_hex(source.get('git_commit'),40)
+                or type(source.get('files')) is not dict or not source['files']
+                or any(type(p) is not str or not p or not _control_hex(h) for p,h in source['files'].items())):
+            raise ValueError('M1 control producer source identity missing')
+        hashes = entry.get('data_hashes')
+        if type(hashes) is not dict or set(hashes) != set(CONTROL_DATA_KEYS) or any(not _control_hex(v) for v in hashes.values()):
+            raise ValueError('M1 control data hashes missing')
+        if shared is not None and hashes != shared:
+            raise ValueError('M1 control seeds use different data')
+        shared = hashes
+        inputs = entry.get('inputs')
+        if (type(inputs) is not dict or any(not _control_hex(inputs.get(k)) for k in CONTROL_INPUT_KEYS)
+                or inputs['history_manifest_sha256'] != entry['history_manifest_sha256']):
+            raise ValueError('M1 control original input pins missing')
+        verifier = entry.get('verifier')
+        if type(verifier) is not dict or verifier.get('verified') is not True or type(verifier.get('jobs')) is not list:
+            raise ValueError('M1 control direct verifier missing')
+        accepted = False
+        for job in verifier['jobs']:
+            if type(job) is not dict or job.get('verified') is not True:
+                continue
+            if job.get('run_id') != rid + '-verify':
+                raise ValueError('M1 control verifier run identity mismatch')
+            terminal = job.get('terminal')
+            receipt = job.get('job_receipt')
+            records = job.get('records'); evidence = job.get('evidence')
+            if (type(terminal) is not dict or terminal.get('status') != 'succeeded'
+                    or type(terminal.get('exit_code')) is not int or terminal['exit_code'] != 0
+                    or type(receipt) is not dict or receipt.get('target_binding_matches') is not True
+                    or type(records) is not list or not any(type(r) is dict and r.get('status') == 'verified' for r in records)
+                    or type(evidence) is not list or not evidence):
+                raise ValueError('M1 control verifier acceptance evidence mismatch')
+            ledger_pin(receipt)
+            for artifact in evidence:
+                ledger_pin(artifact)
+            accepted = True
+        if not accepted:
+            raise ValueError('M1 control has no accepted direct verifier')
+    return audit
+
+
+def _control_binding(inputs_binding):
+    if type(inputs_binding) is not dict:
+        raise ValueError('real M2 inputs require M1 control audit')
+    control = inputs_binding.get('m1_control_audit')
+    if type(control) is not dict or set(control) != {'sha256','audit'} or not _control_hex(control.get('sha256')):
+        raise ValueError('real M2 inputs require pinned M1 control audit')
+    audit = validate_control_audit(control['audit'])
+    if control_audit_sha256(audit) != control['sha256']:
+        raise ValueError('M1 control canonical audit pin drift')
+    return control
+
+
+def load_control_binding(inputs_binding):
+    """Only the real CLI loads the sealed control audit from its explicit environment."""
+    import os
+    path = os.environ.get('VKGR_M2_CONTROL_AUDIT')
+    pin = os.environ.get('VKGR_M2_CONTROL_AUDIT_SHA')
+    if not path or not _control_hex(pin):
+        raise ValueError('real CLI requires M1 control audit path and SHA')
+    audit = validate_control_audit(read_pinned(path, pin))
+    binding = {**inputs_binding, 'm1_control_audit': {'sha256': pin, 'audit': audit}}
+    _control_binding(binding)
+    return binding
+
+
 def binding_for4(data, config, rows, queries, model, device, inputs_binding):
+    control = _control_binding(inputs_binding) if not data.get('synthetic') else None
     base = fr.binding_for2(data, config, rows, queries, model, device, inputs_binding)
+    if control is not None:
+        for entry in control['audit']['controls'].values():
+            if any(entry['data_hashes'][k] != base[k] for k in CONTROL_DATA_KEYS):
+                raise ValueError('M1/M2 shared data identity mismatch')
+            for key in CONTROL_INPUT_KEYS:
+                if entry['inputs'][key] != inputs_binding.get(key):
+                    raise ValueError('M1/M2 original input pin mismatch: ' + key)
+        base = {**base, 'm1_control_audit_sha256': control['sha256'],
+                'm1_control_manifest_sha256': {rid:entry['manifest_sha256'] for rid,entry in control['audit']['controls'].items()}}
     return {**base, 'task': TASK, 'arm': config['arm'], 'mask': model.mask_kind, 'readout': model.readout, 'anchored': model.anchored,
             'branch_spec_sha256': branch_spec_sha256(model), 'param_report': parameter_report_seqm2(model),
             'dependency_sha256': b1.source_identity()['files'], 'interests': 4,
@@ -538,7 +659,7 @@ def main(argv=None):
         check = b1.resource_guard(target, spec['disk_cap_bytes']); check()
         data, _, binding = b1.real_inputs(spec)
         data, extra_binding = fr.apply_feat02(data, spec, config['history_len'])
-        inputs_binding = {**binding, **extra_binding, 'inputs_sha256': args.inputs_sha}
+        inputs_binding = load_control_binding({**binding, **extra_binding, 'inputs_sha256': args.inputs_sha})
         if args.command == 'train':
             value = run_session(target, data, config, 'cuda', check, inputs_binding)
             print(json.dumps({'status': value['status'], 'manifest_sha256': value['manifest_sha256'], 'best_epoch': value['selection']['best_epoch']})); return 0
