@@ -383,6 +383,10 @@ def random_mapping(base):
     return {int(i):tuple(map(int,row)) for i,row in zip(ids,new)}
 
 
+def prepared_metadata_path(spec):
+    return Path(spec['prepared'])/'prepare-manifest.json'
+
+
 def collect_inventory(plan=None,root=None):
     """No-plan form discovers only small metadata plus mapping/train file stats.
 
@@ -439,7 +443,7 @@ def collect_inventory(plan=None,root=None):
     if str(base) in result['input_metadata']:
         spec=result['input_metadata'][str(base)]['value']
         if 'prepared' in spec and 'raw_root' in spec:
-            prepared_path=Path(spec['prepared'])/'manifest.json'
+            prepared_path=prepared_metadata_path(spec)
             prepared_value,psha=archive.read(prepared_path)
             pbindings=[state.get('input_binding',{}) for state in result['runs'].get('Pmean',{}).values()]
             if not any(contains_pin(b,psha) for b in pbindings): raise ValueError('discovered prepared manifest absent from P binding')

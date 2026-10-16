@@ -15,6 +15,8 @@ class IOTests(unittest.TestCase):
     def artifact(self, name, payload):
         p = self.root/name; p.write_bytes(payload)
         return {'path': str(p), 'sha256': hashlib.sha256(payload).hexdigest()}
+    def test_prepared_manifest_registered_role(self):
+        self.assertEqual(d.prepared_metadata_path({'prepared':'/fixture/prepared'}),Path('/fixture/prepared/prepare-manifest.json'))
     def test_hash_and_scope(self):
         ref = self.artifact('input.json', b'{}')
         self.assertEqual(d.read_json(ref), {})
