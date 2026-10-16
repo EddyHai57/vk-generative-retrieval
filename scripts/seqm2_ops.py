@@ -63,6 +63,7 @@ def metadata_guard(job,prepared):
     return prepared
 
 def prepare_job(job):
+    sys.path.insert(0,'/workspace/vkgr-infra03-ops/ops')
     from vkgr_ops import launcher
     return metadata_guard(job,launcher.prepare(job))
 
@@ -107,6 +108,23 @@ def deploy(req):
     meta={'commit':req['commit'],'tree':subprocess.check_output(['git','-C',str(DEP),'rev-parse','HEAD^{tree}'],text=True).strip(),'files':req['files'],'inputs_sha256':sha(INPUT),'created_at_utc':now()};new(OPS/'deployment.json',meta)
     return {'status':'deployed','files_checked':len(req['files']),'commit':meta['commit'],'inputs_sha256':meta['inputs_sha256'],'ops_root':str(OPS)}
 
+CONTROL=OPS/'m1-controls-v1.json'
+PREFLIGHT=OPS/'preflight-v1.json'
+
+def audit_hash(audit):return hashlib.sha256(json.dumps(audit,sort_keys=True,allow_nan=False).encode()).hexdigest()
+def preflight_audit_pin(pf):
+    audit=pf.get('m1_control_audit')
+    ids={f'p-seqm1-mean-s{s}' for s in SEEDS}
+    if not isinstance(audit,dict) or set(audit.get('controls',{}))!=ids or any(audit['controls'][f'p-seqm1-mean-s{s}'].get('seed')!=s or audit['controls'][f'p-seqm1-mean-s{s}'].get('verified') is not True for s in SEEDS):raise ValueError('M1 control audit incomplete')
+    pin=audit_hash(audit)
+    if pf.get('m1_control_audit_sha256')!=pin:raise ValueError('M1 control audit pin mismatch')
+    return pin
+
+def wrap_argv(a):
+    i=a.index('-m')
+    if a[1:i] not in ([],['-B']) or a[i+1]!=ENTRY:raise ValueError('unregistered interpreter/module prefix')
+    return [a[0],'-B','scripts/seqm2_job_entry.py',*a[i:]]
+
 def controls(expected_data):
     core=Path('/workspace/vkgr-successor-ops-v1/code/analysis/phase2_validation_read.py')
     if sha(core)!='548d8373f1a5008c2a83f29f729930892b1793b01e46e4dbf21942c76adb38d8':raise ValueError('validation reader source drift')
@@ -120,25 +138,50 @@ def controls(expected_data):
         rid=f'p-seqm1-mean-s{seed}';state=r.inspect_run(rid)
         if not state['verified']:raise ValueError('M1 control not directly verified: '+rid)
         archive=r.load_archive(rid,queries,hist,state)
-        manifest,_=r.read(R/'runs'/rid/'out/manifest.json',state['manifest_sha256'])
+        mp=R/'runs'/rid/'out/manifest.json';manifest,_=r.read(mp,state['manifest_sha256']);epoch=manifest['selection']['best_epoch'];ev=next(v for v in manifest['evaluations'] if v['epoch']==epoch)
+        pp=mp.parent/ev['predictions_ref'];r.read(pp,ev['predictions_sha256'])
         if any(manifest['binding'][k]!=v for k,v in expected_data.items()):raise ValueError('M1/M2 data identity mismatch')
         if sum(archive['hits'])!=expected:raise ValueError('accepted M1 control mismatch')
-        out[rid]={'summary':archive['summary'],'manifest_sha256':state['manifest_sha256'],'verified':True}
-    return {'controls':out,'read_artifacts_sha256':r.READS}
+        for job in state['verify']['jobs']:
+            r.READS[job['job_receipt']['path']]=job['job_receipt']['sha256']
+            for e in job['evidence']:r.READS[e['path']]=e['sha256']
+        out[rid]={'run_id':rid,'seed':seed,'arm':'mean','summary':archive['summary'],'manifest_path':str(mp),'manifest_sha256':state['manifest_sha256'],'best_epoch':epoch,'predictions_path':str(pp),'predictions_sha256':ev['predictions_sha256'],'source':manifest['binding']['source'],'data_hashes':{k:manifest['binding'][k] for k in expected_data},'inputs':manifest['binding']['inputs'],'history_manifest_path':str(hd/'manifest.json'),'history_manifest_sha256':r.HISTORY_PIN,'query_file_path':str(hd/'validation-l50.json'),'query_file_sha256':hist['artifacts']['validation-l50.json'],'verifier':state['verify'],'verified':True}
+    return {'schema':'seqm2-m1-controls-v1','seeds':list(SEEDS),'controls':out,'read_artifacts_sha256':r.READS}
 
 def preflight():
     meta=identity();run=modules();spec=run.fr.validate_inputs(load(INPUT),run.FEATURE)
     data,_,binding=run.b1.real_inputs(spec);data,extra=run.fr.apply_feat02(data,spec,50)
     inputs={**binding,**extra,'inputs_sha256':meta['inputs_sha256']};entries={}
     if data.get('synthetic') or len(data['rows'])!=86785 or len(data['queries'])!=2520 or len(data['catalog'])!=120415:raise ValueError('formal real population mismatch')
+    rows,queries=run.fr._view(data,50);cfg=load(DEP/f'configs/seqm2/{RIDS[0]}.json');model=run._model(data,cfg,'cpu');base=run.fr.binding_for2(data,cfg,rows,queries,model,'cuda',inputs);del model
+    keys=('rows_sha256','queries_sha256','catalog_sha256','support_sha256','content_sha256')
+    audit=controls({k:base[k] for k in keys});run.validate_control_audit(audit);pin=audit_hash(audit)
+    inputs={**inputs,'m1_control_audit':{'sha256':pin,'audit':audit}}
     for seed,rid in zip(SEEDS,RIDS):
         cp=DEP/f'configs/seqm2/{rid}.json';c=load(cp);run.validate_config(c)
         if c['seed']!=seed:raise ValueError('registered config seed mismatch')
-        rows,queries=run.fr._view(data,50);model=run._model(data,c,'cpu');expected=run.binding_for4(data,c,rows,queries,model,'cuda',inputs)
+        model=run._model(data,c,'cpu');expected=run.binding_for4(data,c,rows,queries,model,'cuda',inputs)
         if expected.get('synthetic') is not False or expected.get('test_gate')!='closed_hash_only':raise ValueError('closed real binding required')
-        entries[rid]={'config_sha256':sha(cp),'expected_binding_sha256':run.b1._digest(expected),'data_hashes':{k:expected[k] for k in ('rows_sha256','queries_sha256','catalog_sha256','support_sha256','content_sha256')},'seed':seed,'engineering':False,'synthetic':False,'test_gate':'closed_hash_only'}
+        entries[rid]={'config_sha256':sha(cp),'expected_binding_sha256':run.b1._digest(expected),'data_hashes':{k:expected[k] for k in keys},'seed':seed,'engineering':False,'synthetic':False,'test_gate':'closed_hash_only','m1_control_audit_sha256':pin}
         del model
-    return {'status':'preflight_ok','read_at_utc':now(),'commit':meta['commit'],'inputs_sha256':meta['inputs_sha256'],'entries':entries,'m1_control_audit':controls(entries[RIDS[0]]['data_hashes']),'test_read':False,'new_submit':False}
+    return {'status':'preflight_ok','read_at_utc':now(),'commit':meta['commit'],'inputs_sha256':meta['inputs_sha256'],'entries':entries,'m1_control_audit':audit,'m1_control_audit_sha256':pin,'test_read':False,'new_submit':False}
+
+def seal_preflight(pf):
+    meta=identity();pin=preflight_audit_pin(pf)
+    if pf['status']!='preflight_ok' or pf['commit']!=meta['commit'] or pf['inputs_sha256']!=meta['inputs_sha256']:raise ValueError('preflight identity mismatch')
+    audit=controls(pf['entries'][RIDS[0]]['data_hashes']);modules().validate_control_audit(audit)
+    if audit!=pf['m1_control_audit']:raise ValueError('accepted controls changed after preflight')
+    for seed,rid in zip(SEEDS,RIDS):
+        if sha(DEP/f'configs/seqm2/{rid}.json')!=pf['entries'][rid]['config_sha256']:raise ValueError('preflight config drift')
+    new(CONTROL,audit)
+    if sha(CONTROL)!=pin:raise ValueError('control seal byte hash mismatch')
+    new(PREFLIGHT,pf)
+    return {'status':'preflight_and_controls_sealed','read_at_utc':now(),'control_audit_sha256':pin,'control_path':str(CONTROL),'preflight_sha256':sha(PREFLIGHT)}
+
+def control_identity():
+    pf=load(PREFLIGHT);pin=preflight_audit_pin(pf)
+    if sha(CONTROL)!=pin or load(CONTROL)!=pf['m1_control_audit']:raise ValueError('sealed M1 control changed')
+    modules().validate_control_audit(load(CONTROL));return pin
 
 def template():
     d=one('p-seqm1-mean-s42')
@@ -146,10 +189,11 @@ def template():
     return d
 
 def train_jobs(req):
-    meta=identity();pf=req['preflight'];memory=req['engineering']
+    pin=preflight_audit_pin(req['preflight']);meta=identity();pf=req['preflight'];memory=req['engineering']
+    if pf!=load(PREFLIGHT) or control_identity()!=pin:raise ValueError('sealed preflight/control mismatch')
     if pf['status']!='preflight_ok' or pf['commit']!=meta['commit'] or pf['inputs_sha256']!=meta['inputs_sha256']:raise ValueError('preflight identity mismatch')
     term=load(R/'runs'/SMOKE/'terminal.json');proof=load(R/'runs'/SMOKE/'out/engineering.json')
-    if term['status']!='succeeded' or memory!=proof or proof['status']!='cuda_engineering_verified' or proof['synthetic_verify']['status']!='verified' or proof['full_shape']!={'batch':512,'history':50,'interests':4,'catalog':120415} or proof['zero_start_loss_error']>1e-6 or not proof['soft_hard_boundary_passed']:raise ValueError('CUDA engineering evidence mismatch')
+    if term['status']!='succeeded' or proof['commit']!=meta['commit'] or memory!=proof or proof['status']!='cuda_engineering_verified' or proof['synthetic_verify']['status']!='verified' or proof['full_shape']!={'batch':512,'history':50,'interests':4,'catalog':120415} or not __import__('math').isfinite(proof['zero_start_loss_error']) or proof['zero_start_loss_error']>1e-6 or not proof['soft_hard_boundary_passed']:raise ValueError('CUDA engineering evidence mismatch')
     smoke=one(SMOKE)
     if smoke['argv']!=[PY,'-B','scripts/seqm2_cuda_check.py',str(R/'runs'/SMOKE/'out')] or smoke['cwd']!=str(DEP):raise ValueError('CUDA engineering job identity mismatch')
     vram=declared_vram(proof['measured_vram_mib'])
@@ -161,8 +205,9 @@ def train_jobs(req):
         d=copy.deepcopy(parent);d.update(run_id=rid,seed=seed,cwd=str(DEP),config=str(cp),pinned_manifest=None,pinned_files=['docs/p3c_validation.md='+P3C_SHA],vram_mib=vram)
         a=d['argv'];a[a.index('-m')+1]=ENTRY
         replace(a,'--inputs',str(INPUT));replace(a,'--inputs-sha',meta['inputs_sha256']);replace(a,'--config',str(cp.relative_to(DEP)));replace(a,'--config-sha',sha(cp));replace(a,'--output',str(R/'runs'/rid/'out'))
-        d['argv']=[a[0],'-B','scripts/seqm2_job_entry.py',*a[1:]]
-        d['inputs']=list(dict.fromkeys([*d['inputs'],str(INPUT),str(DEP/'configs/seqm2/freeze-v1.json'),str(OPS/'deployment.json')]))
+        d['argv']=wrap_argv(a)
+        d['env']=[v for v in d['env'] if not v.startswith(('VKGR_M2_CONTROL_AUDIT=','VKGR_M2_CONTROL_AUDIT_SHA='))]+['VKGR_M2_CONTROL_AUDIT='+str(CONTROL),'VKGR_M2_CONTROL_AUDIT_SHA='+pin]
+        d['inputs']=list(dict.fromkeys([*d['inputs'],str(INPUT),str(DEP/'configs/seqm2/freeze-v1.json'),str(OPS/'deployment.json'),str(CONTROL)]))
         jobs.append({'job':d,'expected':entry})
     return jobs
 
@@ -240,6 +285,7 @@ def main():
     if act=='inventory':answer=inventory()
     elif act=='deploy':answer=deploy(req)
     elif act=='preflight':answer=preflight()
+    elif act=='seal-preflight':answer=seal_preflight(req['preflight'])
     elif act in ('smoke-dry','smoke-submit'):
         identity();d=template();d.update(run_id=SMOKE,cwd=str(DEP),config=str(DEP/f'configs/seqm2/{RIDS[0]}.json'),inputs=[str(INPUT),str(DEP/'configs/seqm2/freeze-v1.json'),str(OPS/'deployment.json')],pinned_manifest=None,pinned_files=['docs/p3c_validation.md='+P3C_SHA],disk_gib=2,wall_hours=1.,vram_mib=4096,argv=[PY,'-B','scripts/seqm2_cuda_check.py',str(R/'runs'/SMOKE/'out')])
         if exists(Q,R/'runs',SMOKE):raise FileExistsError(SMOKE)
