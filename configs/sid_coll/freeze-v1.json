@@ -15,7 +15,7 @@
     "configs/sid_coll/g-coll-c2-s2024.json": "eeb864f52ade96b8e9163b30536d715f8e3a786a354fc9243ed00fb92d51b1dc",
     "configs/sid_coll/g-coll-c2-s2025.json": "2ca6ba9e2a4f1eb82bf6c24ac0bf182764d4e1b41185d548f3b8a15a3de18ee9",
     "configs/sid_coll/g-coll-c2-s42.json": "788248e0d71dec364b7218b3237d3e8f1702824a26d7e92598b794e55a217277",
-    "scripts/sid_coll_control.py": "7aa0db14ca6a26214a97d16bfbc18201a0f5e2e61902049ff5fd140c2358a3dc",
+    "scripts/sid_coll_control.py": "bf97c54c5aec2f090e2d070396502e87a1a40d95293410f0a7f08dac4714e71f",
     "scripts/sid_coll_cuda_check.py": "a8f5893a62c015b8aab0ad7f872c63f086a81460bedd40da78133602183a46fd",
     "scripts/sid_coll_job_entry.py": "383172e46676c417fc190f8ce32d2a97db60cb3888269a8507357ade7d88740a",
     "scripts/sid_coll_metadata_read.py": "356e985b000c3aec9392b252e2fd3b81e8bf1849cb156d8bbf0b98da04af6532",

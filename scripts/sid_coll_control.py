@@ -146,11 +146,15 @@ def aux(req):
    result={'status':'submitted_unconfirmed','run_id':rid,'queue_path':str(scheduler.submit(R,spec)),'read_at_utc':now()}
  return result
 
+def request():
+ # Existing transport uses multiple argv[0] spellings for readonly stdin source.
+ # Only the explicit python -c write route consumes a JSON request.
+ return json.load(sys.stdin) if sys.argv[0]=='-c' else {'action':'inventory'}
+
 def main():
- # kiro wrapper read-only stdin-source vs write python-c JSON stdin.
- req={'action':'inventory'} if sys.argv[0]=='-' else json.load(sys.stdin)
+ req=request()
  action=req.get('action','inventory')
- if sys.argv[0]=='-' and action not in ('inventory','metadata'):raise ValueError('readonly mode')
+ if sys.argv[0]!='-c' and action not in ('inventory','metadata'):raise ValueError('readonly mode')
  result=inventory() if action=='inventory' else metadata() if action=='metadata' else deploy(req) if action=='deploy' else seal(req) if action=='seal' else run_ops(req) if action in ('dry','tick','status','start') else aux(req) if action in ('aux-dry','aux-submit') else None
  if result is None:raise ValueError('unknown action')
  print(json.dumps(result,sort_keys=True,allow_nan=False))

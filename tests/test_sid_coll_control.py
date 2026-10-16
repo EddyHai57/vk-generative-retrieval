@@ -4,6 +4,15 @@ P=Path(__file__).resolve().parents[1]/'scripts/sid_coll_control.py'
 class Control(unittest.TestCase):
  def load(self):
   s=importlib.util.spec_from_file_location('ctl',P);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
+ def test_readonly_transport_variants_never_consume_json_stdin(self):
+  m=self.load()
+  from unittest.mock import patch
+  for argv0 in ['-','<stdin>','transport-readonly']:
+   with patch.object(m.sys,'argv',[argv0]),patch.object(m.json,'load',side_effect=AssertionError('readonly consumed stdin')):
+    self.assertEqual(m.request(),{'action':'inventory'})
+  import io
+  with patch.object(m.sys,'argv',['-c']),patch.object(m.sys,'stdin',io.StringIO('{"action":"deploy"}')):
+   self.assertEqual(m.request(),{'action':'deploy'})
  def test_safe_new_paths(self):
   m=self.load()
   with tempfile.TemporaryDirectory() as d:
