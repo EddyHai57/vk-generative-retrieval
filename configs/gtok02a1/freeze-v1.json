@@ -1,0 +1,30 @@
+{
+  "control": "A1+T3 same seed",
+  "control_hits": [
+    289,
+    328,
+    310
+  ],
+  "files": {
+    "configs/gtok02a1/g-gtok02-a1-b1024d3-s2024.json": "9c51bf66adda958bce8c93019b58e6ee3b9cbcc6eaf9728a7f45e181e7687be9",
+    "configs/gtok02a1/g-gtok02-a1-b1024d3-s2025.json": "04fe5a65b7c93e396ad14c4e7577785e9993367d0dce2fd987f5f3e8b3d14acf",
+    "configs/gtok02a1/g-gtok02-a1-b1024d3-s42.json": "62bdda495373cbd166032ec47b135b885842d8eab3542ad95fba1e31542bbe3f",
+    "scripts/gtok02a1_cuda_check.py": "ebb9198fbbbb0df512dbc0d154ce2d1dd32cab0f2125f72f66149d2413352323",
+    "scripts/gtok02a1_ops.py": "789258e99abaa72c10d8e4aeca190fe8004a9ea05fdf5693565953d6ebc58c8d",
+    "scripts/gtok02a1_preflight_read.py": "b621a79481b8389d53f36a267237bf67717c999c359644cde6fcf24bda5022fa",
+    "scripts/gtok02a1_status_read.py": "facedc0167e249ace261bd8cd55032b0909cfc818998edb79727505e1a0c45f5",
+    "src/vkgr/generative_g6_tok2_run.py": "21731ae7ee427023e426c35a07b4c55fb84a56cedb584558eef640066c79c1a4",
+    "src/vkgr/sid_v2s.py": "4260b98c5730eb11a449a497b5eb2467c5b6691c29454e7039bf8dd148618215"
+  },
+  "only_scientific_change": "SID_BHKM_B1024D3_S42",
+  "review": "independent 69 tests PASS; no blocking finding; server gates outstanding",
+  "rule": "all three succeeded+verified; mean delta hits >=6 and at least two seeds delta >=6",
+  "schema": "b1024-a1-confirm-freeze-v1",
+  "seeds": [
+    42,
+    2024,
+    2025
+  ],
+  "sid_manifest_sha256": "6a3b789859023ce1f421107ce675369c4696c8f408f43708d55fa5e9d29f4710",
+  "vram_policy": "ceil(measured MiB * 1.15 /256)*256"
+}
