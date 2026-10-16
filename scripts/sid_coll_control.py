@@ -120,12 +120,38 @@ def run_ops(req):
  if cp.returncode:raise RuntimeError(cp.stdout+'\n'+cp.stderr)
  return {'read_at_utc':now(),'output':load(out),'stdout':cp.stdout,'path':str(out),'sha256':sha(out)}
 
+def aux_allowed(rid):
+ if rid not in ('sid-coll-s0-prime-v1','sid-coll-legacy-epochs-v1'):raise ValueError('outside registered readonly auxiliaries')
+ return rid
+
+def aux(req):
+ import fcntl
+ identity();rid=aux_allowed(req['run_id']);jp=OPS/'aux-jobs.json'
+ if sha(jp)!=req['jobs_sha256']:raise ValueError('sealed auxiliary jobs changed')
+ spec=load(jp)[rid]
+ if spec['run_id']!=rid or spec['schema']!='vkgr-queue-job-v1' or spec['cwd']!=str(DEP) or spec['vram_mib']!=0 or spec['cpu_cores']!=1:
+  raise ValueError('readonly auxiliary queue identity/resource mismatch')
+ for ref in req['input_refs']:
+  if sha(ref['path'])!=ref['sha256']:raise ValueError('auxiliary input pin changed')
+ sys.path.insert(0,'/workspace/vkgr-infra03-ops/ops')
+ from vkgr_ops import launcher,scheduler
+ prepared=launcher.prepare(spec)
+ if len(json.dumps({'spec':spec,'prepared':prepared}).encode())>=48*1024-2048:raise ValueError('aux launch metadata exceeds envelope')
+ result={'status':'aux_dry_ok','run_id':rid,'read_at_utc':now()}
+ if req['action']=='aux-submit':
+  with (OPS/'aux-publish.lock').open('a') as lock:
+   fcntl.flock(lock,fcntl.LOCK_EX)
+   if (R/'runs'/rid).exists() or any(where(rid)[k] for k in ('pending','claimed','rejected')) or (OPS/('intent-'+rid+'.json')).exists():raise FileExistsError('never resubmit auxiliary')
+   new(OPS/('intent-'+rid+'.json'),{'run_id':rid,'job_sha256':sha(jp),'created_at_utc':now()})
+   result={'status':'submitted_unconfirmed','run_id':rid,'queue_path':str(scheduler.submit(R,spec)),'read_at_utc':now()}
+ return result
+
 def main():
  # kiro wrapper read-only stdin-source vs write python-c JSON stdin.
  req={'action':'inventory'} if sys.argv[0]=='-' else json.load(sys.stdin)
  action=req.get('action','inventory')
  if sys.argv[0]=='-' and action not in ('inventory','metadata'):raise ValueError('readonly mode')
- result=inventory() if action=='inventory' else metadata() if action=='metadata' else deploy(req) if action=='deploy' else seal(req) if action=='seal' else run_ops(req) if action in ('dry','tick','status','start') else None
+ result=inventory() if action=='inventory' else metadata() if action=='metadata' else deploy(req) if action=='deploy' else seal(req) if action=='seal' else run_ops(req) if action in ('dry','tick','status','start') else aux(req) if action in ('aux-dry','aux-submit') else None
  if result is None:raise ValueError('unknown action')
  print(json.dumps(result,sort_keys=True,allow_nan=False))
 if __name__=='__main__':main()

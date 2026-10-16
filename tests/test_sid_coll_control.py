@@ -15,6 +15,11 @@ class Control(unittest.TestCase):
   for p in ['/etc/a','../a','a/../b']:
    with self.assertRaises(ValueError):m.relative(p)
   self.assertEqual(m.relative('scripts/a.py'),'scripts/a.py')
+ def test_aux_whitelist(self):
+  m=self.load()
+  for value in ['sid-coll-c1-input-v1','external-run']:
+   with self.assertRaises(ValueError):m.aux_allowed(value)
+  self.assertEqual(m.aux_allowed('sid-coll-s0-prime-v1'),'sid-coll-s0-prime-v1')
  def test_run_ids_unique(self):
   m=self.load();ids=m.ids();self.assertEqual(len(set(ids)),len(ids));self.assertTrue(all(x.startswith('sid-coll-') for x in ids))
 if __name__=='__main__':unittest.main()
