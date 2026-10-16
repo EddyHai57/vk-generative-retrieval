@@ -312,4 +312,13 @@ class RecoveryTests(unittest.TestCase):
         self.m.prepare(self.req)
         with self.assertRaises((ValueError,FileNotFoundError)):self.m.ack(self.req)
 
+class RelativeSourcePaths(unittest.TestCase):
+    def test_only_exact_root_uv_lock_is_allowed_as_lockfile(self):
+        spec=importlib.util.spec_from_file_location('handoff_relative',TOOL)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        self.assertEqual(module.relative('uv.lock'),Path('uv.lock'))
+        for value in ('other.lock','uv.lock.pt','checkpoint.pt','checkpoint.ckpt',
+                      'vectors.npy','nested/uv.lock','../uv.lock','/tmp/uv.lock'):
+            with self.subTest(path=value),self.assertRaises(ValueError):module.relative(value)
+
 if __name__=='__main__':unittest.main()

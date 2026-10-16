@@ -58,7 +58,7 @@ def relative(value):
     p=Path(value)
     if not value or p.is_absolute() or '..' in p.parts or p.as_posix()!=value:
         raise ValueError('safe relative source path required')
-    if p.suffix not in ('.py','.json','.yaml','.yml','.md','.toml','.txt','.gitignore') and p.name not in ('.gitignore','.python-version','LICENSE'):
+    if p.suffix not in ('.py','.json','.yaml','.yml','.md','.toml','.txt','.gitignore') and p.name not in ('.gitignore','.python-version','LICENSE') and value!='uv.lock':
         raise ValueError('source/config text files only')
     return p
 
