@@ -95,6 +95,7 @@ def main(argv=None):
         raise ValueError('CUDA required for real-shape engineering microbenchmark')
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
+    runtime = g6._runtime(False)
     rows, catalog = load_training(args.prepared, args.prepared_sha256, args.history, args.history_sha256)
     sampled = r.sample_training_indices(len(rows))
     sid = g6._load_sid_v2(args.sid, args.sid_sha256, args.content, args.content_sha256, catalog, False)
@@ -102,13 +103,13 @@ def main(argv=None):
         raise ValueError('formal T3 B256D3 bundle required')
     torch.manual_seed(config['seed'])
     torch.cuda.manual_seed_all(config['seed'])
-    model = make_model_arch_d(sid.codec, config, device='cuda')
+    model = make_model_arch_d(sid.codec, config, device=runtime['device'])
     result = r.benchmark(model, SIDTokensLD(sid.codec, 50), [rows[i] for i in sampled[:args.queries]])
     result.update({'execution_commit': execution_commit(), 'scientific_base_commit': SCIENTIFIC_BASE_COMMIT, 'config_sha256': A1_T3_CONFIG_SHA256,
                    'input_sha256': {k: getattr(args, k + '_sha256') for k in ('prepared', 'history', 'sid', 'content')},
                    'sample_seed': 0, 'sample_count': 20000, 'sample_algorithm': 'python-random-sample-without-replacement',
                    'sample_indices_sha256': hashlib.sha256(json.dumps(sampled, separators=(',', ':')).encode()).hexdigest(),
-                   'model_seed': config['seed'], 'model_shape': model.spec, 'torch_version': torch.__version__,
+                   'runtime': runtime, 'model_seed': config['seed'], 'model_shape': model.spec, 'torch_version': torch.__version__,
                    'cuda_version': torch.version.cuda, 'gpu_model': torch.cuda.get_device_name(0),
                    'cpu_threads': 1, 'timing_includes': 'decode and negative filtering; excludes input loading, random model init and one-query warmup'})
     print(json.dumps(result, sort_keys=True, allow_nan=False))

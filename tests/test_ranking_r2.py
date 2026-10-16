@@ -131,3 +131,47 @@ class Cli(unittest.TestCase):
     def test_timing_receipt_binds_current_execution_commit(self):
         from vkgr import ranking_r2_microbench as mb
         self.assertRegex(mb.execution_commit(), '^[0-9a-f]{40}$')
+
+
+class RuntimeBinding(unittest.TestCase):
+    def test_cli_configures_formal_runtime_before_model_and_records_it(self):
+        import json
+        import io
+        from pathlib import Path
+        from types import SimpleNamespace
+        from contextlib import redirect_stdout, ExitStack
+        from unittest.mock import patch
+        from vkgr import ranking_r2_microbench as mb, generative_g6_run as g6, generative_g6_model as gm
+        events = []
+        config = json.loads(Path('configs/gtok01b/g-gtok-a1-t3-b256d3-s42.json').read_text())
+        profile = {'deterministic_algorithms': True, 'allow_tf32': False, 'device': 'cuda:0'}
+        codec = SimpleNamespace(depth=3, catalog=SimpleNamespace(branching=256))
+        sid = SimpleNamespace(info={'sid_version': config['sid']}, codec=codec)
+        model = SimpleNamespace(spec={})
+        def runtime(engineering):
+            self.assertFalse(engineering)
+            events.append('runtime')
+            return profile
+        def factory(*args, **kwargs):
+            self.assertEqual(events, ['runtime'])
+            events.append('model')
+            return model
+        with ExitStack() as stack:
+            for target, kwargs in [
+                ('vkgr.ranking_r2_microbench._read', {'return_value': config}),
+                ('vkgr.ranking_r2_microbench.load_training', {'return_value': ([{}] * 20000, [])}),
+                ('vkgr.generative_g6_run._runtime', {'side_effect': runtime}),
+                ('vkgr.generative_g6_run._load_sid_v2', {'return_value': sid}),
+                ('vkgr.generative_g6_model.make_model_arch_d', {'side_effect': factory}),
+                ('vkgr.sid_depth.SIDTokensLD', {'return_value': object()}),
+                ('vkgr.ranking_r2.benchmark', {'return_value': {}}),
+                ('torch.cuda.is_available', {'return_value': True}),
+                ('torch.cuda.get_device_name', {'return_value': 'synthetic'}),
+                ('torch.cuda.manual_seed_all', {}), ('torch.manual_seed', {}),
+                ('torch.set_num_threads', {}), ('torch.set_num_interop_threads', {})]:
+                stack.enter_context(patch(target, **kwargs))
+            output = io.StringIO()
+            with redirect_stdout(output):
+                mb.main([x for n in ('prepared', 'history', 'sid', 'content') for x in ('--'+n, 'synthetic', '--'+n+'-sha256', '0'*64)] + ['--config', 'synthetic'])
+        self.assertEqual(events, ['runtime', 'model'])
+        self.assertEqual(json.loads(output.getvalue())['runtime'], profile)
