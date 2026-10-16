@@ -84,7 +84,7 @@ class Derivation(unittest.TestCase):
                 'argv': ['python', '-B', '-m', 'vkgr.generative_g6_run', 'train', '--config', 'old.json', '--config-sha', '0'*64,
                          '--prepared', 'original-prepared', '--prepared-sha', 'a'*64, '--sid-manifest', 'original-sid', '--sid-sha', 'b'*64,
                          '--output', 'oldout', '--scratch', 'oldscratch'],
-                'env': ['VKGR_DATA_ROOT=old', 'VKGR_DECODE=serial', 'VKGR_EVAL_WORKERS=2']}
+                'env': ['PYTHONPATH=/old-source/src', 'VKGR_DATA_ROOT=old', 'VKGR_DECODE=serial', 'VKGR_EVAL_WORKERS=2']}
             (root/'template.json').write_text(json.dumps(template))
             req = {'deployment': str(ROOT), 'runs': str(root/'new-runs'), 'data_root': str(root), 'python': 'runtime-python',
                    'pinned_manifest': str(root/'newpin.json'), 'templates': {'42': str(root/'template.json')}}
@@ -93,7 +93,7 @@ class Derivation(unittest.TestCase):
             self.assertEqual(m.flag(job['argv'], '--sid-sha'), 'b'*64)
             self.assertEqual(m.flag(job['argv'], '-m'), m.ENTRY)
             self.assertEqual(job['inputs'], ['data'])
-            self.assertEqual(job['env'], ['VKGR_PINNED_MANIFEST='+req['pinned_manifest'], 'VKGR_DECODE=batched', 'VKGR_DECODE_BATCH=1',
+            self.assertEqual(job['env'], ['PYTHONPATH='+str(ROOT/'src'), 'VKGR_PINNED_MANIFEST='+req['pinned_manifest'], 'VKGR_DECODE=batched', 'VKGR_DECODE_BATCH=1',
                                          'VKGR_EVAL_WORKERS=1', 'VKGR_DATA_ROOT='+str(root)])
             self.assertEqual(job['run_id'], 'g-ranking-r1-t08-s42')
 

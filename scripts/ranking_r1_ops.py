@@ -153,8 +153,8 @@ def derive_job(req, seed, vram=6656):
     for name, value in {'--config': str(config_path.relative_to(root)), '--config-sha': sha(config_path),
                         '--output': str(runs/rid/'out'), '--scratch': str(runs/rid/'scratch')}.items():
         replace(a, name, value)
-    job['env'] = [e for e in job['env'] if not e.startswith(('VKGR_PINNED_MANIFEST=', 'VKGR_DECODE', 'VKGR_EVAL_WORKERS=', 'VKGR_DATA_ROOT='))]
-    job['env'] += ['VKGR_PINNED_MANIFEST='+req['pinned_manifest'], 'VKGR_DECODE=batched', 'VKGR_DECODE_BATCH=1', 'VKGR_EVAL_WORKERS=1', 'VKGR_DATA_ROOT='+str(Path(req['data_root']).resolve(strict=True))]
+    job['env'] = [e for e in job['env'] if not e.startswith(('PYTHONPATH=', 'VKGR_PINNED_MANIFEST=', 'VKGR_DECODE', 'VKGR_EVAL_WORKERS=', 'VKGR_DATA_ROOT='))]
+    job['env'] += ['PYTHONPATH='+str(root/'src'), 'VKGR_PINNED_MANIFEST='+req['pinned_manifest'], 'VKGR_DECODE=batched', 'VKGR_DECODE_BATCH=1', 'VKGR_EVAL_WORKERS=1', 'VKGR_DATA_ROOT='+str(Path(req['data_root']).resolve(strict=True))]
     return job
 
 
