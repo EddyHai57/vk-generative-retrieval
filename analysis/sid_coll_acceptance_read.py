@@ -23,6 +23,9 @@ def accept(terminal,claimed,rejected,receipt,expected,raw_status=None):
  if receipt.get('status')=='verified' and raw_status not in ('verified','preflight_ok','cuda_engineering_verified','dry_run_ok'):return False
  return receipt.get('status') in ('verified','complete','produced')
 
+def result_fields(raw):
+ return {k:v for k,v in raw.items() if k in ('Dprime','aliases','epochs','epoch_runs','read_at_utc','task_id','restrictions')}
+
 def run(root=R,ops=OPS):
  root=Path(root);ops=Path(ops);result={'read_at_utc':now(),'scientific_commit':COMMIT,'runs':{},'checkpoint_read':False,'test_read':False}
  ids=['sid-coll-'+v+'-'+s+'-v1' for v in ('c1','c2') for s in STAGES]+['sid-coll-s0-prime-v1','sid-coll-legacy-epochs-v1']
@@ -48,7 +51,7 @@ def run(root=R,ops=OPS):
    value['state']='ACCEPTED' if value['accepted'] else 'UNACCEPTED'
   elif (rd/'out/diagnostic/result.json').exists():
    raw,ref=read(rd/'out/diagnostic/result.json');value['result_ref']=ref
-   value['result']={k:v for k,v in raw.items() if k in ('Dprime','aliases','epochs','epoch_summaries','legacy_aliases','read_at_utc','task_id','restrictions','results')}
+   value['result']=result_fields(raw)
    value['accepted']=terminal.get('status')=='succeeded' and terminal.get('exit_code')==0 and len(q['claimed'])==1 and not q['rejected'];value['state']='ACCEPTED_READONLY' if value['accepted'] else 'UNACCEPTED'
   else:value['state']='FAILED' if terminal.get('status')!='succeeded' else 'UNACCEPTED'
   if terminal.get('status')!='succeeded' and (rd/'logs/stderr.log').exists():value['stderr_tail']=read(rd/'logs/stderr.log')[0][-4000:]

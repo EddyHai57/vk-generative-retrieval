@@ -4,6 +4,8 @@ P=Path(__file__).resolve().parents[1]/'analysis/sid_coll_acceptance_read.py'
 class Read(unittest.TestCase):
  def load(self):
   s=importlib.util.spec_from_file_location('ro',P);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
+ def test_epoch_report_is_retained(self):
+  m=self.load();value={'epoch_runs':{'s42':{'best_epoch':3}}};self.assertEqual(m.result_fields(value),value)
  def test_no_weight_or_prediction_binary(self):
   m=self.load()
   with tempfile.TemporaryDirectory() as d:
