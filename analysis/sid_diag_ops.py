@@ -4,7 +4,7 @@ Only new own paths may be written. Default stdin-source mode is read-only.
 import datetime,fcntl,hashlib,json,os,subprocess,sys,time
 from pathlib import Path
 R=Path('/workspace/vkgr-infra01-root');Q=R/'queue'
-DEP=Path('/workspace/vkgr-sidfix-s0-code-v3');OPS=Path('/workspace/vkgr-sidfix-s0-ops-v3')
+DEP=Path('/workspace/vkgr-sidfix-s0-code-v4');OPS=Path('/workspace/vkgr-sidfix-s0-ops-v4')
 SRC=Path('/workspace/vkgr-b1-src');PY='/workspace/vkgr-p6-20261006t2050/code-v1/.venv/bin/python'
 MODES={'first_batch':'sid-fix-s0-first-v1','a1_b1024':'sid-fix-s0-a1b1024-v1'}
 def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()

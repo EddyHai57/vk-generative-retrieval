@@ -350,12 +350,12 @@ def assert_train_source_control(plan,history,inventory=None):
     if state is None: state=archive.inspect_run(rid)
     if not state.get('verified') or (state.get('terminal') or {}).get('status')!='succeeded': raise ValueError('train source control not verified')
     m,_=archive.read(state['manifest_path'],state['manifest_sha256']); binding=m.get('binding',{});inputs=binding.get('inputs',{})
-    if binding.get('prepared_sha')!=plan['train_audit']['sha256']: raise ValueError('train source pin differs from fixed P control prepared_sha')
+    if inputs.get('prepared_sha')!=plan['train_audit']['sha256']: raise ValueError('train source pin differs from fixed P control prepared_sha')
     if plan['history']['sha256']!=archive.HISTORY_PIN or inputs.get('history_manifest_sha256')!=archive.HISTORY_PIN or inputs.get('query_sha')!=history['binding']['query_sha']:
         raise ValueError('train source control history/query mismatch')
     if binding.get('catalog_sha256')!=history['catalog_sha256'] or inputs.get('catalog_sha')!=history['binding']['catalog_sha']:
         raise ValueError('train source control catalog mismatch')
-    return {'run_id':rid,'manifest_path':state['manifest_path'],'manifest_sha256':state['manifest_sha256'],'prepared_sha256':binding['prepared_sha'],'verified':True,'role':'metadata_only_train_source_provenance'}
+    return {'run_id':rid,'manifest_path':state['manifest_path'],'manifest_sha256':state['manifest_sha256'],'prepared_sha256':inputs['prepared_sha'],'verified':True,'role':'metadata_only_train_source_provenance'}
 
 
 LEGACY_RECEIPT_GAPS={'g-hist-v2-l50-s2025','g-g4-rand-s42','g-g4-rand-s2024','g-g4-rand-s2025'}

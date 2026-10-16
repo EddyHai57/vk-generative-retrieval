@@ -132,7 +132,7 @@ class IOTests(unittest.TestCase):
     def test_a1_fixed_train_control_provenance_and_unverified_rejected(self):
         history={'binding':{'query_sha':'q','catalog_sha':'file-catalog'},'catalog_sha256':'catalog'}
         plan={'root':str(self.root),'history':{'sha256':d.archive.HISTORY_PIN},'train_audit':{'sha256':'a'*64}}
-        binding={'prepared_sha':'a'*64,'catalog_sha256':'catalog','inputs':{'history_manifest_sha256':d.archive.HISTORY_PIN,'query_sha':'q','catalog_sha':'file-catalog'}}
+        binding={'catalog_sha256':'catalog','inputs':{'prepared_sha':'a'*64,'history_manifest_sha256':d.archive.HISTORY_PIN,'query_sha':'q','catalog_sha':'file-catalog'}}
         manifest={'binding':binding};state={'verified':True,'terminal':{'status':'succeeded'},'manifest_path':'manifest','manifest_sha256':'m'}
         with patch.object(d.archive,'inspect_run',return_value=state),patch.object(d.archive,'read',return_value=(manifest,'m')):
             self.assertEqual(d.assert_train_source_control(plan,history)['run_id'],'p-seqm1-mean-s42')
