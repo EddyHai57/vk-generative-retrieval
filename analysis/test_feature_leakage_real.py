@@ -16,3 +16,19 @@ class ProductionFunctionFixture(unittest.TestCase):
   self.assertEqual(set(out['variants']),{'A','C','D','E'})
   for v in out['variants'].values():
    for key,check in v['checks'].items():self.assertIn(check['status'],('pass','STATIC_REVIEWED','NOT_APPLICABLE'))
+class ReceiptDurability(unittest.TestCase):
+ def test_missing_output_parent_created_and_stdout_retained_on_failure(self):
+  import tempfile,io,json
+  from pathlib import Path
+  from contextlib import redirect_stdout
+  from unittest.mock import patch
+  from analysis.feature_leakage_real import emit_receipt
+  with tempfile.TemporaryDirectory() as t:
+   p=Path(t)/'new-run/out/receipt.json';s=io.StringIO()
+   with redirect_stdout(s):emit_receipt(p,{'status':'pass'})
+   self.assertEqual(json.loads(p.read_text()),{'status':'pass'})
+   self.assertEqual(json.loads(s.getvalue()),{'status':'pass'})
+   s=io.StringIO()
+   with patch.object(Path,'mkdir',side_effect=OSError('output fault')),redirect_stdout(s):
+    with self.assertRaises(OSError):emit_receipt(Path(t)/'other/out/receipt.json',{'status':'FAIL'})
+   self.assertEqual(json.loads(s.getvalue()),{'status':'FAIL'})

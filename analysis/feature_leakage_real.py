@@ -88,6 +88,11 @@ def audit_runtime(data,run,model_module,train_count=512):
   result[label]={'variant':variant,'checks':checks,'nonzero_recency':hasattr(model,'recency_logit_pos'),'nonzero_beta':hasattr(model,'behavior_beta'),'engineering':False}
  return {'variants':result,'train_samples':len(rows),'validation_samples':len(queries),'status':'pass'}
 
+def emit_receipt(path,record):
+ print(json.dumps(record,sort_keys=True,allow_nan=False),flush=True)
+ path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
+ with path.open('x') as f:json.dump(record,f,sort_keys=True,allow_nan=False)
+
 def main():
  parser=argparse.ArgumentParser();parser.add_argument('--parameters',required=True);parser.add_argument('--parameters-sha',required=True);parser.add_argument('--output',required=True);a=parser.parse_args()
  payload=Path(a.parameters).read_bytes()
@@ -112,7 +117,6 @@ def main():
  except (AssertionError,ValueError,RuntimeError) as exc:
   record={'status':'FAIL','error':type(exc).__name__+': '+str(exc),'variants':{v:{'checks':{k:{'status':'NOT_ACCEPTED','samples':0} for k in ('L1','L2','L3','L4','L5','L6','L7','L8','L9','L10')}} for v in ('A','C','D','E')}}
  record.update(tool_source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),read_at_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),execution_commit=subprocess.check_output(['git','-C',str(Path(__file__).resolve().parent.parent),'rev-parse','HEAD'],text=True).strip(),model_commit=req['model_commit'],model_source_files=req['source_files'],loader='retrieval_feat04combo_run.validate_inputs4b/b1.real_inputs/apply_feat04b(engineering=False)',inputs_sha256=req['inputs_sha256'],binding={**binding,**extra},real_data_digest={k:combo.b1._digest(data[k]) for k in ('rows','queries','catalog')},static_review=req['review'],number_map={'design_L3':'guard_l4_reverse_controls','design_L4':'guard_l5_week_shift_invariance','design_L8':'test_l6_week_25_rejected'},test_read=False,checkpoint_read=False,training=False)
- with Path(a.output).open('x') as f:json.dump(record,f,sort_keys=True,allow_nan=False)
- print(json.dumps(record,sort_keys=True,allow_nan=False))
+ emit_receipt(a.output,record)
  if record['status']!='pass':raise SystemExit(2)
 if __name__=='__main__':main()
