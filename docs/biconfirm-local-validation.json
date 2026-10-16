@@ -1,0 +1,142 @@
+{
+  "schema": "biconfirm-local-validation-v1",
+  "recorded_at_utc": "2026-10-16T19:09:08.717368+00:00",
+  "base_commit": "04d4edeb84826d4d56387f95dc820fda1dce10b2",
+  "context_count": "UNKNOWN",
+  "receipts": {
+    "m1_baseline": {
+      "log": "<LOCAL_TMP>/biconfirm-baseline.log",
+      "sha256": "04c5e8a1d7f3fe91493202d0f2cb570d2716c9be24b061c2fd6dac4be9473d5e",
+      "exit_code": 0,
+      "tests": 84
+    },
+    "new_entry_red": {
+      "log": "<LOCAL_TMP>/biconfirm-red.log",
+      "sha256": "f56989d50ac00abc239fa19e719b826d2abc6656d8f6c60c57494d11e7f5deb4",
+      "exit_code": 1,
+      "tests": 8
+    },
+    "ops_red": {
+      "log": "<LOCAL_TMP>/biconfirm-ops-red.log",
+      "sha256": "958d4d1f148e96289e929e6b5f4b47d41a12979420f54bbd8aebe9a259e14c1f",
+      "exit_code": 1,
+      "tests": 6
+    },
+    "data_channel_red": {
+      "log": "<LOCAL_TMP>/biconfirm-data-red.log",
+      "sha256": "2fb96fbe459232e3683fa499d6b12d1dfeeb48dfa06887142693d089e54d906f",
+      "exit_code": 1,
+      "tests": 9
+    },
+    "receipt_red": {
+      "log": "<LOCAL_TMP>/biconfirm-receipt-red.log",
+      "sha256": "e11dc0b3a1a79c1722fa3748315968848e78a99f888b24e19d70c7ab53fa0016",
+      "exit_code": 1,
+      "tests": 7
+    },
+    "driver_red": {
+      "log": "<LOCAL_TMP>/biconfirm-driver-red.log",
+      "sha256": "6fff2a156f36525a7f750e59b47698b1fc2a7293d2ff8f8fca24b3cc59c53249",
+      "exit_code": 1,
+      "tests": 8
+    },
+    "new_final_green": {
+      "log": "<LOCAL_TMP>/biconfirm-all-green.log",
+      "sha256": "1a0247a5dfc92a9235f89d8d17db33fad1673da995c3d8b4985f6827a623afd6",
+      "exit_code": 0,
+      "tests": 17
+    },
+    "full_regression": {
+      "log": "<LOCAL_TMP>/biconfirm-full-regression.log",
+      "sha256": "470268d0e674d32a4fb530f7b77a2167cdffc52460a3fefca7002363298b1d90",
+      "exit_code": 1,
+      "tests": 915
+    },
+    "original_contract_baseline": {
+      "log": "<LOCAL_TMP>/biconfirm-original-contract-baseline.log",
+      "sha256": "5db9a3973dd4bdd0d954f4827471994635332943819a1f5738d9b8a9d532ea43",
+      "exit_code": 1,
+      "tests": 2
+    },
+    "final_relevant": {
+      "log": "<LOCAL_TMP>/biconfirm-final-relevant.log",
+      "sha256": "7ff95c3d261737e8b18828d6513e5a6434b675a5333e115f050c8a724e9b203f",
+      "exit_code": 0,
+      "tests": 101,
+      "composition": "84 frozen M1 + 17 new confirmation tests"
+    },
+    "review_fault_red": {
+      "log": "<LOCAL_TMP>/biconfirm-lifecycle-red.log",
+      "sha256": "5ff62a4c4a055a8922c88ace266990157215c18bca7131253c9084dc7b9ae3d6",
+      "exit_code": 1,
+      "tests": 3
+    },
+    "review_new_green": {
+      "log": "<LOCAL_TMP>/biconfirm-lifecycle-green.log",
+      "sha256": "d68164b60e3ec0e192f284d44eb4f7e671ff422f312b84fd3b938f84643c1fc7",
+      "exit_code": 0,
+      "tests": 20
+    },
+    "review_final_relevant": {
+      "log": "<LOCAL_TMP>/biconfirm-after-review-relevant.log",
+      "sha256": "87d50a4099e1e6141ec223bf521d6946b29bc1c6bfb3810d1f2741a78f53ba90",
+      "exit_code": 0,
+      "tests": 104
+    },
+    "review_full_regression": {
+      "log": "<LOCAL_TMP>/biconfirm-after-review-full.log",
+      "sha256": "e7f00474bb4c0dd9e29de59c878a40ad1b55fef4b290817a02d1297a3ff4a7af",
+      "exit_code": 1,
+      "tests": 919
+    }
+  },
+  "full_regression_limit": "915 tests: 1 failure, 1 error, 2 skipped; predates final driver-only ALERT catch and 17th targeted test; all final new tests pass",
+  "known_baseline_failures": [
+    "test_retrieval_data.DataTests.test_catalog_pad_and_frozen_identity: frozen bound file input hash mismatch",
+    "test_retrieval_cli.CLITests.test_synthetic_overfit_and_fresh_process_resume: P4B contract gate fails"
+  ],
+  "baseline_confirmation": "Both exact failures reproduced in untouched seq/m1@04d4ede; no original data contract changed by this task",
+  "original_m1_unchanged_sha256": {
+    "src/vkgr/retrieval_seqm1.py": "fc2629da1825393818e1defbf3756cdf3fa4967e715decd96cc12c9fa02cef5a",
+    "src/vkgr/retrieval_seqm1_run.py": "e81c9183c0cda549a149ed46ae56efc2bfd11e9c3e90f22ff125353e0de559b7",
+    "configs/seqm1/p-seqm1-attn-s2024.json": "ea46a5c37d4f9264df69f6a9bc10b158c9fcb2264d3e5e5a028ee728957570b2",
+    "configs/seqm1/p-seqm1-attn-s2025.json": "8630b0a44dad0d60ecb4c5fe82ae404324f12d38ceda46bbab0677f5bbd54d54",
+    "configs/seqm1/p-seqm1-attn-s42.json": "c926d551cfc286f01d6ada490cef309d3d54f32e9f5a8d18104ceda20644af67",
+    "configs/seqm1/p-seqm1-bi-s2024.json": "aab45c7afa4021e2ddb57a112a54da3d06f6ebbe5652bdc773d1696f3b17058b",
+    "configs/seqm1/p-seqm1-bi-s2025.json": "f20ee82a7f7b2769b47c6ef1dcf0c1627b90b502e46cfae6228870405dfecad2",
+    "configs/seqm1/p-seqm1-bi-s42.json": "edde9a01dffe2838adccb72e7afb6479306b7dcc1ff15484eec8867114159f4b",
+    "configs/seqm1/p-seqm1-last-s2024.json": "da6994842ccc0177535a118ccd9716665d22865f5c954948413e9f9512fd604a",
+    "configs/seqm1/p-seqm1-last-s2025.json": "14c4c0917ffe4ad047cb23c92f1fe9b829ba990be48d6768df40c9e9abb5e46c",
+    "configs/seqm1/p-seqm1-last-s42.json": "0cfe43b8d9ff270a99a0304d2bd0f76d5b29653f66e6cf63c7f427e580f92793",
+    "configs/seqm1/p-seqm1-mean-s2024.json": "3e1e40f200c3a09a39e15048df33657bbb54080a7da33d604d92c41518a5dde5",
+    "configs/seqm1/p-seqm1-mean-s2025.json": "e4f8f612991ee960b496067b905cb57bb46d7d2b9e4c4af9026004a53e8713f3",
+    "configs/seqm1/p-seqm1-mean-s42.json": "e88dc757ff4085af020efc1f070ebba8df54876e85adf68120dff730f983b621",
+    "configs/seqm1/p-seqm1-pure-s2024.json": "12543bfa1b7e710f6161db84e811df02e7b4bb983a571d48d24b795546d1d39e",
+    "configs/seqm1/p-seqm1-pure-s2025.json": "922564d5ad82f7e34960b7d0373428106c7d4ff6d7c8510c77227acf4843c287",
+    "configs/seqm1/p-seqm1-pure-s42.json": "4f9b209ebaaadda2827ea97e1c85a388ab9b8a6f9b6150afffbc90fe732d162f"
+  },
+  "runtime_checks_not_performed": [
+    "real engineering=False preflight on private data channel",
+    "actual CUDA rehearsal and full-shape memory measurement",
+    "scheduler dry/admission/submit",
+    "independent code review"
+  ],
+  "no_server_action": true,
+  "no_checkpoint_reuse": true,
+  "no_test_data_read": true,
+  "pushed": false,
+  "after_independent_review": {
+    "review": "docs/superpowers/reviews/2026-10-17-bidirectional-code-review.md (primary checkout)",
+    "finding": "HIGH: controller published before detached verifier owner existed",
+    "engineering_fix": "Controller seals full plan, starts detached driver, confirms PID/session/plan ready, atomically releases. Driver alone publishes each intent once; partial failure stops remaining intents, writes ALERT and continues successful prior trains to unique verify. No retry/reset/overwrite.",
+    "scientific_design_changed": false,
+    "fresh_fault_tests": [
+      "RPC/controller SIGKILL after ready: six train and six unique verifier receipts still close",
+      "Third publication OSError: two train and two unique verifier receipts close, third failed and remaining three not_attempted; ALERT retained",
+      "Driver spawn OSError: zero queue records, final ALERT retained"
+    ],
+    "recorded_at_utc": "2026-10-16T19:19:16.781564+00:00"
+  },
+  "final_full_regression_limit": "919 tests, same baseline 1 failure/1 error/2 skipped; exact names listed above; 104 relevant tests pass after lifecycle repair",
+  "git_delivery": "Validation snapshot recorded before local commit; final SHA reported separately to primary owner. No push/server action."
+}
