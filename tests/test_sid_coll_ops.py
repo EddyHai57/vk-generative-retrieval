@@ -133,6 +133,11 @@ class WaitTests(unittest.TestCase):
   b=self.fake([[(self.root/'runs/own','unrelated.json',self.m.IN_CLOSE_WRITE)],[(self.root/'runs/own','terminal.json',self.m.IN_CLOSE_WRITE)]])
   w=self.m.EventWaiter(self.plan,backend_factory=lambda:b,clock=self.clock,sleeper=self.sleep)
   self.assertEqual(w.wait(900)['wake'],'own_terminal');self.assertEqual(self.now,2)
+ def test_scheduler_hardlink_create_is_a_completion(self):
+  (self.root/'runs/own').mkdir()
+  b=self.fake([[(self.root/'runs/own','terminal.json',self.m.IN_CREATE)]])
+  w=self.m.EventWaiter(self.plan,backend_factory=lambda:b,clock=self.clock,sleeper=self.sleep)
+  self.assertEqual(w.wait(900)['wake'],'own_terminal');self.assertEqual(self.now,1)
  def test_other_events_never_end_wait_early(self):
   b=self.fake([[(self.root/'runs','external',self.m.IN_CREATE)],[(self.root/'runs/external','terminal.json',self.m.IN_CLOSE_WRITE)]])
   w=self.m.EventWaiter(self.plan,backend_factory=lambda:b,clock=self.clock,sleeper=self.sleep)

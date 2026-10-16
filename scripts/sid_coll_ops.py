@@ -357,7 +357,7 @@ class EventWaiter:
                             self.backend.watch(path);self.watched.add(path)
                             # Writer may finish before directory watch registration.
                             if (path/'terminal.json').is_file():return {**self.metadata(),'wake':'own_terminal','run_id':name}
-                    elif parent.parent==self.runs and parent.name in self.owned and parent in self.watched and name=='terminal.json' and mask&(IN_CLOSE_WRITE|IN_MOVED_TO):
+                    elif parent.parent==self.runs and parent.name in self.owned and parent in self.watched and name=='terminal.json' and mask&(IN_CREATE|IN_CLOSE_WRITE|IN_MOVED_TO):
                         return {**self.metadata(),'wake':'own_terminal','run_id':parent.name}
                 # Empty batch is a blocking timeout, never a request for tick.
             except Exception as exc:self.fallback(exc)
@@ -365,13 +365,14 @@ class EventWaiter:
         if self.backend is not None:self.backend.close();self.backend=None
 
 
-def driver(plan_path,pin,out):
+def driver(plan_path,pin,out,pid_record='driver-pid.json'):
+    if not re.fullmatch(r'driver-pid(?:-v[0-9]+)?\.json',pid_record):raise ValueError('exclusive pid record basename required')
     plan=load_plan(plan_path,pin);ctl=Path(plan['control_dir'])
     if os.getppid()!=1:raise RuntimeError('detached driver requires PPID 1')
     ctl.mkdir(parents=True,exist_ok=True)
     with (ctl/'driver.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        new(ctl/'driver-pid.json',{'pid':os.getpid(),'ppid':os.getppid(),'poll_seconds':POLLS,'deadline_epoch':plan['deadline_epoch'],'started_utc':utc()})
+        new(ctl/pid_record,{'pid':os.getpid(),'ppid':os.getppid(),'poll_seconds':POLLS,'deadline_epoch':plan['deadline_epoch'],'started_utc':utc()})
         waiter=EventWaiter(plan);wake={'wake':'initial',**waiter.metadata()}
         while True:
             # Detect changed frozen plan before every action; deadline cannot reset.
@@ -397,9 +398,10 @@ def dry(plan):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=('dry','status','tick','start','driver'));p.add_argument('--plan',required=True);p.add_argument('--plan-sha',required=True);p.add_argument('--out',required=True)
+    p.add_argument('--pid-record',default='driver-pid.json')
     a=p.parse_args();plan=load_plan(a.plan,a.plan_sha);out=Path(a.out)
     if out.exists():raise FileExistsError('exclusive output required')
-    if a.action=='driver':driver(a.plan,a.plan_sha,out);return
+    if a.action=='driver':driver(a.plan,a.plan_sha,out,a.pid_record);return
     if a.action=='start':
         ctl=Path(plan['control_dir'])
         if ctl.exists():raise FileExistsError('new control_dir required for driver start')

@@ -55,7 +55,8 @@ def run(root=R,ops=OPS):
    value['accepted']=terminal.get('status')=='succeeded' and terminal.get('exit_code')==0 and len(q['claimed'])==1 and not q['rejected'];value['state']='ACCEPTED_READONLY' if value['accepted'] else 'UNACCEPTED'
   else:value['state']='FAILED' if terminal.get('status')!='succeeded' else 'UNACCEPTED'
   if terminal.get('status')!='succeeded' and (rd/'logs/stderr.log').exists():value['stderr_tail']=read(rd/'logs/stderr.log')[0][-4000:]
- pidfile=ops/'controller/driver-pid.json'
+ pidfile=ops/'controller/driver-pid-v2.json'
+ if not pidfile.exists():pidfile=ops/'controller/driver-pid.json'
  if pidfile.exists():
   p,ref=read(pidfile);p['reference']=ref
   try:
