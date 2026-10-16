@@ -26,6 +26,14 @@ def accept(terminal,claimed,rejected,receipt,expected,raw_status=None):
 def result_fields(raw):
  return {k:v for k,v in raw.items() if k in ('Dprime','aliases','epochs','epoch_runs','read_at_utc','task_id','restrictions')}
 
+def producer_fields(value):
+ result={k:value[k] for k in ('status','variant','dimension','catalog_sha256','vectors_sha256','content_feature_sha256','train_sequence_sha256','checkpoint_sha256','script_sha256','commit') if k in value}
+ allowed=('config','epochs_completed','positive_pairs_per_epoch','processed_positive_pairs','steps','learning_rates','fallback_count','fallback_proportion','health','training_contract','supported_items','supported_fraction','unsupported_items','supported_zero_items','collaborative_block_items','content_only_items','limitations')
+ result['audit']={k:v for k,v in value.get('audit',{}).items() if k in allowed}
+ result['vectors_digest_kind']='canonical float32 array digest, distinct from physical .npy SHA'
+ result['vectors_file_sha256']=value.get('artifacts',{}).get('vectors.npy')
+ return result
+
 def epoch_rows(manifest):
  rows=[]
  for value in manifest.get('epochs',[]):
@@ -88,6 +96,12 @@ def run(root=R,ops=OPS):
    proof=receipt.get('proofs',{}).get('verification')
    if proof:
     raw,rref=read(proof['path'],proof['sha256']);raw_status=raw.get('status');value['raw_verification']=raw;value['raw_verification_ref']=rref
+   producer=receipt.get('proofs',{}).get('producer_manifest')
+   if producer:
+    pv,pref=read(producer['path'],producer['sha256'])
+    if 'audit.json' in pv.get('artifacts',{}):
+     audit,aref=read(Path(producer['path']).parent/'audit.json',pv['artifacts']['audit.json']);pv['audit']=audit;value['sgns_audit_ref']=aref
+    value['producer_summary']=producer_fields(pv);value['producer_ref']=pref
    value['accepted']=accept(terminal,q['claimed'],q['rejected'],receipt,expected,raw_status=raw_status)
    value['state']='ACCEPTED' if value['accepted'] else 'UNACCEPTED'
   elif (rd/'out/diagnostic/result.json').exists():

@@ -9,6 +9,9 @@ class Read(unittest.TestCase):
   a=m.epoch_rows(v);self.assertEqual(a['epochs'][0]['hits_derived'],1);self.assertEqual(a['stop_epoch'],2)
   v['epochs'][0]['metrics']['metrics']['all_eligible']['count']=0
   self.assertEqual(m.epoch_rows(v)['epochs'][0]['hits_derived'],'UNKNOWN')
+ def test_producer_summary_omits_full_arrays_and_keeps_health(self):
+  m=self.load();v={'dimension':64,'vectors_sha256':'a'*64,'audit':{'fallback_count':1,'fallback_mask':[True],'health':{'passed':True}}}
+  a=m.producer_fields(v);self.assertEqual(a['audit']['health'],{'passed':True});self.assertNotIn('fallback_mask',a['audit'])
  def test_epoch_report_is_retained(self):
   m=self.load();value={'epoch_runs':{'s42':{'best_epoch':3}}};self.assertEqual(m.result_fields(value),value)
  def test_no_weight_or_prediction_binary(self):
