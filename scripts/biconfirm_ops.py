@@ -78,8 +78,8 @@ def history_oracle(model):
  device=next(model.parameters()).device
  h=torch.tensor([[11,12,13,14]],device=device);s=torch.zeros(1,4,6,dtype=torch.long,device=device)
  s[0,:,0]=1;s[0,:,1]=torch.tensor([3,20,40,70],device=device);s[0,:,2]=90;s[0,:,3]=torch.tensor([0,1,2,3],device=device)
- changed=h.clone();changed[0,-1]=99;model.eval()
- with torch.no_grad():same=torch.equal(model.parts(h,s).z[:,0],model.parts(changed,s).z[:,0])
+ changed=h.clone();changed[0,-1]=99;changed_side=s.clone();changed_side[0,-1,1]=254;model.eval()
+ with torch.no_grad():same=torch.equal(model.parts(h,s).z[:,0],model.parts(changed,changed_side).z[:,0])
  if same!=(model.arm=='mean'):raise ValueError('history mask oracle mismatch')
  return True
 

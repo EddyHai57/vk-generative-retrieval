@@ -92,3 +92,12 @@ class DriverFailureTests(unittest.TestCase):
    m.driver({'deadline_epoch':time.time()+60,'source':{},'entries':[]},Path(d)/'queue',Path(d)/'launcher',state)
    value=json.loads((state/'summary-final.json').read_text())
    self.assertEqual(value['status'],'ALERT');self.assertIn('source',value['reason'])
+class UnsupportedHistoryOracle(unittest.TestCase):
+ def test_bi_oracle_still_works_when_perturbed_items_unsupported(self):
+  from vkgr import retrieval_biconfirm_run as run
+  torch.set_num_threads(1)
+  data={'content':torch.zeros(121,64),'supported_indices':list(range(1,11))}
+  for arm in ('mean','bi'):
+   cfg={**run.default_config(),'arm':arm}
+   model=run._model(data,cfg,'cpu')
+   self.assertTrue(ops().history_oracle(model))
