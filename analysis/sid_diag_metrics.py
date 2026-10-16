@@ -172,6 +172,7 @@ def popularity_metrics(targets, predictions, train_counts, median, p90, catalog)
         raise ValueError('thresholds must be finite 0 <= median <= p90')
     if any(not isinstance(v, Integral) or isinstance(v,bool) or v < 0 for v in train_counts.values()):
         raise ValueError('train counts must be nonnegative integers')
+    catalog = set(catalog)
     bins = {key: {'n': 0, 'hits': 0} for key in ('oov','unsupported','low','mid','high')}
     for target, row in _rows(targets,predictions,catalog):
         count = train_counts.get(target,0)

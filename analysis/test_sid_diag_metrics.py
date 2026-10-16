@@ -152,4 +152,13 @@ class S0MathTests(unittest.TestCase):
         for seeds in ([],[1,1],[2]):
             with self.assertRaises(ValueError): self.m.decompose_gain(a,z,seeds)
 
+class PopularityScaleTests(unittest.TestCase):
+    def test_catalog_list_does_not_trigger_per_prediction_linear_membership(self):
+        class NoLinearMembership(list):
+            def __contains__(self,item):raise AssertionError('quadratic catalog membership')
+        import sid_diag_metrics as m
+        expected=m.popularity_metrics([1,9],[[1,2],[2,1]],{1:1,2:12},1,11,{1,2})
+        actual=m.popularity_metrics([1,9],[[1,2],[2,1]],{1:1,2:12},1,11,NoLinearMembership([1,2]))
+        self.assertEqual(actual,expected)
+
 if __name__=='__main__': unittest.main()
