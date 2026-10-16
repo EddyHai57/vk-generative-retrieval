@@ -52,9 +52,15 @@ def inventory():
  return {'read_at_utc':now(),'queue':{rid:where(Q,rid) for rid in MODES.values()},'existing_runs':[rid for rid in MODES.values() if (R/'runs'/rid).exists()],
          'deployment_exists':DEP.exists(),'ops_exists':OPS.exists(),'checkpoint_read':False,'test_read':False}
 
+def deployment_run_ids(req):
+ mode=req.get('scope_mode')
+ if mode is None:return tuple(MODES.values())
+ if mode!='a1_b1024':raise ValueError('only A1 supplement scoped deployment')
+ return (MODES[mode],)
+
 def deploy(req):
  if DEP.exists() or OPS.exists():raise FileExistsError('new deployment roots already exist')
- if any(exists(Q,R/'runs',rid) for rid in MODES.values()):raise FileExistsError('existing diagnostic run')
+ if any(exists(Q,R/'runs',rid) for rid in deployment_run_ids(req)):raise FileExistsError('existing diagnostic run')
  if not req['branch'].startswith('codex/'):raise ValueError('working branch required')
  subprocess.run(['git','-C',str(SRC),'fetch','-q','origin',req['branch']],check=True)
  actual=subprocess.check_output(['git','-C',str(SRC),'rev-parse','origin/'+req['branch']],text=True).strip()

@@ -41,6 +41,11 @@ class OpsTests(unittest.TestCase):
    self.assertEqual(m.request(),{'action':'deploy'})
   with patch.object(m.sys,'argv',['-']),patch.object(m.sys,'stdin',StringIO('')):
    self.assertEqual(m.request(),{})
+ def test_deployment_scope_preserves_running_first_batch(self):
+  m=self.module()
+  self.assertEqual(m.deployment_run_ids({'scope_mode':'a1_b1024'}),('sid-fix-s0-a1b1024-v1',))
+  self.assertEqual(set(m.deployment_run_ids({})),{'sid-fix-s0-first-v1','sid-fix-s0-a1b1024-v1'})
+  with self.assertRaises(ValueError):m.deployment_run_ids({'scope_mode':'unknown'})
  def test_modes_closed(self):
   m=self.module()
   for mode in ('all','train','test'):
