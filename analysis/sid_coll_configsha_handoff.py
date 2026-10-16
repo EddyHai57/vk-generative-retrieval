@@ -166,7 +166,7 @@ def source_check(req):
 
 
 def validate_request(req):
-    if type(req) is not dict or set(req)!=REQUIRED or req['schema']!=SCHEMA: raise ValueError('exact recovery request schema required; no caller env')
+    if type(req) is not dict or not REQUIRED<=set(req) or set(req)-REQUIRED-{'capacity_repair_witness'} or req['schema']!=SCHEMA: raise ValueError('exact recovery request schema required; no caller env')
     if req['python']!=sys.executable: raise ValueError('approved Python must equal current sys.executable')
     if type(req['old_pid']) is not int or req['old_pid']<=1: raise ValueError('old PID required')
     if any(type(req[k]) not in (int,float) or not math.isfinite(req[k]) for k in ('created_epoch','deadline_epoch')): raise ValueError('finite deadline required')
@@ -266,8 +266,74 @@ def intent_files(plan):
     return result
 
 
+def capacity_record(req,plan):
+    """Read the one pinned, already applied two-CUDA resource-only repair record."""
+    witness=req.get('capacity_repair_witness')
+    if witness is None:return None
+    expected_dir=safe(req['old_control_dir']).parent/'capacity-repair-v1'
+    if safe(witness['path'])!=expected_dir/'applied.json':raise ValueError('capacity witness must be original applied.json path')
+    applied=ref(witness)
+    if (applied.get('backup_dir')!=str(expected_dir)
+        or applied.get('new_plan_path')!=req['old_plan']['path']
+        or applied.get('new_plan_sha256')!=req['old_plan']['sha256']
+        or applied.get('deadline_epoch')!=req['deadline_epoch']
+        or applied.get('driver',{}).get('deadline_epoch')!=req['deadline_epoch']
+        or applied.get('new_pid')!=req['old_pid']
+        or applied.get('old_vram_mib')!=39312 or applied.get('new_vram_mib')!=39168
+        or applied.get('admission_headroom_unchanged')!=.2
+        or any(applied.get(k) is not False for k in ('gate_changed','resubmitted','plan_overwritten','checkpoint_read','test_read'))):
+        raise ValueError('capacity witness original plan/deadline/vram/gate identity mismatch')
+    expected_ids={plan['branches'][label]['stages']['cuda']['job']['run_id'] for label in ('C1p','C2')}
+    if set(applied.get('pending',{}))!=expected_ids or set(applied.get('checks',{}))!={'C1p','C2'}:
+        raise ValueError('capacity witness must cover exactly both original CUDA nodes')
+    records={}
+    for label in ('C1p','C2'):
+        job=plan['branches'][label]['stages']['cuda']['job'];rid=job['run_id']
+        entry=applied['pending'][rid]
+        if set(entry)!={'path','old_sha256','new_sha256'}:raise ValueError('capacity pending entry schema')
+        pending=safe(entry['path'])
+        if pending.parent!=safe(plan['root'])/'queue/pending' or not re.fullmatch('[0-9]+-'+re.escape(rid)+r'\.json',pending.name):
+            raise ValueError('capacity original pending queued identity mismatch')
+        oldref={'path':str(expected_dir/pending.name),'sha256':hexpin(entry['old_sha256'])}
+        oldjob=ref(oldref);hexpin(entry['new_sha256'])
+        if type(oldjob.get('vram_mib')) is not int or oldjob['vram_mib']!=39312 or type(job.get('vram_mib')) is not int or job['vram_mib']!=39168:
+            raise ValueError('capacity predecessor exact vram transition required')
+        changed=copy.deepcopy(oldjob);changed['vram_mib']=39168
+        if changed!=job:raise ValueError('capacity predecessor differs beyond sole authorized vram field')
+        check=applied['checks'][label]
+        if check.get('old_admit') is not False or check.get('new_admit') is not True:
+            raise ValueError('capacity historical admission identity mismatch')
+        for resource in ('cpu_cores','ram_mib','vram_mib','disk_gib'):
+            item=check.get('new_resources',{}).get(resource,{})
+            if item.get('need')!=job[resource] or item.get('ok') is not True:
+                raise ValueError('capacity historical resource declaration mismatch')
+        records[rid]={'label':label,'job':job,'old_job':oldjob,'backup':oldref,
+                      'claimed_name':pending.name,'claimed_sha256':entry['new_sha256']}
+    return {'witness':copy.deepcopy(witness),'runs':records}
+
+
+def capacity_predecessor(req,record,label,name,job,guard,snap,expected):
+    # Reached only after normal strict queue/manifest/terminal/receipt acceptance.
+    if (record is None or name!='cuda' or label not in ('C1p','C2') or snap['status']!='accepted'
+        or len(expected)!=9 or expected.get('schema')!='coll-stage-receipt-v1'
+        or expected.get('stage')!='cuda' or expected.get('status')!='verified'
+        or expected.get('binding.commit')!=req['scientific_commit']):
+        raise ValueError('old intent mismatch requires completed verified CUDA capacity witness')
+    rid=job['run_id'];item=record['runs'].get(rid)
+    if item is None or item['label']!=label or item['job']!=job or guard['job_sha256']!=digest(item['old_job']):
+        raise ValueError('capacity predecessor canonical old intent identity mismatch')
+    claimed=snap['queue']['claimed']
+    if snap['queue']['pending'] or len(claimed)!=1 or Path(claimed[0]['path']).name!=item['claimed_name'] or claimed[0]['sha256']!=item['claimed_sha256']:
+        raise ValueError('capacity claimed raw SHA/queued predecessor identity mismatch')
+    return {'witness':record['witness'],'backup':item['backup'],'claimed':claimed[0],
+            'old_intent_job_sha256':guard['job_sha256'],'current_job_sha256':digest(job),
+            'only_change':{'vram_mib':{'before':39312,'after':39168}},
+            'terminal':snap['terminal'],'receipt':snap['receipt']}
+
+
 def inspect_runs(req,old,new):
     root=safe(old['root']);intents=intent_files(old);runs={};guards={}
+    capacity=capacity_record(req,old)
     for label,branch in new['branches'].items():
         accepted={}
         for name in STAGES:
@@ -294,9 +360,12 @@ def inspect_runs(req,old,new):
                     queued,pin=read(path)
                     if queued!=job: raise ValueError('queue job differs from frozen identity: '+rid)
                     snap['queue'][kind].append({'path':str(path),'sha256':pin})
+            capacity_needed=False
             if rid in intents:
                 guard=ref(intents[rid])
-                if guard['job_sha256']!=digest(job): raise ValueError('old intent job identity mismatch')
+                if guard['job_sha256']!=digest(job):
+                    if capacity is None or name!='cuda':raise ValueError('old intent job identity mismatch')
+                    capacity_needed=True
                 guards[Path(intents[rid]['path']).name]=intents[rid]
                 if not any(q.values()): raise ValueError('uncertain intent without queue: '+rid)
             terminal=rd/'terminal.json'
@@ -319,6 +388,8 @@ def inspect_runs(req,old,new):
             elif any(q.values()):
                 if q['claimed']: raise ValueError('uncertain claimed job without run manifest: '+rid)
                 snap['status']='queued'
+            if capacity_needed:
+                snap['authorized_capacity_predecessor']=capacity_predecessor(req,capacity,label,name,job,guard,snap,expected if snap['status']=='accepted' else {})
             if name in STAGES[:9] and snap['status']!='accepted': raise ValueError('existing base/train42 not accepted; no retrain: '+rid)
     if len(runs)!=28: raise ValueError('globally unique original run IDs required')
     return runs,guards
@@ -337,7 +408,8 @@ def inventory_locked(req,old):
             'new_plan_sha256':sha(encoded(new)),'patches':patches,'runs':runs,'guards':guards,
             'preserved_stop_refs':stops,'old_owner':req['old_owner'],'old_owner_alive':False,
             'old_lock_available':True,'created_epoch':old['created_epoch'],'deadline_epoch':old['deadline_epoch'],
-            'source_plan':req['old_plan'],'approval':req['approval'],'request_sha256':digest(req)}
+            'source_plan':req['old_plan'],'approval':req['approval'],'request_sha256':digest(req),
+            **({'capacity_repair_witness':copy.deepcopy(req['capacity_repair_witness'])} if 'capacity_repair_witness' in req else {})}
 
 
 
@@ -386,6 +458,7 @@ def sealed(req):
         read(source['path'],source['sha256'])
         read(safe(req['new_control_dir'])/name,source['sha256'])
     for source in result['preserved_stop_refs'].values(): ref(source,LARGE)
+    if 'capacity_repair_witness' in result:ref(result['capacity_repair_witness'])
     if set(p.name for p in safe(req['new_control_dir']).glob('intent-*.json'))!=set(result['guards']): raise ValueError('new control guards differ before start')
     return result
 

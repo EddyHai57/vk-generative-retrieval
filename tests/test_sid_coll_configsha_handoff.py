@@ -308,6 +308,96 @@ class RecoveryTests(unittest.TestCase):
         with patch.object(self.m.os,'fork',side_effect=AssertionError('fork must not run')):
             with self.assertRaises((ValueError,FileNotFoundError)):self.m.main(['_detach','--request',request_file['path'],'--request-sha',request_file['sha256']])
 
+    def capacity_fixture(self):
+        backup=self.ops/'capacity-repair-v1';backup.mkdir()
+        pending={};checks={}
+        for label in ('C1p','C2'):
+            stage=self.plan['branches'][label]['stages']['cuda'];stage['job']['vram_mib']=39168
+            self.complete(label,'cuda');job=stage['job'];rid=job['run_id'];name='1-'+rid+'.json'
+            predecessor=copy.deepcopy(job);predecessor['vram_mib']=39312
+            oldref=write(backup/name,predecessor)
+            current=self.root/'queue/claimed'/name
+            pending[rid]={'path':str(self.root/'queue/pending'/name),'old_sha256':oldref['sha256'],'new_sha256':sha(current.read_bytes())}
+            write(self.old/('intent-'+rid+'.json'),{'run_id':rid,'job_sha256':self.m.digest(predecessor),'created_utc':'synthetic'})
+            checks[label]={'old_admit':False,'old_reason':'synthetic 20 percent admission headroom','new_admit':True,
+                           'new_resources':{k:{'need':job[k],'ok':True} for k in ('cpu_cores','ram_mib','vram_mib','disk_gib')}}
+        self.rewrite_plan()
+        applied={'status':'capacity_metadata_repaired_observer_unconfirmed','backup_dir':str(backup),
+                 'old_plan_sha256':'d'*64,'new_plan_path':self.req['old_plan']['path'],'new_plan_sha256':self.req['old_plan']['sha256'],
+                 'deadline_epoch':self.req['deadline_epoch'],'old_pid':12345,'new_pid':self.req['old_pid'],
+                 'driver':{'pid':12345,'ppid':1,'actual_ppid':1,'alive':True,'poll_seconds':900,'deadline_epoch':self.req['deadline_epoch'],'started_utc':'synthetic'},
+                 'old_vram_mib':39312,'new_vram_mib':39168,'pending':pending,'checks':checks,
+                 'admission_headroom_unchanged':0.2,'gate_changed':False,'resubmitted':False,'plan_overwritten':False,
+                 'checkpoint_read':False,'test_read':False,'read_at_utc':'synthetic'}
+        self.req['capacity_repair_witness']=write(backup/'applied.json',applied)
+        return applied
+
+    def test_capacity_witness_only_completed_cuda_predecessors_preserve_guards(self):
+        self.capacity_fixture();guards={p.name:p.read_bytes() for p in self.old.glob('intent-*.json')}
+        result=self.m.prepare(self.req)
+        self.assertEqual(result['capacity_repair_witness'],self.req['capacity_repair_witness'])
+        for label in ('C1p','C2'):
+            rid=self.plan['branches'][label]['stages']['cuda']['job']['run_id']
+            self.assertEqual(result['runs'][rid]['status'],'accepted')
+            self.assertEqual(result['runs'][rid]['authorized_capacity_predecessor']['witness'],self.req['capacity_repair_witness'])
+        for name,raw in guards.items():self.assertEqual((Path(self.req['new_control_dir'])/name).read_bytes(),raw)
+        spec=importlib.util.spec_from_file_location('capacity_original',self.repo/'scripts/sid_coll_ops.py')
+        op=importlib.util.module_from_spec(spec);spec.loader.exec_module(op);calls=[]
+        def submit(root,job):
+            calls.append(job['run_id']);return write(Path(root)/'queue/pending'/('9-'+job['run_id']+'.json'),job)['path']
+        op.tick(result['new_plan'],submitter=submit);op.tick(result['new_plan'],submitter=submit)
+        self.assertEqual(sorted(calls),['c1p-verify42','c2-verify42'])
+
+    def test_capacity_predecessor_without_witness_rejected(self):
+        self.capacity_fixture();del self.req['capacity_repair_witness']
+        with self.assertRaisesRegex(ValueError,'intent'):self.m.inventory(self.req)
+
+    def test_capacity_backup_tamper_and_other_field_change_rejected(self):
+        applied=self.capacity_fixture();rid=self.plan['branches']['C1p']['stages']['cuda']['job']['run_id']
+        backup=Path(applied['backup_dir'])/Path(applied['pending'][rid]['path']).name
+        original=backup.read_bytes();backup.write_bytes(original+b' ')
+        with self.assertRaisesRegex(ValueError,'SHA|backup'):self.m.inventory(self.req)
+        backup.write_bytes(original);value=json.loads(original);value['ram_mib']+=1
+        applied['pending'][rid]['old_sha256']=write(backup,value)['sha256']
+        write(self.old/('intent-'+rid+'.json'),{'run_id':rid,'job_sha256':self.m.digest(value),'created_utc':'synthetic'})
+        self.req['capacity_repair_witness']=write(Path(self.req['capacity_repair_witness']['path']),applied)
+        with self.assertRaisesRegex(ValueError,'vram|capacity|predecessor'):self.m.inventory(self.req)
+
+    def test_capacity_witness_cannot_authorize_non_cuda_guard(self):
+        self.capacity_fixture();stage=self.plan['branches']['C1p']['stages']['train42'];job=copy.deepcopy(stage['job']);job['vram_mib']=39312
+        write(self.old/('intent-'+job['run_id']+'.json'),{'run_id':job['run_id'],'job_sha256':self.m.digest(job),'created_utc':'synthetic'})
+        with self.assertRaisesRegex(ValueError,'intent|cuda'):self.m.inventory(self.req)
+
+    def test_capacity_witness_requires_success_and_complete_receipt(self):
+        self.capacity_fixture();rid=self.plan['branches']['C1p']['stages']['cuda']['job']['run_id'];terminal=self.root/'runs'/rid/'terminal.json';raw=terminal.read_bytes()
+        write(terminal,{'run_id':rid,'status':'failed','exit_code':1})
+        with self.assertRaisesRegex(ValueError,'failed|capacity|intent'):self.m.inventory(self.req)
+        terminal.unlink()
+        with self.assertRaisesRegex(ValueError,'completed|capacity|intent'):self.m.inventory(self.req)
+        terminal.write_bytes(raw);path=self.root/'runs'/rid/'out/receipt.json';receipt=json.loads(path.read_bytes());receipt['status']='complete';write(path,receipt)
+        with self.assertRaisesRegex(ValueError,'receipt|capacity|intent'):self.m.inventory(self.req)
+
+    def test_capacity_witness_identity_and_original_budget_mutations_rejected(self):
+        applied=self.capacity_fixture();path=Path(self.req['capacity_repair_witness']['path'])
+        for key,value in [('gate_changed',True),('resubmitted',True),('plan_overwritten',True),('admission_headroom_unchanged',.21),('deadline_epoch',self.req['deadline_epoch']+1),('new_plan_sha256','e'*64),('new_plan_path',str(self.ops/'other-plan.json')),('old_vram_mib',39313),('new_vram_mib',39169)]:
+            changed=copy.deepcopy(applied);changed[key]=value;self.req['capacity_repair_witness']=write(path,changed)
+            with self.subTest(key=key),self.assertRaises(ValueError):self.m.inventory(self.req)
+        self.req['capacity_repair_witness']=write(self.ops/'wrong-applied.json',applied)
+        with self.assertRaises(ValueError):self.m.inventory(self.req)
+
+    def test_capacity_rejected_or_unpublished_cuda_still_stops(self):
+        self.capacity_fixture();rid=self.plan['branches']['C1p']['stages']['cuda']['job']['run_id']
+        claimed=self.root/'queue/claimed'/('1-'+rid+'.json');rejected=self.root/'queue/rejected'/claimed.name
+        claimed.rename(rejected)
+        with self.assertRaisesRegex(ValueError,'rejected'):self.m.inventory(self.req)
+        rejected.rename(claimed);claimed.rename(self.ops/'archived-claimed.json')
+        (self.root/'runs'/rid).rename(self.root/'runs'/(rid+'-archive'))
+        with self.assertRaisesRegex(ValueError,'uncertain'):self.m.inventory(self.req)
+
+    def test_capacity_current_claimed_raw_sha_must_match_applied_pending(self):
+        self.capacity_fixture();rid=self.plan['branches']['C1p']['stages']['cuda']['job']['run_id'];path=self.root/'queue/claimed'/('1-'+rid+'.json');path.write_bytes(path.read_bytes()+b' ')
+        with self.assertRaisesRegex(ValueError,'SHA|capacity|claimed'):self.m.inventory(self.req)
+
     def test_ack_requires_live_detached_pid_and_lock(self):
         self.m.prepare(self.req)
         with self.assertRaises((ValueError,FileNotFoundError)):self.m.ack(self.req)

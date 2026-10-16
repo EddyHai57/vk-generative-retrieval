@@ -44,8 +44,9 @@ Config files need not be included in the scientific Python source mapping.
 }
 ```
 
-The request accepts exactly the listed keys; no caller environment or scientific
-patch dictionary. `python` must equal current `sys.executable` exactly. The helper
+The request accepts exactly the listed required keys and the single optional
+`capacity_repair_witness` reference described below; no caller environment or
+scientific patch dictionary. `python` must equal current `sys.executable` exactly. The helper
 must have the requested Git HEAD, a clean worktree, and the pinned physical/Git
 source SHA. The ops runtime environment is constructed by the tool: approved
 ops library + model src/root on PYTHONPATH, one CPU thread per math library,
@@ -183,3 +184,44 @@ controller passed from exact Git bytes in a temporary directory. Fresh RED
 was observed for missing implementation, transport/source identity, lock
 ownership and sealing, release-before-publication, approval and detach intent.
 No scientific implementation file was modified.
+
+## Narrow historical capacity witness compatibility
+
+A request may additionally include the following pinned small metadata reference:
+
+```json
+{"capacity_repair_witness":{"path":"<OLD_OPS>/capacity-repair-v1/applied.json","sha256":"<PINNED_ORIGINAL_APPLIED_JSON_SHA256>"}}
+```
+
+Without it every old intent still requires the exact current job canonical SHA.
+With it, the tool validates the original applied path/byte SHA, both exact CUDA
+run IDs, its new plan path/SHA equal to the original pinned capacity plan,
+original deadline and resulting owner PID, admission headroom 0.2, unchanged
+scientific gates, no resubmission/overwrite/data reads, and the exact historical
+39312 to 39168 VRAM transition. For each branch the backup is read from the
+original backup directory with the same original queued basename. Its raw SHA
+must equal `applied.pending[run_id].old_sha256`. Its canonical compact sorted JSON
+plus LF SHA must equal the unchanged old intent guard. Changing only that old
+job's vram_mib to 39168 must reproduce the entire frozen current job exactly.
+All other fields, including the scientific argv, env, source and resources,
+remain identical. The actual unique claimed entry must retain that same basename
+and its raw SHA must equal `applied.pending[run_id].new_sha256`.
+
+This is accepted only after the normal queue and run manifest checks, terminal
+succeeded/exit 0, and all nine original expected receipt identity fields match,
+including verified/cuda and the frozen scientific commit. Pending, running,
+failed, rejected, unpublished or receipt-mismatched jobs do not qualify. No
+non-CUDA stage qualifies. Every unrelated old intent retains strict current-job
+digest equality. Existing original CUDA guard bytes are copied unchanged and
+never rewritten to pretend they used the newer resource declaration. The new
+handoff seals the witness ref and per-run predecessor evidence refs. It does not
+change any old plan, job, STOP, intent, scheduler gate, threshold or budget.
+
+Eight synthetic capacity cases cover successful preservation and no duplicate
+CUDA publication, absent witness, backup/raw-claimed byte tampering, additional
+job field differences, non-CUDA intent mismatch, non-success or bad receipt,
+rejected/unpublished attempts, and plan/deadline/gate/headroom/path mutations.
+The captured real applied.json and both backup object shapes were additionally
+checked locally using only the previously retained small metadata snapshots;
+no server or scientific artifact was read. The complete tools regression after
+this compatibility change passed 76 tests.
