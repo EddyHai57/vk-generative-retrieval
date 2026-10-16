@@ -55,5 +55,6 @@ class OpsTests(unittest.TestCase):
    for k in ('pending','claimed','rejected'):(q/k).mkdir(parents=True)
    rid='sid-fix-s0-first-v1';name=m.publish(q,root/'runs',{'run_id':rid})
    self.assertEqual(json.loads((q/'pending'/name).read_text())['run_id'],rid)
+   self.assertEqual(json.loads((q/'pending'/name).read_text())['schema'],'vkgr-queue-job-v1')
    with self.assertRaises(FileExistsError):m.publish(q,root/'runs',{'run_id':rid})
 if __name__=='__main__':unittest.main()

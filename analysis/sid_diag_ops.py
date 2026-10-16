@@ -29,7 +29,7 @@ def publish(q,runs,spec):
   fcntl.flock(f,fcntl.LOCK_EX)
   if exists(q,runs,spec['run_id']):raise FileExistsError(spec['run_id'])
   name=f"{time.time_ns():020d}-{spec['run_id']}.json";tmp=q/'pending'/('.'+name+'.tmp')
-  new(tmp,spec);os.link(tmp,q/'pending'/name);return name
+  new(tmp,{'schema':'vkgr-queue-job-v1',**spec});os.link(tmp,q/'pending'/name);return name
 
 def metadata_guard(spec,prepared):
  size=len(json.dumps({'spec':spec,'prepared':prepared},sort_keys=True,allow_nan=False).encode())
