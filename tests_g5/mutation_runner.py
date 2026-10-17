@@ -87,18 +87,73 @@ SUITES = {
         ('duplicate-check-off', "        if exists_anywhere(root, job['run_id']):", "        if False:", 'kill'),
         ('g-deploy-regex-open', "G_DEPLOY_PATTERN = r'/workspace/vkgr-coll-a1-g-v[0-9]+'", "G_DEPLOY_PATTERN = r'/workspace/.*'", 'kill'),
     ]},
+    'fuse': {'target': 'src/vkgr_g5/fuse.py', 'copy': ['src', 'tests_g5'], 'cmd': ['-m', 'unittest', 'tests_g5.test_fuse'], 'mutants': [
+        ('p-gate-flag-off', "gate.get('first50_equal') is not True or ", "False or ", 'kill'),
+        ('p-mismatch-count-off', "or gate.get('mismatched_queries') != 0", "", 'kill'),
+        ('p-depth-off', "record.get('depth') != 100 or ", "False or ", 'kill'),
+        ('p-binding-off', "    if record.get('train_manifest_sha256') != P_MANIFEST_SHA[seed]:", "    if False:", 'kill'),
+        ('p-shape-off', "    if len(lists) != expected_queries or any(len(row) != 100 for row in lists):", "    if False:", 'kill'),
+        ('p-short-row-ok', "any(len(row) != 100 for row in lists)", "any(len(row) < 99 for row in lists)", 'kill'),
+        ('g-binding-off', "value.get('run_manifest_sha256') != G_MANIFEST_SHA[seed]", "False", 'kill'),
+        ('g-checks-off', " or value['checks'] != {'archive_replay_equal': True, 'slice_consistency_equal': True, 'metric_equals_best': True}", "", 'kill'),
+        ('g-seed-off', "value.get('seed') != seed or ", "False or ", 'kill'),
+        ('align-history-off', "(p['user_id'], p['target'], p['oov'], p['history']) != (g['user_id'], g['target'], g['oov'], g['history'])", "(p['user_id'], p['target'], p['oov']) != (g['user_id'], g['target'], g['oov'])", 'kill'),
+        ('align-target-off', "(p['user_id'], p['target'], p['oov'], p['history']) != (g['user_id'], g['target'], g['oov'], g['history'])", "(p['user_id'], p['oov'], p['history']) != (g['user_id'], g['oov'], g['history'])", 'kill'),
+        ('align-only-seed-42', "for seed, assembly in assemblies.items():", "for seed, assembly in list(assemblies.items())[:1]:", 'kill'),
+        ('hits-check-off', "    if got != expect_hits:", "    if False:", 'kill'),
+        ('hits-g-skipped', "got.update({('G', s): single_route_hits([r['items'] for r in assemblies[s]['rows']], targets) for s in SEEDS})", "got.update({('G', s): expect_hits[('G', s)] for s in SEEDS})", 'kill'),
+        ('hits-uses-top30', "return sum(1 for ranked, target in zip(lists, targets) if target in ranked[:50])", "return sum(1 for ranked, target in zip(lists, targets) if target in ranked[:30])", 'kill'),
+        ('sha-pin-off', "sha256_file(path) != digest", "False", 'kill'),
+        ('held-out-check-off', "            if HELD_OUT_COMPONENT.search(part):", "            if False:", 'kill'),
+        ('held-out-substring', "HELD_OUT_COMPONENT = re.compile(r'(?i)(^|[-_.])(test|week[-_]?26)([-_.]|$)')", "HELD_OUT_COMPONENT = re.compile(r'(?i)test')", 'kill'),
+        ('output-exists-ok', "        if out.exists():\n            raise ValueError('output directory must not exist')", "", 'kill'),
+        ('check-only-writes', "        if args.check_only:\n            print(json.dumps({'status': 'preflight_ok'", "        if False:\n            print(json.dumps({'status': 'preflight_ok'", 'kill'),
+        ('catalog-size-check-off', "    if any(a['catalog_size'] != meta['catalog_size'] for a in assemblies.values()):", "    if False:", 'kill'),
+        ('pop-from-wrong-seed', "routes[('POP', None)] = base['pop']['ranking']", "routes[('POP', None)] = assemblies[2025]['pop']['ranking']", 'kill'),
+        ('queries-from-wrong-labels', "'popularity_group': r['popularity_group'], 'user_group': r['user_group'], 'history_len': len(r['history'])}", "'popularity_group': r['popularity_group'], 'user_group': r['user_group'], 'history_len': 1}", 'kill'),
+        ('support-mismatch-not-counted', "support_mismatch = sum(1 for p, g in zip(meta['rows'], base['rows']) if p['support_p'] != g['support'])", "support_mismatch = 0", 'kill'),
+        ('query-count-meta-off', " or meta.get('query_count') != expected_queries:", ":", 'syntax'),
+        ('seeds-required-off', "    if set(out) != set(SEEDS):", "    if False:", 'kill'),
+        ('duplicate-seed-ok', "or int(seed) in out:", ":", 'syntax'),
+        ('fusion-hash-not-recorded', "'fusion_v2_script_sha256': fv.script_sha256(),", "'fusion_v2_script_sha256': '0' * 64,", 'kill'),
+    ]},
+    'assemble': {'target': 'src/vkgr_g5/assemble_g.py', 'copy': ['src', 'tests_g5'], 'cmds': [['-m', 'unittest', 'tests_g5.test_assemble_g.LabelTests', 'tests_g5.test_assemble_g.GateTests', 'tests_g5.test_assemble_g.CliTests'], ['-m', 'unittest', 'tests_g5.test_assemble_g.IntegrationTests']], 'env': {'VKGR_G5_G_ROOT': '/Users/eddy/.codex/worktrees/sid-coll-s1/vk-generative-retrieval'}, 'mutants': [
+        ('popularity-boundary', "count <= stats.thresholds[0] else item_groups[2] if count <= stats.thresholds[1]", "count < stats.thresholds[0] else item_groups[2] if count <= stats.thresholds[1]", 'kill'),
+        ('user-boundary', "users.append(", "users.append", 'syntax'),
+        ('support-flip', "'supported' if count > 0 else 'unsupported'", "'unsupported' if count > 0 else 'supported'", 'kill'),
+        ('oov-popularity', "popularity.append('oov'); support.append('oov')", "popularity.append('oov'); support.append('unsupported')", 'kill'),
+        ('history-gate-off', "        if not 1 <= length <= 50:", "        if False:", 'kill'),
+        ('gate-section-skipped', "    for section, names in spec:", "    for section, names in spec[:2]:", 'kill'),
+        ('pop-tie-rule', "key=lambda i: (-stats.item_counts[i], i))", "key=lambda i: (-stats.item_counts[i], -i))", 'kill'),
+        ('pop-depth-gate-off', "    if len(ranking) < k:", "    if False:", 'kill'),
+        ('ordinal-order-gate-off', " or [r['ordinal'] for r in rows] != list(range(len(queries))):", ":", 'syntax'),
+        ('metric-gate-off', "    if [main['recall@50'], main['ndcg@50']] != list(best['metric']):", "    if False:", 'kill'),
+        ('archive-replay-gate-off', "    if canonical_bytes(aggregate) != canonical_bytes(record['metrics']) or computation != record['evaluation']['computation_sha256']:", "    if False:", 'kill'),
+        ('kind-gate-off', "    if record.get('epoch') != epoch or record['evaluation']['kind'] != 'query_evaluation':", "    if False:", 'kill'),
+        ('consistency-gate-off', "    consistency_gate(items, queries, context.catalog, assigned, aggregate, ev.ITEM_GROUPS, ev.USER_GROUPS, metrics, canonical_bytes)", "    pass", 'kill'),
+        ('items-copied-from-wrong-row', "items = [list(r['items']) for r in rows]", "items = [list(r['items']) for r in rows[::-1]]", 'kill'),
+        ('line-root-ancestor-ok', "        if root not in Path(vkgr.__file__).resolve().parents:", "        if False:", 'kill'),
+        ('engineering-ok', "        if engineering:\n            raise ValueError('formal (non-engineering) context required')", "", 'equivalent'),
+    ]},
 }
 
 
 def suite_run(work, cmd):
+    if cmd and isinstance(cmd[0], list):          # several isolated interpreters (the P and G code bases both provide a package named vkgr)
+        results = [suite_run(work, c) for c in cmd]
+        return max(r[0] for r in results), sorted({t for r in results for t in r[1]})
     cache = tempfile.mkdtemp(prefix='mut-pyc-')
-    env = {**os.environ, 'PYTHONPYCACHEPREFIX': cache, 'PYTHONDONTWRITEBYTECODE': '1'}
+    env = {**os.environ, 'PYTHONPYCACHEPREFIX': cache, 'PYTHONDONTWRITEBYTECODE': '1', **EXTRA_ENV}
     proc = subprocess.run([sys.executable, '-B', *cmd], cwd=work, env=env, capture_output=True, text=True)
     return proc.returncode, sorted(set(re.findall(r'^(?:FAIL|ERROR): (\w+) ', proc.stderr, re.M)))
 
 
+EXTRA_ENV = {}
+
+
 def main(name):
     spec = SUITES[name]
+    EXTRA_ENV.update(spec.get('env', {}))
     print(f'# Mutation ledger: {name} ({spec["target"]})\n')
     print('Isolation: every run uses a fresh copy of the sources, `python -B`, `PYTHONDONTWRITEBYTECODE=1` and a unique `PYTHONPYCACHEPREFIX`.\n')
     def fresh():
@@ -106,7 +161,7 @@ def main(name):
         for part in spec['copy']:
             shutil.copytree(ROOT / part, work / part, ignore=shutil.ignore_patterns('__pycache__'))
         return work
-    base_code, failed = suite_run(fresh(), spec['cmd'])
+    base_code, failed = suite_run(fresh(), spec.get('cmds') or spec['cmd'])
     print(f'Baseline: returncode {base_code}, failing tests {failed}\n')
     print('| id | change | expected | result | killed by |\n|---|---|---|---|---|')
     bad = 0
@@ -117,7 +172,7 @@ def main(name):
         if source.count(old) < 1:
             print(f'| {mid} | {old[:50]!r} | {expected} | PATTERN_NOT_FOUND | |'); bad += 1; continue
         target.write_text(source.replace(old, new, 1))
-        code, failed = suite_run(work, spec['cmd'])
+        code, failed = suite_run(work, spec.get('cmds') or spec['cmd'])
         result = 'killed' if code != 0 else 'SURVIVED'
         if (expected == 'kill') != (result == 'killed'):
             bad += 1

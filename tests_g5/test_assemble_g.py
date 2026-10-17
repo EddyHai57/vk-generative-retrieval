@@ -162,6 +162,32 @@ class IntegrationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 ag.assemble_core(value, run_dir, context, tokens, b1._read_evaluation, ev, metrics, canonical_bytes, pop_k=len(context.catalog)//2)
 
+    def test_wiring_gates_metric_kind_and_slice_consistency_each_fail_alone(self):
+        import copy
+        from vkgr import generative_b1_run as b1, generative_evaluation as ev, sid_depth as sd
+        from vkgr.baselines import metrics
+        from vkgr.data_audit import canonical_bytes
+        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+            tmp = Path(tmp); g, context, value, run_dir = self.build_world(tmp)
+            tokens = sd.SIDTokensLD(context.codec, value['config']['history_len']); k = len(context.catalog) // 2; best = value['best']['epoch']
+            call = lambda v, reader=b1._read_evaluation: ag.assemble_core(v, run_dir, context, tokens, reader, ev, metrics, canonical_bytes, pop_k=k)
+            call(value)                                                                          # baseline passes
+            bad = copy.deepcopy(value); bad['best']['metric'] = [bad['best']['metric'][0] + 0.25, bad['best']['metric'][1]]
+            with self.assertRaisesRegex(ValueError, 'best metric does not match'):
+                call(bad)
+            bad = copy.deepcopy(value); bad['epochs'][best - 1]['evaluation']['kind'] = 'l100_query_evaluation'
+            with self.assertRaisesRegex(ValueError, 'query_evaluation archive'):
+                call(bad)
+            # an aggregate whose slice section disagrees with the rows but which the recorded metrics also carry: only the consistency gate can catch it
+            def lying_reader(kind, run, record, ctx, toks):
+                aggregate, computation, rows = b1._read_evaluation(kind, run, record, ctx, toks)
+                aggregate = copy.deepcopy(aggregate); first = next(iter(aggregate['popularity'])); aggregate['popularity'][first]['recall@50'] += 0.5
+                return aggregate, computation, rows
+            bad = copy.deepcopy(value)
+            bad['epochs'][best - 1]['metrics'] = lying_reader(bad['epochs'][best - 1]['evaluation']['kind'], run_dir, bad['epochs'][best - 1], context, tokens)[0]
+            with self.assertRaisesRegex(ValueError, 'slice consistency gate failed: popularity'):
+                call(bad, lying_reader)
+
     def test_no_checkpoint_is_opened_by_the_assembly(self):
         import torch
         from vkgr import generative_b1_run as b1, generative_evaluation as ev, sid_depth as sd
