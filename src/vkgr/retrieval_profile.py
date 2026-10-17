@@ -41,6 +41,6 @@ def make_profile_model(content,supported_indices,max_len,arm):
 def tensors(batch,idmap,width,feature):
     from .retrieval_feat02_run import _tensors2
     h,s=_tensors2(batch,idmap,width,feature)
-    if any('profile_ids' not in row for row in batch):raise ValueError('bound profile sidecar missing')
+    if any(type(r.get('profile_ids')) is not list or len(r['profile_ids'])!=3 or any(type(v) is not int for v in r['profile_ids']) for r in batch):raise ValueError('bound integer profile sidecar required')
     ids=torch.tensor([r['profile_ids'] for r in batch],dtype=torch.long)
     return h,torch.cat((s,ids[:,None,:].expand(-1,width,-1)),dim=-1)

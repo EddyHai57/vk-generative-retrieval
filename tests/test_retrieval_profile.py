@@ -60,6 +60,15 @@ class Profiles(unittest.TestCase):
             p=Path(tmp).resolve()/'test'/'week_26.json';p.parent.mkdir();p.write_text('{}')
             with self.assertRaises(ValueError):safe(p)
 
+    def test_bound_tensor_target_fields_do_not_change_input_and_bad_bucket_type_rejected(self):
+        import torch
+        from vkgr.retrieval_profile import tensors
+        row={'user_id':1,'example_id':0,'history':[10],'history_positions':[[0,0]],'side':[[1,5,10]],'target':11,'target_position':[0,1],'profile_ids':[1,1,1]}
+        h,s=tensors([row],{10:2},1,'f3_f4_recency');changed={**row,'target':999,'target_feedback':63,'future_like':True};hh,ss=tensors([changed],{10:2},1,'f3_f4_recency')
+        self.assertTrue(torch.equal(h,hh) and torch.equal(s,ss))
+        for ids in [[1.5,1,1],[True,1,1],[1,1]]:
+            with self.assertRaises(ValueError):tensors([{**row,'profile_ids':ids}],{10:2},1,'f3_f4_recency')
+
 class Model(unittest.TestCase):
     def test_missing_model_module(self):
         self.assertIsNotNone(importlib.util.find_spec('vkgr.retrieval_profile'))
