@@ -65,6 +65,19 @@ class EnqueueTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'already exists'):
                 run({'root': str(root), 'action': 'dry', 'stage': 'export', 'seeds': [2024], 'vram_mib': 1024, 'wall_hours': 1})
 
+    def test_generation_tag_gives_new_run_ids_and_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fake_root(tmp)
+            (root / 'queue/rejected' / '01-g5-p-top100-pf-s42.json').write_text('{}')
+            got = run({'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, 'gen': 'v2'})
+            self.assertEqual(got['jobs'][0]['run_id'], 'g5-p-top100-v2-pf-s42')
+            e = run({'root': str(root), 'action': 'dry', 'stage': 'export', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, 'gen': 'v2'})['jobs'][0]
+            self.assertIn('g5-p-top100-v2-s42/out', e['argv'][e['argv'].index('--output') + 1])
+            with self.assertRaises(ValueError):
+                run({'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, 'gen': 'v2/../x'})
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                run({'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
+
     def test_identity_drift_and_bad_resources_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = fake_root(tmp)

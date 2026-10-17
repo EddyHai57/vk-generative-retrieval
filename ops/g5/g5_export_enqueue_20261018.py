@@ -30,11 +30,13 @@ def template(root, seed):
     return json.loads(matches[0].read_text())
 
 
-def run_id(stage, seed):
-    return f'g5-p-top100-{"pf-" if stage == "pf" else ""}s{seed}{"-verify" if stage == "verify" else ""}'
+def run_id(stage, seed, gen=''):
+    return f'g5-p-top100-{gen + "-" if gen else ""}{"pf-" if stage == "pf" else ""}s{seed}{"-verify" if stage == "verify" else ""}'
 
 
-def build(root, stage, seed, vram_mib, wall_hours, export_sha=None):
+def build(root, stage, seed, vram_mib, wall_hours, export_sha=None, gen=''):
+    if gen and (len(gen) > 8 or not gen.isalnum()):
+        raise ValueError('bad generation tag')
     if stage not in STAGES or seed not in FROZEN or type(vram_mib) is not int or vram_mib < 256 or not 0 < wall_hours <= 4:
         raise ValueError('bad stage/seed/resources')
     config_sha, manifest_sha = FROZEN[seed]
@@ -45,7 +47,7 @@ def build(root, stage, seed, vram_mib, wall_hours, export_sha=None):
     pm = get('--manifest'); source_run = f'p-seqm1-mean-s{seed}'
     if pm != str(root / 'runs' / source_run / 'out/manifest.json'):
         raise ValueError('unexpected source manifest path')
-    out_dir = root / 'runs' / run_id('export', seed) / 'out'
+    out_dir = root / 'runs' / run_id('export', seed, gen) / 'out'
     cmd = [argv[0], '-B', '-m', MODULE, STAGES[stage], '--inputs', get('--inputs'), '--inputs-sha', get('--inputs-sha'), '--config', get('--config'),
            '--config-sha', config_sha, '--manifest', pm, '--manifest-sha', manifest_sha, '--run-id', source_run]
     inputs = list(t['inputs'])
@@ -58,7 +60,7 @@ def build(root, stage, seed, vram_mib, wall_hours, export_sha=None):
         inputs.append(str(out_dir / 'export-manifest.json'))
     job = dict(t)
     job.update(argv=cmd, config=str(Path(DEPLOY) / 'configs/seqm1' / f'{source_run}.json'), cwd=DEPLOY, inputs=inputs,
-               run_id=run_id(stage, seed), vram_mib=vram_mib, wall_hours=float(wall_hours), disk_gib=1 if stage != 'export' else 1)
+               run_id=run_id(stage, seed, gen), vram_mib=vram_mib, wall_hours=float(wall_hours), disk_gib=1 if stage != 'export' else 1)
     return job
 
 
@@ -72,7 +74,7 @@ def main():
     req = json.loads(sys.stdin.read(65537))
     root = Path(req.get('root', ROOT)); jobs = []
     for seed in req['seeds']:
-        job = build(root, req['stage'], seed, req['vram_mib'], req['wall_hours'], (req.get('export_sha') or {}).get(str(seed)))
+        job = build(root, req['stage'], seed, req['vram_mib'], req['wall_hours'], (req.get('export_sha') or {}).get(str(seed)), req.get('gen', ''))
         if exists_anywhere(root, job['run_id']):
             raise ValueError('run id already exists: ' + job['run_id'])
         jobs.append(job)
