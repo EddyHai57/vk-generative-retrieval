@@ -54,6 +54,27 @@ def population(b,expected_hits,total=2520,in_catalog=1897,oov=623):
     require((b['n_total'],b['n_in_catalog'],b['n_oov'])==(total,in_catalog,oov),'frozen population mismatch')
     require(b['exact_item']['top50_hits']==expected_hits,'accepted item hits mismatch')
 
+def guard_verifier(root,rid):
+    require(rid in RUNS,'authorized run required')
+    root=Path(root);vroot=root/'runs'/(rid+'-verify')
+    require(not any((root/'queue/rejected').glob('*-'+rid+'.json')),'rejected source train')
+    # Legacy verifier reads these directly, outside its JSON read adapter.
+    for suffix in ('-verify','-v1-verify'):
+        v=root/'runs'/(rid+suffix)
+        require(not any((root/'queue/rejected').glob('*-'+v.name+'.json')),'rejected source verify')
+        if v.exists() or v.is_symlink():
+            require(not any(x.is_symlink() for x in (v,*v.parents)),'verifier directory symlink')
+            for p in (v/'logs/stdout.log',v/'out/verify.json',v/'out/manifest.json'):
+                if p.exists() or p.is_symlink():safe(p,[v])
+    log=safe(vroot/'logs/stdout.log',[vroot]);require(log.stat().st_size<=1024*1024,'stdout size')
+    records=[]
+    for line in log.read_text().splitlines():
+        try:records.append(json.loads(line))
+        except ValueError:pass
+    require(any(type(x) is dict and x.get('status')=='verified' for x in records),'original stdout verified required')
+    return {'status':'raw_stdout_verified','path':str(log),'sha256':sha(log)}
+
+
 def execute(req,preflight=False):
     require(set(req)=={'schema','frozen_root','scheduler_root','run_ids','manifest_pins','history','catalog','sid_manifest'},'request fields')
     require(req['schema']=='sid-a1-prefix-request-v1','request schema');validate_run_ids(req['run_ids'])
@@ -78,6 +99,7 @@ def execute(req,preflight=False):
         safe(ref['path'],allowed);diag.stat_ref(ref)
         states={}
         for rid in RUNS:
+            raw_proof=guard_verifier(root,rid);archive.READS[raw_proof['path']]=raw_proof['sha256']
             state=archive.inspect_run(rid);require(state['verified'] and state['manifest_sha256']==req['manifest_pins'][rid],'verified source manifest required')
             require(not state['queue']['rejected'],'rejected input run')
             states[rid]=state

@@ -46,4 +46,22 @@ class PrefixReadTests(unittest.TestCase):
             p=Path(tmp);(p/'analysis').mkdir();(p/'analysis/sid_diag_metrics.py').write_text('raise RuntimeError()')
             with self.assertRaises(ValueError):t.frozen(p)
 
+    def test_verifier_direct_log_symlink_cannot_bypass_guard(self):
+        t=self.tool();self.assertTrue(callable(getattr(t,'guard_verifier',None)))
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();log=root/'runs'/t.RUNS[0]/'unused'
+            vr=root/'runs'/(t.RUNS[0]+'-verify');(vr/'logs').mkdir(parents=True)
+            bad=root/'test';bad.mkdir();payload=bad/'secret.json';payload.write_text('{}')
+            (vr/'logs/stdout.log').symlink_to(payload)
+            with self.assertRaises(ValueError):t.guard_verifier(root,t.RUNS[0])
+    def test_auxiliary_verified_cannot_replace_original_stdout(self):
+        t=self.tool();self.assertTrue(callable(getattr(t,'guard_verifier',None)))
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();vr=root/'runs'/(t.RUNS[0]+'-verify');(vr/'logs').mkdir(parents=True);(vr/'out').mkdir()
+            (vr/'logs/stdout.log').write_text('{"status":"complete"}\n')
+            (vr/'out/verify.json').write_text('{"status":"verified"}')
+            with self.assertRaises(ValueError):t.guard_verifier(root,t.RUNS[0])
+            (vr/'logs/stdout.log').write_text('{"status":"verified"}\n')
+            proof=t.guard_verifier(root,t.RUNS[0]);self.assertEqual(proof['status'],'raw_stdout_verified')
+
 if __name__=='__main__':unittest.main()
