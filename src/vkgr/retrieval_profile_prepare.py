@@ -61,7 +61,7 @@ def execute(inputs,inputs_sha,audit_path,audit_sha,output=None,preflight=False):
         for split,key in [('train','rows'),('validation','queries')]:
             for row,p in zip(data[key],profiles[split]):pf.require(p['counts'][2:]==[sum(v[0]&1 for v in row['side']),len(row['side'])],'profile raw/side like history mismatch')
     bounds=pf.fit_bounds(profiles['train'])
-    out=Path(output);pf.require(out.is_absolute() and '..' not in out.parts,'new absolute output required');out.mkdir(parents=True,exist_ok=False)
+    out=Path(output);pf.require(out.is_absolute() and '..' not in out.parts and not any(p.is_symlink() for p in (out,*out.parents)),'new absolute nonsymlink output required');out.mkdir(parents=True,exist_ok=False)
     psha=write_new(out/'profiles.json',profiles);bsha=write_new(out/'quantiles.json',bounds)
     manifest={**base,'artifacts':{'profiles.json':psha,'quantiles.json':bsha},'fit_input_sha256':bounds['train_snapshots_sha256'],'fit_script_sha256':file_sha256(Path(__file__)),'profile_script_sha256':file_sha256(Path(pf.__file__)),'boundaries':bounds['boundaries'],'positive_samples':bounds['positive_samples'],'positive_interval_count':bounds['positive_interval_count'],'positive_occupied_bins':bounds['positive_occupied_bins']}
     msha=write_new(out/'manifest.json',manifest)
@@ -74,6 +74,10 @@ def load_profiles(path,pin,data,inputs_sha):
     pf.require(m['profile_script_sha256']==file_sha256(Path(pf.__file__)) and m['fit_script_sha256']==file_sha256(Path(__file__)),'profile producer code identity')
     return {**data,'rows':pf.attach(data['rows'],p['train'],bounds,'train'),'queries':pf.attach(data['queries'],p['validation'],bounds,'validation'),'profile_manifest_sha256':pin,'profile_fit_sha256':m['artifacts']['quantiles.json']}
 
-def main():
+def _main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--inputs',required=True);p.add_argument('--inputs-sha',required=True);p.add_argument('--audit',required=True);p.add_argument('--audit-sha',required=True);p.add_argument('--output');p.add_argument('--preflight',action='store_true');a=p.parse_args();print(json.dumps(execute(a.inputs,a.inputs_sha,a.audit,a.audit_sha,a.output,a.preflight),sort_keys=True,allow_nan=False))
+def main():
+    from .profile_io import input_guard
+    with input_guard():return _main()
+
 if __name__=='__main__':main()

@@ -192,7 +192,7 @@ def evaluate_model(model, data, queries, config, check=None):
 
 
 def ablation_g0(model, data, queries, config, best_epoch, best_recall, check=None):
-    """Best-checkpoint ablation (design review F4): R@50 with the gate forced to 0, i.e. the anchor tower with the trained tables."""
+    """Diagnostic only: g=0 retains m+p with trained profile tables; it is not the old M1 control."""
     import torch
     if not model.anchored:
         return None
@@ -380,7 +380,7 @@ def recomputed_best_recall(value, best):
     return value['evaluations'][best['epoch'] - 1]['result']['metrics']['all']['recall@50']
 
 
-def main(argv=None):
+def _main(argv=None):
     import sys
     parser = argparse.ArgumentParser(description='SEQ-M1 P runner (new version; FEAT-02 and P-HP-01 runners untouched)')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -394,6 +394,9 @@ def main(argv=None):
             value = run_session(args.output, synthetic_data(), strict_json(Path(args.config).read_text()))
             print(json.dumps({'status': value['status'], 'manifest_sha256': value['manifest_sha256']})); return 0
         config = read_pinned(args.config, args.config_sha); validate_config(config)
+        expected_id='p-profile-'+config['arm']+'-s'+str(config['seed'])
+        claimed_out=Path(args.output) if args.command=='train' else Path(args.manifest).parent
+        if claimed_out.name!='out' or claimed_out.parent.name!=expected_id:raise ValueError('formal profile run namespace mismatch')
         spec = fr.validate_inputs(read_pinned(args.inputs, args.inputs_sha), FEATURE)
         import torch
         if not torch.cuda.is_available():
@@ -414,6 +417,15 @@ def main(argv=None):
         print(json.dumps({**proof,'run_id':os.environ.get('VKGR_RUN_ID',train_id+'-verify'),'train_run_id':train_id,'manifest_sha256':args.manifest_sha})); return 0
     except (ValueError, KeyError, TypeError, OSError, RuntimeError) as exc:
         print(f'ERROR P-SEQ-M1 gate failed: {type(exc).__name__}: {exc}', file=sys.stderr); return 2
+
+
+def main(argv=None):
+    import sys
+    from .profile_io import input_guard
+    args=list(sys.argv[1:] if argv is None else argv);owner=None
+    if '--output' in args:owner=Path(args[args.index('--output')+1])
+    elif '--manifest' in args:owner=Path(args[args.index('--manifest')+1]).parent
+    with input_guard(owner):return _main(argv)
 
 
 if __name__ == '__main__':
