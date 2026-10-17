@@ -35,6 +35,12 @@ def train_records(history):
     require(all(re.fullmatch('[a-f0-9]{64}',r['sha256']) and type(r['size_bytes']) is int and r['size_bytes']>=0 for r in rows),'train pins')
     return rows
 
+def finalize_audit(result,audit):
+    result={**result,'audit':audit}
+    if audit['rows']==0 or audit['invalid']:
+        result.update(status='STOP',reason='invalid like domain or empty train; no retry')
+    return result
+
 def execute(inputs,inputs_sha,preflight=False):
     import pyarrow.parquet as pq
     spec=read(inputs,inputs_sha);history=read(spec['history_manifest'],spec['history_sha256']);side=read(spec['side_manifest'],spec['side_sha256'])
@@ -52,9 +58,9 @@ def execute(inputs,inputs_sha,preflight=False):
         def values():
             for p in files:
                 for batch in pq.ParquetFile(p).iter_batches(batch_size=65536,columns=['like']):yield from batch.column(0).to_pylist()
-        result['audit']=summarize(values());require(result['audit']['rows']>0 and result['audit']['invalid']==0,'STOP: invalid like domain')
+        result=finalize_audit(result,summarize(values()))
     return result
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--inputs',required=True);p.add_argument('--inputs-sha',required=True);p.add_argument('--preflight',action='store_true');a=p.parse_args();print(json.dumps(execute(a.inputs,a.inputs_sha,a.preflight),sort_keys=True,allow_nan=False))
-if __name__=='__main__':main()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--inputs',required=True);p.add_argument('--inputs-sha',required=True);p.add_argument('--preflight',action='store_true');a=p.parse_args();result=execute(a.inputs,a.inputs_sha,a.preflight);print(json.dumps(result,sort_keys=True,allow_nan=False));return 2 if result['status']=='STOP' else 0
+if __name__=='__main__':raise SystemExit(main())

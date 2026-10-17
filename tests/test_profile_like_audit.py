@@ -17,4 +17,12 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(len(train_records({'binding':{'raw_records':rec}})),25)
         for broken in [rec[:-1],list(reversed(rec)),rec+[{'role':'subsamples/ur0.01_ir0.01/test/week_26.parquet','sha256':'a'*64,'size_bytes':1}]]:
             with self.assertRaises(ValueError):train_records({'binding':{'raw_records':broken}})
+    def test_invalid_domain_retains_machine_readable_stop_receipt(self):
+        from vkgr import profile_like_audit as a
+        self.assertTrue(callable(getattr(a,'finalize_audit',None)))
+        result=a.finalize_audit({'input_sha256':{'train':'a'*64}},a.summarize([None,1,0]))
+        self.assertEqual(result['status'],'STOP')
+        self.assertEqual((result['audit']['rows'],result['audit']['missing'],result['audit']['invalid']),(3,1,2))
+        self.assertEqual(result['input_sha256']['train'],'a'*64)
+
 if __name__=='__main__':unittest.main()
