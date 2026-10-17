@@ -32,7 +32,8 @@ EXPORT_MANIFEST_NAME = 'export-manifest.json'
 EXPORT_FIELDS = {'schema', 'kind', 'status', 'run_id', 'seed', 'arm', 'depth', 'queries', 'best_epoch', 'train_manifest_sha256',
                  'train_binding_sha256', 'best_checkpoint_sha256', 'original_predictions_ref', 'original_predictions_sha256',
                  'top100_sha256', 'gate', 'candidate_stats', 'script_sha256', 'user_vectors_exported', 'item_embeddings_exported',
-                 'checkpoints_opened', 'holdout_split_opened'}
+                 'checkpoints_opened', 'holdout_split_opened', 'train_source_commit', 'export_source_commit', 'pinned_delta'}
+SOURCE_STRICT = ('python', 'dependencies', 'lock_sha')
 
 
 def candidates(model, data, queries, config, check=None, depth=DEPTH):
@@ -69,6 +70,34 @@ def candidate_stats(top100, catalog, depth):
     return {'depth': depth, 'min_unique': depth, 'all_in_catalog': True}
 
 
+def check_binding(stored, current, delta):
+    """Pinned-delta source identity (decision_log 2026-10-18, fail-closed).
+
+    Every binding field except ``source`` must be strictly equal (inputs, config, init, side, data hashes, execution...). For ``source``:
+    python, dependencies and lock_sha are strictly equal, and the actual file ledger must equal the training ledger plus exactly the
+    pinned new paths with exactly their pinned sha256. Any changed pre-existing file, any unpinned new path, any pinned path that
+    already existed in the training ledger fails. Commits differ by construction and are only reported, never a pass condition.
+    """
+    if type(delta) is not dict or not delta or any(type(k) is not str or type(v) is not str or len(v) != 64 for k, v in delta.items()):
+        raise ValueError('pinned delta required')
+    if set(stored) != set(current):
+        raise ValueError('binding fields differ')
+    for key in stored:
+        if key != 'source' and stored[key] != current[key]:
+            raise ValueError(f'run input/init/side binding mismatch: {key}')
+    old, new = stored['source'], current['source']
+    if set(old) != set(new):
+        raise ValueError('source identity fields differ')
+    for key in SOURCE_STRICT:
+        if old[key] != new[key]:
+            raise ValueError(f'source identity mismatch: {key}')
+    if set(old['files']) & set(delta):
+        raise ValueError('pinned path already present in the training source ledger')
+    if new['files'] != {**old['files'], **delta}:
+        raise ValueError('source ledger differs from training ledger plus pinned delta')
+    return {'train_source_commit': old['git_commit'], 'export_source_commit': new['git_commit']}
+
+
 def _paths(manifest_path, output):
     run = Path(manifest_path).parent.resolve(); out = Path(output).resolve()
     if out == run or run in out.parents or out in run.parents:
@@ -76,7 +105,7 @@ def _paths(manifest_path, output):
     return run, out
 
 
-def _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding, infer=True):
+def _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding, infer=True, delta=None):
     """Shared by export and verify: pinned manifest -> best checkpoint (weights_only) -> top-100 plus the archived top-50."""
     import torch
     value = read_pinned(manifest_path, manifest_sha); run = Path(manifest_path).parent
@@ -91,8 +120,7 @@ def _inference(manifest_path, manifest_sha, data, config, device, check, inputs_
     b1.execution_context(device)
     rows, queries = fr._view(data, config['history_len'])
     model = sm._model(data, config, device)
-    if value['binding'] != sm.binding_for4(data, config, rows, queries, model, device, inputs_binding):
-        raise ValueError('run input/source/init/side binding mismatch')
+    provenance = check_binding(value['binding'], sm.binding_for4(data, config, rows, queries, model, device, inputs_binding), delta)
     best = value['best']
     if type(best) is not dict or best.get('path') != 'best.pt' or best.get('epoch') != value['selection']['best_epoch']:
         raise ValueError('best checkpoint identity mismatch')
@@ -109,21 +137,22 @@ def _inference(manifest_path, manifest_sha, data, config, device, check, inputs_
         raise ValueError('predictions path escape')
     original = read_pinned(run / evaluation['predictions_ref'], evaluation['predictions_sha256'])
     top100 = candidates(model, data, queries, config, check) if infer else None
-    return value, best, evaluation, original, top100
+    return value, best, evaluation, original, top100, provenance
 
 
-def preflight(manifest_path, manifest_sha, data, config, device='cpu', check=None, inputs_binding=None):
+def preflight(manifest_path, manifest_sha, data, config, device='cpu', check=None, inputs_binding=None, delta=None):
     """Real-path read-only preflight: every identity check of export/verify, but no forward pass and nothing written."""
-    value, best, evaluation, original, _ = _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding, infer=False)
+    value, best, evaluation, original, _, provenance = _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding, infer=False, delta=delta)
     depths = {len(row) for row in original}
     return {'status': 'preflight_ok', 'manifest_sha256': manifest_sha, 'best_epoch': best['epoch'], 'best_checkpoint_sha256': best['sha256'],
             'queries': len(original), 'original_depths': sorted(depths), 'catalog': len(data['catalog']),
-            'original_predictions_sha256': evaluation['predictions_sha256'], 'forward_pass_run': False, 'written': False}
+            'original_predictions_sha256': evaluation['predictions_sha256'], 'forward_pass_run': False, 'written': False,
+            'source_identity': 'pinned_delta_ok', **provenance, 'pinned_delta': dict(sorted(delta.items()))}
 
 
-def export_run(manifest_path, manifest_sha, data, config, output, device='cpu', check=None, inputs_binding=None, run_id=None):
+def export_run(manifest_path, manifest_sha, data, config, output, device='cpu', check=None, inputs_binding=None, run_id=None, delta=None):
     _, out = _paths(manifest_path, output)
-    value, best, evaluation, original, top100 = _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding)
+    value, best, evaluation, original, top100, provenance = _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding, delta=delta)
     depth = min(DEPTH, len(data['catalog']))
     gate = first50_gate(top100, original)
     stats = candidate_stats(top100, data['catalog'], depth)
@@ -135,19 +164,20 @@ def export_run(manifest_path, manifest_sha, data, config, output, device='cpu', 
               'best_checkpoint_sha256': best['sha256'], 'original_predictions_ref': evaluation['predictions_ref'],
               'original_predictions_sha256': evaluation['predictions_sha256'], 'top100_sha256': top_sha, 'gate': gate,
               'candidate_stats': stats, 'script_sha256': file_sha256(Path(__file__)), 'user_vectors_exported': False,
-              'item_embeddings_exported': False, 'checkpoints_opened': ['best.pt'], 'holdout_split_opened': False}
+              'item_embeddings_exported': False, 'checkpoints_opened': ['best.pt'], 'holdout_split_opened': False, **provenance,
+              'pinned_delta': dict(sorted(delta.items()))}
     sha = b1._write_json_atomic(out / EXPORT_MANIFEST_NAME, record)
     return {**record, 'export_manifest_sha256': sha}
 
 
-def verify_export(export_manifest_path, export_sha, manifest_path, manifest_sha, data, config, device='cpu', check=None, inputs_binding=None):
+def verify_export(export_manifest_path, export_sha, manifest_path, manifest_sha, data, config, device='cpu', check=None, inputs_binding=None, delta=None):
     """Independent recomputation of the whole export from the best checkpoint; compares every stored byte-level identity."""
     record = read_pinned(export_manifest_path, export_sha); out = Path(export_manifest_path).parent
     if set(record) != EXPORT_FIELDS or record['schema'] != SCHEMA or record['kind'] != KIND or record['status'] != 'complete':
         raise ValueError('complete export manifest required')
     if sorted(p.name for p in out.iterdir()) != sorted([PREDICTIONS_NAME, EXPORT_MANIFEST_NAME]):
         raise ValueError('unexpected files in export directory')
-    value, best, evaluation, original, top100 = _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding)
+    value, best, evaluation, original, top100, provenance = _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding, delta=delta)
     stored = read_pinned(out / PREDICTIONS_NAME, record['top100_sha256'])
     if stored != top100:
         raise ValueError('stored top-100 differs from independent recomputation')
@@ -157,13 +187,26 @@ def verify_export(export_manifest_path, export_sha, manifest_path, manifest_sha,
                 'original_predictions_sha256': evaluation['predictions_sha256'], 'seed': config['seed'], 'arm': config['arm'],
                 'depth': depth, 'queries': len(top100), 'gate': first50_gate(top100, original),
                 'candidate_stats': candidate_stats(top100, data['catalog'], depth), 'user_vectors_exported': False,
-                'item_embeddings_exported': False, 'checkpoints_opened': ['best.pt'], 'holdout_split_opened': False}
+                'item_embeddings_exported': False, 'checkpoints_opened': ['best.pt'], 'holdout_split_opened': False, **provenance,
+                'pinned_delta': dict(sorted(delta.items()))}
     for key, wanted in expected.items():
         if record[key] != wanted:
             raise ValueError(f'export manifest field mismatch: {key}')
     return {'status': 'verified', 'run_id': record['run_id'], 'manifest_sha256': manifest_sha, 'export_manifest_sha256': export_sha,
             'top100_sha256': record['top100_sha256'], 'best_epoch': best['epoch'], 'queries': len(top100), 'depth': depth,
             'first50_equal': True}
+
+
+def parse_delta(items):
+    out = {}
+    for item in items or []:
+        path, _, digest = item.partition('=')
+        if not path or path in out or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest) or path.startswith('/') or '..' in Path(path).parts:
+            raise ValueError('invalid --pin-new-path')
+        out[path] = digest
+    if not out:
+        raise ValueError('pinned delta required')
+    return out
 
 
 def peak_mib():
@@ -181,7 +224,7 @@ def main(argv=None):
         p = sub.add_parser(name); p.add_argument('--inputs', required=True); p.add_argument('--inputs-sha', required=True)
         p.add_argument('--config', required=True); p.add_argument('--config-sha', required=True)
         p.add_argument('--manifest', required=True); p.add_argument('--manifest-sha', required=True)
-        p.add_argument('--run-id', required=True)
+        p.add_argument('--run-id', required=True); p.add_argument('--pin-new-path', action='append', required=True, metavar='PATH=SHA256')
         if name == 'preflight':
             pass
         elif name == 'export':
@@ -195,6 +238,7 @@ def main(argv=None):
         import torch
         if not torch.cuda.is_available():
             raise ValueError('actual CUDA environment required')
+        delta = parse_delta(args.pin_new_path)
         if args.run_id != Path(args.manifest).parent.parent.name:
             raise ValueError('run id does not match the run directory')
         if args.command == 'export':
@@ -207,13 +251,13 @@ def main(argv=None):
         data, extra_binding = fr.apply_feat02(data, spec, config['history_len'])
         inputs_binding = {**binding, **extra_binding, 'inputs_sha256': args.inputs_sha}
         if args.command == 'preflight':
-            print(json.dumps({**preflight(args.manifest, args.manifest_sha, data, config, 'cuda', check, inputs_binding), 'run_id': args.run_id, 'cuda_peak_mib': peak_mib()})); return 0
+            print(json.dumps({**preflight(args.manifest, args.manifest_sha, data, config, 'cuda', check, inputs_binding, delta), 'run_id': args.run_id, 'cuda_peak_mib': peak_mib()})); return 0
         if args.command == 'export':
-            value = export_run(args.manifest, args.manifest_sha, data, config, args.output, 'cuda', check, inputs_binding, args.run_id)
+            value = export_run(args.manifest, args.manifest_sha, data, config, args.output, 'cuda', check, inputs_binding, args.run_id, delta)
             print(json.dumps({'status': value['status'], 'run_id': value['run_id'], 'manifest_sha256': args.manifest_sha,
                               'export_manifest_sha256': value['export_manifest_sha256'], 'top100_sha256': value['top100_sha256'],
                               'first50_equal': value['gate']['first50_equal'], 'cuda_peak_mib': peak_mib()})); return 0
-        result = verify_export(args.export_manifest, args.export_manifest_sha, args.manifest, args.manifest_sha, data, config, 'cuda', check, inputs_binding)
+        result = verify_export(args.export_manifest, args.export_manifest_sha, args.manifest, args.manifest_sha, data, config, 'cuda', check, inputs_binding, delta)
         if result['run_id'] != args.run_id:
             raise ValueError('run id mismatch')
         print(json.dumps({**result, 'cuda_peak_mib': peak_mib()})); return 0
