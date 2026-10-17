@@ -13,6 +13,7 @@ quantiles (rank = ceil(p * resamples)). The executor reports mechanical conditio
 """
 import math
 import random
+import sys
 from fractions import Fraction
 
 B = 200
@@ -193,6 +194,10 @@ def new_lost(vec, ref, indices):
     return {'new': new, 'lost': lost, 'net': new - lost}
 
 
+def route_label(key):
+    return ROUTE_LETTER[key[0]] + ('' if key[1] is None else str(key[1]))
+
+
 def attribution(row, results, queries, indices):
     """Hits of the fused row split by which routes' entered sets contain the target."""
     cells = {}
@@ -200,7 +205,7 @@ def attribution(row, results, queries, indices):
         target = queries[i]['target']
         if rank_of(target, results[i]['final']) is None:
             continue
-        label = '∩'.join(ROUTE_LETTER[row[k][0]] for k, entered in enumerate(results[i]['entered']) if target in entered)
+        label = '∩'.join(route_label(row[k]) for k, entered in enumerate(results[i]['entered']) if target in entered)
         cells[label] = cells.get(label, 0) + 1
     return cells
 
@@ -222,9 +227,11 @@ def overlap_stats(row, results):
             q = results[0]['quota']
             over_q, over_b = [], []
             for r in results:
+                if not r['entered'][b]:
+                    raise ValueError('empty second route inside overlap statistics')
                 inter = len(r['entered'][a] & r['entered'][b])
-                over_q.append(inter / q); over_b.append(inter / len(r['entered'][b]) if r['entered'][b] else 0.0)
-            out[f'{ROUTE_LETTER[row[a][0]]}|{ROUTE_LETTER[row[b][0]]}'] = {'over_quota': summarize(over_q), 'over_second_route_size': summarize(over_b)}
+                over_q.append(inter / q); over_b.append(inter / len(r['entered'][b]))
+            out[f'{route_label(row[a])}|{route_label(row[b])}'] = {'over_quota': summarize(over_q), 'over_second_route_size': summarize(over_b)}
     return out
 
 
@@ -246,16 +253,16 @@ def run(routes, queries, catalog_size, seeds=(42, 2024, 2025)):
         if key[0] != 'POP' and len(value) != n_queries:
             raise ValueError(f'route {key} query count mismatch')
     g_short = {s: ['short' if len(routes[('G', s)][i]) < 100 else 'full' for i in range(n_queries)] for s in seeds if ('G', s) in routes}
-    table, vectors, results_by = {}, {}, {}
+    not_run, vectors, results_by = {}, {}, {}
     for seed in seeds:
         rows = row_definitions(seed)
         if any(key not in routes for row in rows.values() for key in row):
-            table[f'seed{seed}'] = 'NOT_RUN(missing route inputs)'
+            not_run[f'seed{seed}'] = 'NOT_RUN(missing route inputs: ' + ', '.join(sorted({f"{k[0]}{'' if k[1] is None else k[1]}" for row in rows.values() for k in row if k not in routes})) + ')'
             continue
         for name, row in rows.items():
             results = evaluate_row(row, routes, queries)
             results_by[(seed, name)] = (row, results); vectors[(seed, name)] = hit_vector(results, queries)
-    out = {'queries': n_queries, 'catalog_size': catalog_size, 'rows': {}, 'paired': {}, 'localization': None, 'notes': []}
+    out = {'queries': n_queries, 'catalog_size': catalog_size, 'rows': {}}
     for (seed, name), (row, results) in results_by.items():
         gs = g_short.get(seed)
         c1, c4 = vectors.get((seed, 'C1')), vectors.get((seed, 'C4'))
@@ -263,9 +270,9 @@ def run(routes, queries, catalog_size, seeds=(42, 2024, 2025)):
         for i, query in enumerate(queries):
             for s in slice_names(query, gs[i] if gs else None):
                 by_slice.setdefault(s, []).append(i)
-        entry = {'routes': [f'{ROUTE_LETTER[k[0]]}{"" if k[1] is None else k[1]}' for k in row], 'quota': results[0]['quota'],
-                 'pool_size': summarize([r['pool_size'] for r in results]), 'filled': {ROUTE_LETTER[k[0]] + ('' if k[1] is None else str(k[1])): summarize([r['filled'][j] for r in results]) for j, k in enumerate(row)},
-                 'g_short_queries': sum(1 for r in results for j, k in enumerate(row) if k[0] == 'G' and r['filled'][j] < r['quota']) if any(k[0] == 'G' for k in row) else None,
+        entry = {'routes': [route_label(k) for k in row], 'quota': results[0]['quota'],
+                 'pool_size': summarize([r['pool_size'] for r in results]), 'filled': {route_label(k): summarize([r['filled'][j] for r in results]) for j, k in enumerate(row)},
+                 'g_short_queries': sum(1 for label in gs if label == 'short') if any(k[0] == 'G' for k in row) and gs else None,
                  'coverage': coverage(results, catalog_size), 'slices': {}}
         if len(row) > 1:
             entry['overlap'] = overlap_stats(row, results)
@@ -278,23 +285,40 @@ def run(routes, queries, catalog_size, seeds=(42, 2024, 2025)):
                 cell['g_independent_hits'] = g_independent_hits(row, results, queries, idx)
             entry['slices'][s] = cell
         out['rows'][f'seed{seed}:{name}'] = entry
+    out['bootstrap'] = {'resamples': BOOT_N, 'seed': BOOT_SEED, 'index_draw': 'sequential rng.randrange(n) per index; one shared index set for all comparisons', 'python': sys.version.split()[0]}
+    out['not_run'] = not_run
     main_vectors = {name: vectors[(42, name)] for name in ('C1', 'C4', 'C5', 'C6', 'C7') if (42, name) in vectors}
-    pairs = (('H1', 'C5', 'C1'), ('H2a', 'C5', 'C4'), ('H2b', 'C5', 'C7'), ('D1', 'C6', 'C4'))
     if all(x in main_vectors for x in ('C1', 'C4', 'C5', 'C6', 'C7')):
-        diffs = {label: [x - y for x, y in zip(main_vectors[a], main_vectors[b])] for label, a, b in pairs}
-        intervals = bootstrap_intervals(diffs)
-        for label, a, b in pairs:
-            bb = sum(1 for x, y in zip(main_vectors[a], main_vectors[b]) if x and not y); cc = sum(1 for x, y in zip(main_vectors[a], main_vectors[b]) if y and not x)
-            p = mcnemar_exact(bb, cc)
-            out['paired'][label] = {'row': a, 'reference': b, 'b': bb, 'c': cc, 'delta_hits': bb - cc, 'mcnemar_p': p, 'bootstrap95_delta_hits': intervals[label],
-                                    'mechanical_condition': ('descriptive_only' if label == 'D1' else condition_met(bb, cc))}
-        h = out['paired']
-        out['mechanical_conditions'] = {'H1_condition_met': h['H1']['mechanical_condition'],
-                                        'H2_condition_met': bool(h['H2a']['mechanical_condition'] and h['H2b']['mechanical_condition']),
-                                        'alpha_per_family': float(ALPHA), 'min_hits': MIN_HITS,
-                                        'note': 'mechanical flags only; meaning and anchor decisions belong to the adjudicator'}
+        out['paired'], out['mechanical_conditions'] = paired_table(main_vectors)
         out['localization'] = {name: localization(main_vectors, name, queries, g_short[42]) for name in ('C5', 'C6')}
+    else:
+        missing = [x for x in ('C1', 'C4', 'C5', 'C6', 'C7') if x not in main_vectors]
+        out['paired'] = out['mechanical_conditions'] = out['localization'] = f'NOT_RUN(main-table rows missing: {missing})'
+    for name, entry in out['rows'].items():
+        oov_hits = entry['slices'].get('oov', {}).get('hits')
+        entry['oov_hits'] = oov_hits
+        entry['oov_nonzero_hits_anomaly'] = bool(oov_hits)
     return out
+
+
+PAIRS = (('H1', 'C5', 'C1'), ('H2a', 'C5', 'C4'), ('H2b', 'C5', 'C7'), ('D1', 'C6', 'C4'))
+
+
+def paired_table(main_vectors, n_resamples=BOOT_N, seed=BOOT_SEED):
+    """b/c/delta/exact McNemar/bootstrap interval for H1, H2a, H2b and descriptive D1 plus the mechanical condition flags."""
+    diffs = {label: [x - y for x, y in zip(main_vectors[a], main_vectors[b])] for label, a, b in PAIRS}
+    intervals = bootstrap_intervals(diffs, n_resamples, seed)
+    paired = {}
+    for label, a, b in PAIRS:
+        bb = sum(1 for x, y in zip(main_vectors[a], main_vectors[b]) if x and not y)
+        cc = sum(1 for x, y in zip(main_vectors[a], main_vectors[b]) if y and not x)
+        paired[label] = {'row': a, 'reference': b, 'b': bb, 'c': cc, 'delta_hits': bb - cc, 'mcnemar_p': mcnemar_exact(bb, cc),
+                         'bootstrap95_delta_hits': intervals[label], 'mechanical_condition': ('descriptive_only' if label == 'D1' else condition_met(bb, cc))}
+    conditions = {'H1_condition_met': paired['H1']['mechanical_condition'],
+                  'H2_condition_met': bool(paired['H2a']['mechanical_condition'] and paired['H2b']['mechanical_condition']),
+                  'alpha_per_family': float(ALPHA), 'min_hits': MIN_HITS,
+                  'note': 'mechanical flags only; meaning and anchor decisions belong to the adjudicator'}
+    return paired, conditions
 
 
 def localization(vectors, name, queries, g_short_labels):

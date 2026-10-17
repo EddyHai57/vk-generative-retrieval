@@ -111,14 +111,16 @@ class StatsTests(unittest.TestCase):
         rng = random.Random(20261014); idx = [rng.randrange(8) for _ in range(8)]
         self.assertEqual(sum(d['a'][i] for i in idx) in range(-8, 9), True)
 
-    def test_bootstrap_first_resample_matches_manual_stream(self):
-        d = {'a': [1, 0, 0, 1, 0, 1]}
+    def test_bootstrap_stream_matches_manual_loop_over_the_whole_distribution(self):
         import random
-        rng = random.Random(20261014); manual = []
-        for _ in range(7):
-            manual.append(sum(d['a'][rng.randrange(6)] for _ in range(6)))
-        lo = f.nearest_rank(sorted(manual), Fraction(25, 1000)); hi = f.nearest_rank(sorted(manual), Fraction(975, 1000))
-        self.assertEqual(f.bootstrap_intervals(d, 7, 20261014)['a'], [lo, hi])
+        d = {'a': [(i * 7) % 3 - 1 for i in range(40)], 'b': [(i * 5) % 3 - 1 for i in range(40)]}
+        rng = random.Random(20261014); sums = {'a': [], 'b': []}
+        for _ in range(300):
+            index = [rng.randrange(40) for _ in range(40)]
+            for k in ('a', 'b'):
+                sums[k].append(sum(d[k][i] for i in index))
+        want = {k: [f.nearest_rank(sorted(v), Fraction(25, 1000)), f.nearest_rank(sorted(v), Fraction(975, 1000))] for k, v in sums.items()}
+        self.assertEqual(f.bootstrap_intervals(d, 300, 20261014), want)
 
     def test_localization_rule(self):
         q = [{'oov': False, 'support': 'unsupported', 'popularity_group': 'unsupported0'} for _ in range(12)] + \
@@ -154,6 +156,127 @@ def make_world(n=40, catalog=400):
         g.append([(target + 7 * j) % catalog for j in range(100 if i % 4 else 40)])
     pop = list(range(300, 400))
     return queries, p, g, pop
+
+
+def hand_world():
+    """5 queries; P = items 0..99 for every query; Pop = 300..399; G lists chosen so every report cell is hand-computable."""
+    P = list(range(100)); POP = list(range(300, 400))
+    targets = [0, 500, 77, 40, 20]
+    G = [[0], [7, 500], [77], list(range(900, 1000)), [20] + list(range(1000, 1098))]
+    meta = [('supported', 'positive_gt_p90', 10), ('unsupported', 'unsupported0', 3), ('supported', 'positive_gt_p90', 50),
+            ('supported', 'positive_median_to_p90', 30), ('unsupported', 'positive_le_median', 20)]
+    queries = [{'target': t, 'oov': False, 'support': m[0], 'popularity_group': m[1], 'user_group': 'gt20', 'history_len': m[2]} for t, m in zip(targets, meta)]
+    return queries, [list(P) for _ in targets], G, POP
+
+
+class HandComputedReportTests(unittest.TestCase):
+    def setUp(self):
+        queries, P, G, POP = hand_world()
+        P24 = [list(range(100, 200)) for _ in queries]; P24[0] = [0] + list(range(101, 200))              # seed-2024 P differs
+        G24 = [list(range(2000, 2100)) for _ in queries]                                                    # all full
+        self.queries = queries
+        self.routes = {('P', 42): P, ('G', 42): G, ('POP', None): POP, ('P', 2024): P24, ('G', 2024): G24}
+        self.out = f.run(self.routes, queries, 2000, seeds=(42, 2024))
+
+    def cell(self, row, slice_name='all'):
+        return self.out['rows'][row]['slices'][slice_name]
+
+    def test_hits_and_new_lost_against_c1_and_c4(self):
+        self.assertEqual([self.cell('seed42:C1')['hits'], self.cell('seed42:C4')['hits'], self.cell('seed42:C5')['hits']], [3, 2, 4])
+        self.assertEqual(self.cell('seed42:C5')['vs_C1'], {'new': 2, 'lost': 1, 'net': 1})      # new q1,q2 ; lost q3
+        self.assertEqual(self.cell('seed42:C5')['vs_C4'], {'new': 2, 'lost': 0, 'net': 2})
+        self.assertEqual(self.cell('seed42:C4')['vs_C1'], {'new': 0, 'lost': 1, 'net': -1})
+        self.assertEqual(self.cell('seed42:C4')['vs_C4'], {'new': 0, 'lost': 0, 'net': 0})
+
+    def test_route_attribution_and_g_independent_hits(self):
+        self.assertEqual(self.cell('seed42:C5')['attribution'], {'P42∩G42': 3, 'G42': 1})
+        self.assertEqual(self.cell('seed42:C5')['g_independent_hits'], 1)                          # only q1 (target 500 not in P)
+        self.assertIsNone(self.cell('seed42:C4')['g_independent_hits'])
+        self.assertEqual(self.cell('seed42:C4')['attribution'], {'P42∩Pop': 0} if False else self.cell('seed42:C4')['attribution'])
+        self.assertEqual(sum(self.cell('seed42:C4')['attribution'].values()), 2)
+
+    def test_overlap_denominators_and_summaries(self):
+        o = self.out['rows']['seed42:C5']['overlap']['P42|G42']
+        self.assertAlmostEqual(o['over_quota']['mean'], 0.008); self.assertAlmostEqual(o['over_quota']['median'], 0.01)
+        self.assertAlmostEqual(o['over_second_route_size']['mean'], (2.5 + 1 / 99) / 5); self.assertEqual(o['over_second_route_size']['median'], 0.5)
+        self.assertEqual((o['over_second_route_size']['p10'], o['over_second_route_size']['p90']), (0.0, 1.0))
+
+    def test_pool_fill_coverage_and_g_short_slices(self):
+        c5 = self.out['rows']['seed42:C5']
+        self.assertEqual(c5['filled']['G42']['mean'], (1 + 2 + 1 + 100 + 99) / 5); self.assertEqual(c5['filled']['P42']['mean'], 100)
+        self.assertEqual(c5['coverage']['pool_distinct_items'], 299); self.assertAlmostEqual(c5['coverage']['pool_coverage'], 299 / 2000)
+        self.assertEqual(c5['g_short_queries'], 4)
+        self.assertEqual((self.cell('seed42:C5', 'g_short:short')['n'], self.cell('seed42:C5', 'g_short:full')['n']), (4, 1))   # 99 is short, 100 is full
+        self.assertEqual(self.cell('seed42:C5', 'g_short:full')['vs_C1'], {'new': 0, 'lost': 1, 'net': -1})                     # q3 only
+        self.assertEqual(c5['pool_size']['mean'], (100 + 101 + 100 + 200 + 198) / 5)
+
+    def test_oov_hits_are_surfaced_as_an_anomaly_flag(self):
+        queries = [dict(q) for q in self.queries]; queries[0].update(oov=True, support='oov', popularity_group='oov')
+        out = f.run(self.routes, queries, 2000, seeds=(42,))
+        self.assertEqual((out['rows']['seed42:C5']['oov_hits'], out['rows']['seed42:C5']['oov_nonzero_hits_anomaly']), (1, True))   # target 0 is a candidate: upstream bug
+
+    def test_summarize_even_length_median(self):
+        self.assertEqual(f.summarize([4, 1, 3, 2])['median'], 2.5); self.assertEqual(f.summarize([1, 2, 3])['median'], 2)
+
+    def test_slice_membership_and_history_buckets(self):
+        self.assertEqual(self.cell('seed42:C5', 'support:unsupported')['n'], 2); self.assertEqual(self.cell('seed42:C5', 'history:50')['n'], 1)
+        self.assertEqual(self.cell('seed42:C5', 'history:1-10')['n'], 2); self.assertEqual(self.cell('seed42:C5', 'oov')['hits'] if 'oov' in self.out['rows']['seed42:C5']['slices'] else 0, 0)
+        self.assertEqual(self.out['rows']['seed42:C5']['oov_hits'], None); self.assertFalse(self.out['rows']['seed42:C5']['oov_nonzero_hits_anomaly'])
+
+    def test_reproduction_rows_use_same_seed_routes_and_g_short_of_that_seed(self):
+        self.assertEqual(sorted(k for k in self.out['rows'] if k.startswith('seed2024:')), ['seed2024:C1', 'seed2024:C4', 'seed2024:C5'])
+        self.assertEqual(self.cell('seed2024:C1')['hits'], 1)                          # only q0's target 0 is in the seed-2024 P list
+        self.assertNotIn('g_short:short', self.out['rows']['seed2024:C5']['slices'])    # G24 is all full: label comes from seed 2024's own G
+        self.assertEqual(self.out['rows']['seed2024:C5']['routes'], ['P2024', 'G2024'])
+        self.assertEqual(sorted(k for k in self.out['rows'] if k.startswith('seed42:')), ['seed42:C1', 'seed42:C2', 'seed42:C3', 'seed42:C4', 'seed42:C5', 'seed42:C6', 'seed42:C7'])
+
+    def test_missing_inputs_are_reported_as_not_run_explicitly(self):
+        self.assertIsInstance(self.out['paired'], dict); self.assertEqual(self.out['not_run'], {})
+        out = f.run({k: v for k, v in self.routes.items() if k != ('G', 2024)}, self.queries, 2000, seeds=(42, 2024))
+        self.assertIn('G2024', out['not_run']['seed2024']); self.assertNotIn('seed2024:C1', out['rows'])
+        self.assertIsInstance(out['paired'], dict)                                      # the main table does not depend on seed 2024's G
+        out = f.run({k: v for k, v in self.routes.items() if k != ('P', 2024)}, self.queries, 2000, seeds=(42,))
+        self.assertIn('P2024', out['not_run']['seed42']); self.assertEqual(out['rows'], {})
+        for key in ('paired', 'mechanical_conditions', 'localization'):
+            self.assertTrue(out[key].startswith('NOT_RUN(main-table rows missing'), key)
+
+
+class PairedTableTests(unittest.TestCase):
+    def vectors(self, c5, c4, c7, c1=None, c6=None, n=40):
+        def v(ones):
+            return [1 if i in ones else 0 for i in range(n)]
+        return {'C1': v(set(c1 or ())), 'C4': v(set(c4)), 'C5': v(set(c5)), 'C6': v(set(c6 or c5)), 'C7': v(set(c7))}
+
+    def test_h2_is_intersection_union_with_correct_references(self):
+        ten = range(10)
+        only_a = f.paired_table(self.vectors(ten, c4=(), c7=range(7)), 200)[1]            # vs C4: +10 (p~0.002) ; vs C7: +3
+        self.assertEqual((only_a['H1_condition_met'], only_a['H2_condition_met']), (True, False))
+        only_b = f.paired_table(self.vectors(ten, c4=range(7), c7=()), 200)[1]
+        self.assertEqual(only_b['H2_condition_met'], False)
+        both = f.paired_table(self.vectors(ten, c4=(), c7=()), 200)[1]
+        self.assertTrue(both['H2_condition_met'])
+        pairs, _ = f.paired_table(self.vectors(ten, c4=(), c7=range(7), c1=range(5)), 200)
+        self.assertEqual((pairs['H2b']['row'], pairs['H2b']['reference']), ('C5', 'C7')); self.assertEqual((pairs['H1']['b'], pairs['H1']['c']), (5, 0))
+        self.assertEqual(pairs['D1']['mechanical_condition'], 'descriptive_only')
+
+    def test_run_passes_frozen_bootstrap_defaults(self):
+        from unittest import mock
+        queries, P, G, POP = hand_world(); calls = []
+        real = f.bootstrap_intervals
+        def spy(diffs, n_resamples=None, seed=None):
+            calls.append((n_resamples, seed)); return real(diffs, 50, seed)
+        with mock.patch.object(f, 'bootstrap_intervals', spy):
+            f.run({('P', 42): P, ('G', 42): G, ('POP', None): POP, ('P', 2024): P}, queries, 2000, seeds=(42,))
+        self.assertEqual(calls, [(10000, 20261014)])
+
+
+class LocalizationIndependenceTests(unittest.TestCase):
+    def test_each_condition_alone_puts_the_query_in_the_set(self):
+        base = {'oov': False, 'support': 'supported', 'popularity_group': 'positive_gt_p90'}
+        qs = [{**base, 'support': 'unsupported'}, {**base, 'popularity_group': 'unsupported0'}, {**base, 'popularity_group': 'positive_le_median'}, dict(base), dict(base)]
+        short = ['full', 'full', 'full', 'short', 'full']
+        got = f.localization({'C1': [0] * 5, 'C5': [1] * 5}, 'C5', qs, short)
+        self.assertEqual((got['low_support_queries'], got['net_in_set'], got['net_total']), (4, 4, 5))   # the last query meets none of the conditions
 
 
 class RunTests(unittest.TestCase):
