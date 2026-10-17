@@ -164,7 +164,7 @@ def hand_world():
     targets = [0, 500, 77, 40, 20]
     G = [[0], [7, 500], [77], list(range(900, 1000)), [20] + list(range(1000, 1098))]
     meta = [('supported', 'positive_gt_p90', 10), ('unsupported', 'unsupported0', 3), ('supported', 'positive_gt_p90', 50),
-            ('supported', 'positive_median_to_p90', 30), ('unsupported', 'positive_le_median', 20)]
+            ('supported', 'positive_gt_median_le_p90', 30), ('unsupported', 'positive_le_median', 20)]
     queries = [{'target': t, 'oov': False, 'support': m[0], 'popularity_group': m[1], 'user_group': 'gt20', 'history_len': m[2]} for t, m in zip(targets, meta)]
     return queries, [list(P) for _ in targets], G, POP
 
@@ -335,6 +335,10 @@ class RunTests(unittest.TestCase):
         self.assertEqual(out['rows'].get('seed2024:C5'), None)
 
     def test_query_metadata_validation(self):
+        queries0, p0, g0, pop0 = make_world(); bad_user = [dict(q) for q in queries0]; bad_user[1]['user_group'] = '21+'
+        with self.assertRaisesRegex(ValueError, 'popularity group / user group / history length'):
+            f.run({('P', 42): p0, ('G', 42): g0, ('POP', None): pop0, ('P', 2024): p0}, bad_user, 400, seeds=(42,))
+        self.assertEqual(f.ITEM_GROUPS, ('unsupported0', 'positive_le_median', 'positive_gt_median_le_p90', 'positive_gt_p90')); self.assertEqual(f.USER_GROUPS, ('1', '2-5', '6-20', 'gt20'))
         queries, p, g, pop = make_world()
         bad = [dict(q) for q in queries]; bad[1]['support'] = 'oov'
         with self.assertRaisesRegex(ValueError, 'support label'):

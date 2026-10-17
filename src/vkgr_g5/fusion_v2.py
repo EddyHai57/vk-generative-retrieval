@@ -26,7 +26,8 @@ BOOT_SEED = 20261014
 MIN_HITS = 6
 ALPHA = Fraction(25, 1000)
 ROUTE_LETTER = {'P': 'P', 'G': 'G', 'POP': 'Pop'}
-ITEM_GROUPS = ('unsupported0', 'positive_le_median', 'positive_median_to_p90', 'positive_gt_p90')
+ITEM_GROUPS = ('unsupported0', 'positive_le_median', 'positive_gt_median_le_p90', 'positive_gt_p90')   # names exactly as in generative_evaluation.ITEM_GROUPS (the G run's own slice vocabulary)
+USER_GROUPS = ('1', '2-5', '6-20', 'gt20')
 LOW_POPULARITY = ('unsupported0', 'positive_le_median')
 HISTORY_BUCKETS = (('1-10', 1, 10), ('11-25', 11, 25), ('26-49', 26, 49), ('50', 50, 50))
 
@@ -172,8 +173,8 @@ def validate_queries(queries, catalog_size):
     for q in queries:
         if q['support'] not in ('supported', 'unsupported', 'oov') or (q['support'] == 'oov') != bool(q['oov']):
             raise ValueError('support label inconsistent with oov flag')
-        if q['popularity_group'] not in ITEM_GROUPS + ('oov',) or not 1 <= q['history_len'] <= 50:
-            raise ValueError('popularity group / history length')
+        if q['popularity_group'] not in ITEM_GROUPS + ('oov',) or q['user_group'] not in USER_GROUPS or not 1 <= q['history_len'] <= 50:
+            raise ValueError('popularity group / user group / history length')
     if type(catalog_size) is not int or catalog_size < 1:
         raise ValueError('catalog size')
 
