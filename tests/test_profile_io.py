@@ -27,4 +27,16 @@ class IOTests(unittest.TestCase):
             with input_guard():
                 with self.assertRaises(ValueError):alias.read_text()
 
+    def test_installed_torch_operator_source_is_not_dataset_test(self):
+        from vkgr.profile_io import input_guard
+        spec=importlib.util.find_spec('torch')
+        source=Path(spec.origin).resolve().parent/'_inductor'/'test_operators.py'
+        self.assertTrue(source.is_file())
+        with input_guard():
+            self.assertIn(b'torch',source.read_bytes())
+        with tempfile.TemporaryDirectory() as tmp:
+            fake=Path(tmp).resolve()/'test_operators.py';fake.write_text('not dependency code')
+            with input_guard():
+                with self.assertRaises(ValueError):fake.read_text()
+
 if __name__=='__main__':unittest.main()
