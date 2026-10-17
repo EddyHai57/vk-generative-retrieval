@@ -418,3 +418,29 @@ Eddy认可分工并授权征询Sol、写规范后恢复。采用完整任务自�
 
 ## COORD-02 Astra交接与端到端职责（2026-10-10）
 Eddy批准仅更换Astra、保留两Sol，更新STATE/handoff并准备新提示词，三方明确职责。范围：主仓AGENTS/STATE/handoff/tasks、codex_handoff协议、decision_log、astra_restart_prompt，旧治理逐byte归档；两Sol只更新自己的角色/交接快照。验收：旧快照hash一致、当前文件无有效冲突、关键证据入口存在、两Sol职责ACK、新Astra接收ACK、旧协调停止写入、vk仍暂停。禁止恢复实验、SSH/训练、commit/push/删除/资源生命周期变化。报告方案不替代科学gate。
+
+## FEAT04-COMBO — 已登记条件组合执行（2026-10-16，当前task）
+Eddy直接要求Codex推进F4-T010+C+D+E三seed；科学内容已由decision_log夜间§4登记，不新增名额/规则。允许新增隔离worktree模型/runner/tests/configs/scripts，维护主STATE/handoff/schedule/experiment/issue及Kiro复查提示；既有冻结文件逐字保留。输入复用原train/history/validation/catalog/support/ITEM_STATS_V1。输出三seed组合及各verify、冻结清单、真实只读preflight/CUDA/VRAM/claimed/rejected收据。验收按原计划§1.2，另报组合−E描述性差值；不转正、不换anchor。stop：身份/hash/旧文件漂移、真实preflight或CUDA失败、重复run、rejected或失败attempt不重试、不读test/不删覆盖数据、不改阈值。执行计划位于隔离worktree docs/superpowers/plans/2026-10-16-feat04-combo-implementation.md；具体身份见STATE。
+
+FEAT04-COMBO本轮工程/准入part已完成：freeze与真实preflight/CUDA/VRAM/dry/claimed均通过，三seed实际运行、服务器2921056自动补verify；science结果仍未验收。当前恢复和有限deadline只见STATE/handoff末节，数字/收据只见experiment_log本轮。Kiro/Opus提示已交付到docs/kiro_opus_morning_review_20261016.md。此状态不代表整个实验已完成，也不自动进入M2/A1新SID。
+
+## SUCCESSOR-ENGINEERING-20261016（当前：用户明确并行授权）
+Codex负责B1024 A1确认3seed与M1服务器延迟工程、M2只写设计卡。三者独立短任务、文件边界隔离，主仓事实源由Codex统一写；现FEAT原driver不动。科学规则只按decision_log最新晨间§1/§2/§4/§5。允许新工作树入口适配/配置/测试/运维、固定SHA公开分支发布/新目录部署、真实输入只读preflight及工程scratch、CUDA/真实shape VRAM、dry/入队/claimed验收与有限verify driver。G配置只改SID绑定与run_id相关项，其余A1对照同seed；显存重新实测。延迟真实长度分布、50/1000/512/1、CPU1线程/A6000，原始计时与口径交Kiro，不擅自切P anchor；M2不实现/冻结/训练。禁止test/既有真实checkpoint或完整embedding导出、删除/覆盖旧数据、重提旧job、force/main push/改历史、付费、阈值/U1/C9门槛变更。context计数UNKNOWN。各终态/证据/下一动作只见STATE/handoff最新，数字只experiment_log。
+
+本轮工程交付完成：M1正式延迟报告工程核验、M2 DRAFT已完成；B1024工程gate及Eddy批准的一次cuda-v2通过，三真实seed全claimed/真实running，新服务器verify driver存活。工程/接纳part完成，science仍待固定driver收口；恢复/截止见STATE/handoff，数字只experiment_log SUCCESSOR。原v1记录保留，无额外自动训练。
+
+## M2-REVIEW-PACK-20261016（文档交付完成）
+Eddy要求专用Kiro/Opus提示，包含M2未决设计、M1正式延迟和下一批接续。产物docs/kiro_opus_m2_review_20261016.md，允许写该新文档及STATE/handoff/tasks指针；输入为既有设计/裁决/指标与收据，32个延迟值和SHA逐项校验。未更改科学规则/生产代码/decision，未SSH、训练或新建timer。下一动作为Eddy将提示交Kiro裁决唯一方案并明确各阶段授权，回传后Codex立即准备，当前M2仍设计边界。
+
+## M2-EXEC-20261016（当前，Eddy与Kiro下午裁决授权）
+唯一科学内容与执行授权见decision_log下午§2/§3、FINAL设计卡；执行计划2026-10-16-m2-execution.md。允许隔离M2新模型/runner/config/tests/ops/冻结部署工程与门禁全过后的固定三seed提交及自动verify；完整产物只做一次独立code review。并行补原FEAT组合validation配对统计，仍以F4判；关键规则不由Codex更改。停止：设计偏离、NaN/Inf attempt、review修复需改设计；头未选中仅诊断继续。不读test/旧checkpoint、不ANN、不增加臂seed名额。父Codex唯一server/fact owner；输入/输出/边界/命令证据与截止记录见计划与STATE/handoff。
+
+本轮工程/接纳part已完成：组合McNemar/bootstrap已记账交Kiro；P anchor按裁决更新M1；M2 FINAL→一次whole review及发现闭环→冻结8688f09/部署264files→三真实PF/M1控制封存→CUDA完整shape/replay/g0/新VRAM→正式dry→入队前汇报→固定三seed全claimed/真实running与driver2925994 PPID1/900s/48h。科学三train/verify及M2完整延迟仍待后续，不能将工程part写成研究已验收或自动接其它实验。恢复与待Kiro表以精简STATE/handoff末节为准。
+
+## SID-FIX-20261016（当前，S0 实现 + S1 草稿并行）
+Eddy直接授权；冻结依据pipeline卡§2、decision午间/傍晚/傍晚续。只新增隔离工具与synthetic测试，A–D手算、OOV、0分母、平手/重复；一次独立review→扫描/工作分支push→固定SHA部署→真实只读preflight→1CPUqueue诊断→claimed/rejected/终态验收→来源SHA/UTC记账。先不含A1+B1024；三verify齐再另补。S1仅新建冻结卡草稿，固定超参/输入/归一化/回退/筛选判读/门禁，Kiro冻结前禁止导出拟合训练。S0禁止checkpoint/test/embedding读取或改旧run/bundle；只写自己的新out与事实源；原M2/G不重启重提。S0–S5路线命名空间为SID-FIX，不与旧全量S0–S6混用。数字只experiment，解释交STATE待Kiro表。
+
+SID-FIX本轮执行交付完成：S0两批succeeded、全A–D/差分/均值/输入SHA与实际UTC已记账，四旧归档B/C UNKNOWN；S1草稿/Opus提示与S0–S5路线已登记。S0机械分支与D结构零/self-pair歧义均进STATE待Kiro，不下机制结论。S1冻结仍待Kiro，未导出/拟合/训练，不自动接新实验。
+
+## SID-COLL-S1-EXEC-20261016（当前，夜间Opus裁决授权）
+S1 FINAL依decision夜间§4/§5直接执行，不再设计review。允许新增隔离SGNS/C2精确导出/新64、128维SID合同/runner/固定6G配置/tests/版本化运维driver；一次whole review后扫描/push工作分支/固定SHA新部署，两个配置分别完成输入健康与验收/SID fullreplay/三真实PF/CUDA fullshape测峰/dry再提交s42，raw verified且hits≥260自动补2024/25。旧checkpoint只固定M1mean42best，Eddy澄清新作业verify可读自己新产物。补充D′、四旧归档别名、A1epoch只读，不改原D和旧产物。stop gates/允许路径/验收与ledger见执行计划。S2/S5不自动，G anchor仍A1T3。

@@ -1,0 +1,9 @@
+# 本批补证分析工具独立review记录
+
+密级：公开。context UNKNOWN。主owner记录独立reviewer原结论与修复证据，不冒称Kiro科学裁决。
+
+对象read-tools工作树新增analysis/postbatch_acceptance.py、postbatch_latency.py及两个tests文件，初次提交96066db、运载适配最终7308447d0f83a96a0cdd99ea9980d2a4e380a02a，已push固定SHA。统计工具独立review首次CHANGES_REQUESTED，两项MEDIUM：claimed只数数量未核job/config/source/data；metadata preflight未先核query/history/catalog绑定。先新增BindingGuards两test见AttributeError RED；新增check_job与check_inputs，读取唯一claimed job和原config，比对seed/run_id/cwd、原config与manifest逐对象相等、全部source/config/data binding与已验收frozen digest相等；preflight提前核原history/query/catalog，再读预测。不修改原冻结phase2_reader/paired方法。两缺口fresh GREEN并纳入31项回归，不对普通修复重复整套review。
+
+延迟工具单独首次review为APPROVED，无HIGH/MEDIUM；独立运行3项synthetic，核只计model.users路径、固定源码与长度SHA、CPU单线程、CUDA前后同步、50warmup+1000timed、b1/b512、2520pass与同输入SHA。通过不能冒称实际服务器计时完成。Eddy已直接确认只补原用户塔口径，不做端到端，不读checkpoint。
+
+工具新增bare stdin preflight适配见TransportTests：CLI缺parameters RED，显式-c仅调用execute(preflight=True)后GREEN。最终31tests通过，包括手算McNemar、新seed池化、平台/lex平手/右删失、数据身份拒错、模型工厂mean/bi/stack；不读真实数据。生产脚本不含本机/连接路径，私有参数gitignored。服务器deploy逐109文件SHA、两实际input preflight直接preflight_ok/latency_preflight_ok后才dry/队列；正式1CPU只读分析不训练，源/raw收据见experiment_log本批补证节。
