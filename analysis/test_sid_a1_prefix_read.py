@@ -51,7 +51,7 @@ class PrefixReadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp).resolve();log=root/'runs'/t.RUNS[0]/'unused'
             vr=root/'runs'/(t.RUNS[0]+'-verify');(vr/'logs').mkdir(parents=True)
-            bad=root/'test';bad.mkdir();payload=bad/'secret.json';payload.write_text('{}')
+            bad=root/'test';bad.mkdir();payload=bad/'secret.json';payload.write_text('{"status":"verified"}')
             (vr/'logs/stdout.log').symlink_to(payload)
             with self.assertRaises(ValueError):t.guard_verifier(root,t.RUNS[0])
     def test_auxiliary_verified_cannot_replace_original_stdout(self):
