@@ -36,6 +36,7 @@ def main(argv=None):
     parser.add_argument('--line-root', required=True); parser.add_argument('--inputs', required=True); parser.add_argument('--inputs-sha', required=True)
     parser.add_argument('--config', required=True); parser.add_argument('--config-sha', required=True); parser.add_argument('--output', required=True)
     parser.add_argument('--split', required=True, choices=('validation',))
+    parser.add_argument('--check-only', action='store_true', help='real-path preflight: load, extract and verify everything but write nothing')
     args = parser.parse_args(argv)
     try:
         import vkgr
@@ -52,10 +53,16 @@ def main(argv=None):
         from vkgr.retrieval_php01 import FEATURE
         config = read_pinned(args.config, args.config_sha); sm.validate_config(config)
         spec = fr.validate_inputs(read_pinned(args.inputs, args.inputs_sha), FEATURE)
+        out.parent.mkdir(parents=True, exist_ok=True)
         check = b1.resource_guard(out.parent, spec['disk_cap_bytes']); check()
         data, _, _ = b1.real_inputs(spec)
         data, _ = fr.apply_feat02(data, spec, config['history_len'])
         record = extract(data, config['history_len'])
+        if args.check_only:
+            print(json.dumps({'status': 'preflight_ok', 'written': False, 'query_count': record['query_count'], 'queries_digest': record['queries_digest'],
+                              'catalog_digest': record['catalog_digest'], 'catalog_size': record['catalog_size'],
+                              'oov_queries': sum(1 for r in record['rows'] if r['oov']), 'support_p': {k: sum(1 for r in record['rows'] if r['support_p'] == k) for k in ('supported', 'unsupported', 'oov')}}))
+            return 0
         sha = b1._write_json_atomic(out, record)
         print(json.dumps({'status': 'complete', 'output_sha256': sha, 'query_count': record['query_count'], 'queries_digest': record['queries_digest'],
                           'catalog_digest': record['catalog_digest']}))
