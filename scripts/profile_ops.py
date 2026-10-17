@@ -124,6 +124,17 @@ def own_gpu_mib():
  if len(values)!=1:raise ValueError('unique own GPU PID measurement required')
  return values[0]
 
+def full_shape_data(run,shape,h,s,profile_ids):
+ import torch
+ n=shape['catalog'];sup=shape['supported'];ncontent=shape['content_rows']
+ if ncontent!=n+1 or shape['queries']!=2520:raise ValueError('real one-padding-row shape contract')
+ if tuple(h.shape)!=(512,50) or int(h.min())<1 or int(h.max())>=ncontent:raise ValueError('synthetic item index contract')
+ proto=run.synthetic_data()['queries'][0];queries=[]
+ for j in range(2520):
+  i=j%512;queries.append({**proto,'history':(h[i]-1).tolist(),'side':s[i,:,:3].tolist(),'history_positions':[[int(s[i,k,3]),k] for k in range(50)],'profile_ids':profile_ids[i].tolist(),'target':j%sup,'oov':False})
+ return {'synthetic':True,'catalog':list(range(n)),'idmap':{i:i+1 for i in range(n)},'content':torch.zeros(ncontent,64),'supported_indices':list(range(1,sup+1)),'support':set(range(sup)),'queries':queries,'rows':queries,'profile_manifest_sha256':'synthetic_full_shape','profile_fit_sha256':'synthetic_full_shape'}
+
+
 def full_shape(run,arm,shape):
  import gc
  import torch
@@ -132,17 +143,14 @@ def full_shape(run,arm,shape):
  gc.collect();torch.cuda.empty_cache();torch.cuda.synchronize();torch.cuda.reset_peak_memory_stats()
  context=own_gpu_mib();reserved0=torch.cuda.memory_reserved()/2**20
  n=shape['catalog'];sup=shape['supported'];ncontent=shape['content_rows']
- if ncontent!=n+2 or shape['queries']!=2520:raise ValueError('real shape contract')
+ if ncontent!=n+1 or shape['queries']!=2520:raise ValueError('real shape contract')
  g=torch.Generator().manual_seed(7);h,s=synthetic_batch(g,512,sup,ncontent)
- h=torch.clamp(h,min=2,max=ncontent-1)
+ h=torch.clamp(h,min=1,max=ncontent-1)
  profile_ids=torch.stack((torch.arange(512)%17,torch.arange(512)%17,torch.arange(512)%10),dim=-1)
  packed=torch.cat((s,profile_ids[:,None,:].expand(-1,50,-1)),dim=-1)
- proto=run.synthetic_data()['queries'][0];queries=[]
- for j in range(2520):
-  i=j%512;queries.append({**proto,'history':(h[i]-2).tolist(),'side':s[i,:,:3].tolist(),'history_positions':[[int(s[i,k,3]),k] for k in range(50)],'profile_ids':profile_ids[i].tolist(),'target':j%sup,'oov':False})
- data={'synthetic':True,'catalog':list(range(n)),'idmap':{i:i+2 for i in range(n)},'content':torch.zeros(ncontent,64),'supported_indices':list(range(2,sup+2)),'support':set(range(sup)),'queries':queries,'rows':queries,'profile_manifest_sha256':'synthetic_full_shape','profile_fit_sha256':'synthetic_full_shape'}
+ data=full_shape_data(run,shape,h,s,profile_ids)
  cfg=run.default_config(arm);m=run._model(data,cfg,'cuda');opt=run.make_optimizer(m,cfg);history_oracle(m)
- h=h.cuda();packed=packed.cuda();targets=(torch.randperm(sup,generator=g)[:512]+2).cuda();labels=torch.arange(512,device='cuda');mask=torch.ones(512,512,dtype=torch.bool,device='cuda');logq=torch.full((512,),math.log(1/sup),device='cuda')
+ h=h.cuda();packed=packed.cuda();targets=(torch.randperm(sup,generator=g)[:512]+1).cuda();labels=torch.arange(512,device='cuda');mask=torch.ones(512,512,dtype=torch.bool,device='cuda');logq=torch.full((512,),math.log(1/sup),device='cuda')
  m.eval()
  with torch.no_grad():zero=torch.equal(m.users(h,packed),m.base.users(h,packed[...,:6]))
  if not zero:raise ValueError('CUDA zero start mismatch')

@@ -17,6 +17,17 @@ class OpsTests(unittest.TestCase):
         v=m.derive_verify(job,'b'*64);self.assertEqual(v['run_id'],'p-profile-u2-s42-verify');self.assertEqual(v['argv'][v['argv'].index(m.ENTRY)+1],'verify');self.assertIn('a'*64,v['argv']);self.assertIn('b'*64,v['argv']);self.assertNotIn('--output',v['argv'])
     def test_failure_stop_and_raw_verified_gate(self):
         m=ops();self.assertEqual(m.next_action('failed',None,False,False),'ALERT');self.assertEqual(m.next_action('succeeded','succeeded',True,False,False),'ALERT');self.assertEqual(m.next_action('succeeded',None,False,False),'verify');self.assertEqual(m.next_action('succeeded','succeeded',True,False,True),'verified')
+    def test_cuda_fixture_uses_real_one_padding_row_contract(self):
+        import torch
+        from vkgr import retrieval_profile_run as run
+        m=ops();shape={'batch':512,'history':50,'catalog':13,'content_rows':14,'supported':8,'queries':2520}
+        h=torch.ones(512,50,dtype=torch.long);side=torch.zeros(512,50,6,dtype=torch.long);ids=torch.zeros(512,3,dtype=torch.long)
+        data=m.full_shape_data(run,shape,h,side,ids)
+        self.assertEqual(data['content'].shape,(14,64));self.assertEqual(data['idmap'][0],1);self.assertEqual(data['idmap'][12],13)
+        self.assertEqual(data['supported_indices'],list(range(1,9)))
+        self.assertEqual(data['queries'][0]['history'],[0]*50)
+        with self.assertRaises(ValueError):m.full_shape_data(run,{**shape,'content_rows':15},h,side,ids)
+
     def test_plan_requires_real_preflight_cuda_and_binds_six_jobs(self):
         import sys,time,copy
         m=ops();src={'git_commit':'a'*40,'git_dirty':False};shape={'batch':512,'history':50,'catalog':120415,'content_rows':120417,'supported':21496,'queries':2520}
