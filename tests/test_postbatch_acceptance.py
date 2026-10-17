@@ -38,4 +38,10 @@ class BindingGuards(unittest.TestCase):
   for patch in ({'seed':2024},{'cwd':'/fixture/other'},{'run_id':'other'}):
    with self.assertRaises(ValueError):p.check_job('p-seq-combo-stack-s42',m,{**job,**patch},{'seed':42},'/fixture/deployed',p.plain_digest(m['binding']))
   with self.assertRaises(ValueError):p.check_job('p-seq-combo-stack-s42',m,job,{'seed':2024},'/fixture/deployed',p.plain_digest(m['binding']))
+class TransportTests(unittest.TestCase):
+ def test_stdin_preflight(self):
+  import io,json
+  from unittest.mock import patch
+  with patch.object(p.sys,'argv',['-c']),patch.object(p.sys,'stdin',io.StringIO('{}')),patch.object(p,'execute',return_value={'status':'preflight_ok'}) as call,patch('sys.stdout',new_callable=io.StringIO) as out:
+   p.main();self.assertEqual(json.loads(out.getvalue())['status'],'preflight_ok');call.assert_called_once_with({},True)
 if __name__=='__main__':unittest.main()

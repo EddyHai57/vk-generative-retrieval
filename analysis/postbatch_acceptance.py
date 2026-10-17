@@ -115,6 +115,8 @@ def execute(req,preflight=False):
  out['manifest_pins']=req['manifests'];out['artifacts_sha256']=r.READS;return out
 
 def main():
+ if sys.argv[0]=='-c':
+  print(json.dumps(execute(json.load(sys.stdin),True),sort_keys=True,allow_nan=False));return
  p=argparse.ArgumentParser();p.add_argument('--parameters',required=True);p.add_argument('--parameters-sha',required=True);p.add_argument('--preflight',action='store_true');p.add_argument('--output')
  a=p.parse_args();raw=Path(a.parameters).read_bytes()
  if hashlib.sha256(raw).hexdigest()!=a.parameters_sha:raise ValueError('parameter pin mismatch')
