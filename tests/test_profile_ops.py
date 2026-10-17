@@ -28,6 +28,30 @@ class OpsTests(unittest.TestCase):
         self.assertEqual(data['queries'][0]['history'],[0]*50)
         with self.assertRaises(ValueError):m.full_shape_data(run,{**shape,'content_rows':15},h,side,ids)
 
+    def test_full_shape_executes_training_and_both_evaluations_with_cpu_cuda_shim(self):
+        import contextlib,torch
+        from unittest.mock import patch
+        from vkgr import retrieval_profile_run as run
+        m=ops();shape={'batch':512,'history':50,'catalog':1024,'content_rows':1025,'supported':700,'queries':2520}
+        original_model=run._model
+        def cpu_model(data,cfg,device):return original_model(data,cfg,'cpu')
+        def cpu_constructor(original):
+            def wrapped(*args,**kwargs):
+                if kwargs.get('device')=='cuda':kwargs['device']='cpu'
+                return original(*args,**kwargs)
+            return wrapped
+        torch.set_num_threads(1)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch.object(run,'_model',side_effect=cpu_model))
+            stack.enter_context(patch.object(torch.Tensor,'cuda',lambda tensor:tensor))
+            for name in ('arange','ones','full'):stack.enter_context(patch.object(torch,name,side_effect=cpu_constructor(getattr(torch,name))))
+            for name in ('empty_cache','synchronize','reset_peak_memory_stats'):stack.enter_context(patch.object(torch.cuda,name,return_value=None))
+            for name in ('memory_reserved','max_memory_allocated','max_memory_reserved'):stack.enter_context(patch.object(torch.cuda,name,return_value=0))
+            stack.enter_context(patch.object(m,'own_gpu_mib',return_value=1000))
+            proof=m.full_shape(run,'u2',shape)
+        self.assertEqual([x['stage'] for x in proof['samples']],['train-1','train-2','train-3','full-catalog-evaluation','full-shape-g0'])
+        self.assertTrue(proof['finite_gradients']);self.assertEqual(proof['declared_vram_mib'],1280)
+
     def test_plan_requires_real_preflight_cuda_and_binds_six_jobs(self):
         import sys,time,copy
         m=ops();src={'git_commit':'a'*40,'git_dirty':False};shape={'batch':512,'history':50,'catalog':120415,'content_rows':120417,'supported':21496,'queries':2520}

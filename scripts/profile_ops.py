@@ -148,7 +148,7 @@ def full_shape(run,arm,shape):
  h=torch.clamp(h,min=1,max=ncontent-1)
  profile_ids=torch.stack((torch.arange(512)%17,torch.arange(512)%17,torch.arange(512)%10),dim=-1)
  packed=torch.cat((s,profile_ids[:,None,:].expand(-1,50,-1)),dim=-1)
- data=full_shape_data(run,shape,h,s,profile_ids)
+ data=full_shape_data(run,shape,h,s,profile_ids);queries=data['queries']
  cfg=run.default_config(arm);m=run._model(data,cfg,'cuda');opt=run.make_optimizer(m,cfg);history_oracle(m)
  h=h.cuda();packed=packed.cuda();targets=(torch.randperm(sup,generator=g)[:512]+1).cuda();labels=torch.arange(512,device='cuda');mask=torch.ones(512,512,dtype=torch.bool,device='cuda');logq=torch.full((512,),math.log(1/sup),device='cuda')
  m.eval()
