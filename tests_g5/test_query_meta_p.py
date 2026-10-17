@@ -57,6 +57,13 @@ class ExtractTests(unittest.TestCase):
         with self.assertRaises((ValueError, IndexError)):
             qm.extract(empty, 50)
 
+    def test_history_length_gate_runs_even_when_view_accepts_empty_aligned_fields(self):
+        data = fr.synthetic_data(); queries = [dict(q) for q in data['queries']]
+        queries[0].update(history=[], side=[], history_positions=[], ctx=[])
+        self.assertEqual(len(fr._view({**data, 'queries': queries}, 50)[1][0]['history']), 0)           # the upstream view alone accepts it
+        with self.assertRaisesRegex(ValueError, 'history length outside the L-view'):
+            qm.extract({**data, 'queries': queries}, 50)
+
     def test_json_serialisable_and_has_no_vectors(self):
         text = json.dumps(qm.extract(fr.synthetic_data(), 50), allow_nan=False)
         for needle in ('embedding', 'vector', 'checkpoint'):
@@ -165,6 +172,16 @@ class CliTests(unittest.TestCase):
             with mock.patch('vkgr.retrieval_b1_run.resource_guard', side_effect=subprocess.CalledProcessError(1, 'nvidia-smi')):
                 code, _, err = self.run_main(self.args(Path(tmp) / 'o' / 'm.json', data))
             self.assertEqual(code, 2); self.assertIn('CalledProcessError', err)
+
+    def test_registered_counts_must_match_exactly_in_both_directions(self):
+        data = fr.synthetic_data()
+        actual_q = len(data['queries']); actual_oov = sum(1 for q in data['queries'] if q['oov'])
+        for flag, actual in (('--expect-queries', actual_q), ('--expect-oov', actual_oov)):
+            for wrong in (actual - 1, actual + 1):
+                with tempfile.TemporaryDirectory() as tmp, self.patched(data):
+                    argv = self.args(Path(tmp) / 'o' / 'm.json', data, ['--check-only']); argv[argv.index(flag) + 1] = str(wrong)
+                    code, _, err = self.run_main(argv)
+                self.assertEqual(code, 2, (flag, wrong)); self.assertIn('registered validation set', err)
 
     def test_split_root_and_output_gates(self):
         data = fr.synthetic_data()

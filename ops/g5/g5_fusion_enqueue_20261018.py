@@ -68,7 +68,7 @@ def build(root, stage, p_deploy, fusion_deploy, vram_mib, wall_hours, gen=''):
 def exists_anywhere(root, rid):
     if (root / 'runs' / rid).exists():
         return True
-    pattern = re.compile(r'\.?\d+-' + re.escape(rid) + r'\.(json|reason)(\.tmp)?')    # exact run id; a longer id sharing this prefix does not match
+    pattern = re.compile(r'\.?\d+-' + re.escape(rid) + r'\.(json|reason|json\.reason)(\.tmp)?')    # exact run id; a longer id sharing this prefix does not match
     return any(pattern.fullmatch(p.name) for sub in ('pending', 'claimed', 'rejected') for p in (root / 'queue' / sub).glob('*'))
 
 

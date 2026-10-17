@@ -24,8 +24,8 @@ def fake_root(tmp):
     return root
 
 
-def run(req):
-    out = io.StringIO(); root = req.pop('root')
+def run(req, root=None):
+    out = io.StringIO(); root = req.pop('root', root)
     with mock.patch('sys.stdin', io.StringIO(json.dumps(req))), mock.patch('sys.stdout', out):
         m.main(root=root)
     return json.loads(out.getvalue())
@@ -72,6 +72,30 @@ class FusionEnqueueTests(unittest.TestCase):
             (root / 'queue/pending' / '.0180-g5-fusion-qmeta-v2.json.tmp').write_text('x')
             with self.assertRaisesRegex(ValueError, 'already exists'):
                 run(self.base(root, stage='qmeta', gen='v2'))
+
+    def test_every_queue_form_of_the_same_id_blocks_on_its_own_and_neighbours_do_not(self):
+        forms = [('queue/pending', '0001-g5-fusion-qmeta.json'), ('queue/pending', '.0001-g5-fusion-qmeta.json.tmp'), ('queue/claimed', '0002-g5-fusion-qmeta.json'),
+                 ('queue/rejected', '0003-g5-fusion-qmeta.json'), ('queue/rejected', '0003-g5-fusion-qmeta.reason'), ('queue/rejected', '0003-g5-fusion-qmeta.json.reason'), ('runs/g5-fusion-qmeta', None)]
+        for sub, name in forms:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = fake_root(tmp)
+                (root / sub).mkdir(parents=True, exist_ok=True)
+                if name:
+                    (root / sub / name).write_text('x')
+                with self.assertRaisesRegex(ValueError, 'already exists', msg=f'{sub}/{name}'):
+                    run(self.base(root, stage='qmeta'), root)
+        for neighbour in ('0001-g5-fusion-qmeta-pf.json', '0001-g5-fusion-qmeta2.json', '0001-xg5-fusion-qmeta.json', '0001-g5-fusion-qmeta-v2.reason'):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = fake_root(tmp); (root / 'queue/rejected' / neighbour).write_text('x')
+                self.assertEqual(run(self.base(root, stage='qmeta'), root)['job']['run_id'], 'g5-fusion-qmeta')
+
+    def test_config_field_and_generation_tag_bounds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fake_root(tmp); job = run(self.base(root), root)['job']
+            self.assertEqual(job['config'], f'{P_DEP}/configs/seqm1/p-seqm1-mean-s42.json')
+            self.assertEqual(run(self.base(root, gen='abcdefgh'), root)['job']['run_id'], 'g5-fusion-qmeta-pf-abcdefgh')
+            with self.assertRaises(ValueError):
+                run(self.base(root, gen='abcdefghi'), root)
 
     def test_request_cannot_redirect_the_queue_root(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other:
