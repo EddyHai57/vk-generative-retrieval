@@ -132,6 +132,36 @@ class ExportTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, message):
                 ex.candidate_stats(bad, catalog, 100)
 
+    def test_preflight_checks_identity_without_forward_or_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data, config, manifest, sha = trained(tmp)
+            with mock.patch.object(ex, 'candidates', side_effect=AssertionError('forward pass must not run')):
+                got = ex.preflight(manifest, sha, data, config)
+            self.assertEqual((got['status'], got['forward_pass_run'], got['written'], got['queries']), ('preflight_ok', False, False, 24))
+            self.assertEqual(got['original_depths'], [50])
+            with self.assertRaisesRegex(ValueError, 'external hash mismatch'):
+                ex.preflight(manifest, '2' * 64, data, config)
+
+    def test_predictions_ref_path_escape_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data, config, manifest, sha = trained(tmp)
+            real = ex.read_pinned
+            def forged(path, digest):
+                value = real(path, digest)
+                if Path(path).name == 'manifest.json':
+                    value['evaluations'][value['best']['epoch'] - 1]['predictions_ref'] = '../x.json'
+                return value
+            with mock.patch.object(ex, 'read_pinned', forged):
+                with self.assertRaisesRegex(ValueError, 'predictions path escape'):
+                    ex.preflight(manifest, sha, data, config)
+
+    def test_cli_rejects_run_id_not_matching_run_directory(self):
+        with mock.patch.object(torch.cuda, 'is_available', lambda: True), mock.patch.object(ex, 'read_pinned', lambda p, d: {}), \
+                mock.patch.object(ex.sm, 'validate_config', lambda c: c), mock.patch.object(ex.fr, 'validate_inputs', lambda v, f: {'disk_cap_bytes': 1}):
+            code = ex.main(['preflight', '--inputs', 'i', '--inputs-sha', 'a', '--config', 'c', '--config-sha', 'b', '--manifest', '/x/runs/p-a/out/manifest.json',
+                            '--manifest-sha', 'c', '--run-id', 'p-other'])
+        self.assertEqual(code, 2)
+
     def test_no_holdout_reference_in_source(self):
         text = Path(ex.__file__).read_text(); needle = 'te' + 'st'
         self.assertFalse([l for l in text.splitlines() if needle in l.lower() and 'holdout_split_opened' not in l and 'latest' not in l.lower() and 'attest' not in l.lower() and 'contest' not in l.lower() and 'test (week 26)' not in l.lower() and 'ValueError' not in l])

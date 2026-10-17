@@ -76,7 +76,7 @@ def _paths(manifest_path, output):
     return run, out
 
 
-def _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding):
+def _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding, infer=True):
     """Shared by export and verify: pinned manifest -> best checkpoint (weights_only) -> top-100 plus the archived top-50."""
     import torch
     value = read_pinned(manifest_path, manifest_sha); run = Path(manifest_path).parent
@@ -105,9 +105,20 @@ def _inference(manifest_path, manifest_sha, data, config, device, check, inputs_
     evaluation = value['evaluations'][best['epoch'] - 1]
     if evaluation['epoch'] != best['epoch']:
         raise ValueError('best evaluation epoch mismatch')
+    if Path(evaluation['predictions_ref']).name != evaluation['predictions_ref']:
+        raise ValueError('predictions path escape')
     original = read_pinned(run / evaluation['predictions_ref'], evaluation['predictions_sha256'])
-    top100 = candidates(model, data, queries, config, check)
+    top100 = candidates(model, data, queries, config, check) if infer else None
     return value, best, evaluation, original, top100
+
+
+def preflight(manifest_path, manifest_sha, data, config, device='cpu', check=None, inputs_binding=None):
+    """Real-path read-only preflight: every identity check of export/verify, but no forward pass and nothing written."""
+    value, best, evaluation, original, _ = _inference(manifest_path, manifest_sha, data, config, device, check, inputs_binding, infer=False)
+    depths = {len(row) for row in original}
+    return {'status': 'preflight_ok', 'manifest_sha256': manifest_sha, 'best_epoch': best['epoch'], 'best_checkpoint_sha256': best['sha256'],
+            'queries': len(original), 'original_depths': sorted(depths), 'catalog': len(data['catalog']),
+            'original_predictions_sha256': evaluation['predictions_sha256'], 'forward_pass_run': False, 'written': False}
 
 
 def export_run(manifest_path, manifest_sha, data, config, output, device='cpu', check=None, inputs_binding=None, run_id=None):
@@ -158,12 +169,14 @@ def verify_export(export_manifest_path, export_sha, manifest_path, manifest_sha,
 def main(argv=None):
     parser = argparse.ArgumentParser(description='G5 P-side top-100 export (read-only inference; new version, runner untouched)')
     sub = parser.add_subparsers(dest='command', required=True)
-    for name in ('export', 'verify'):
+    for name in ('export', 'verify', 'preflight'):
         p = sub.add_parser(name); p.add_argument('--inputs', required=True); p.add_argument('--inputs-sha', required=True)
         p.add_argument('--config', required=True); p.add_argument('--config-sha', required=True)
         p.add_argument('--manifest', required=True); p.add_argument('--manifest-sha', required=True)
         p.add_argument('--run-id', required=True)
-        if name == 'export':
+        if name == 'preflight':
+            pass
+        elif name == 'export':
             p.add_argument('--output', required=True)
         else:
             p.add_argument('--export-manifest', required=True); p.add_argument('--export-manifest-sha', required=True)
@@ -174,11 +187,19 @@ def main(argv=None):
         import torch
         if not torch.cuda.is_available():
             raise ValueError('actual CUDA environment required')
-        target = Path(args.output) if args.command == 'export' else Path(args.export_manifest).parent
+        if args.run_id != Path(args.manifest).parent.parent.name:
+            raise ValueError('run id does not match the run directory')
+        if args.command == 'export':
+            _paths(args.manifest, args.output)
+            if Path(args.output).exists():
+                raise ValueError('export output already exists')
+        target = Path(args.output) if args.command == 'export' else Path(args.export_manifest).parent if args.command == 'verify' else Path(args.manifest).parent
         check = b1.resource_guard(target, spec['disk_cap_bytes']); check()
         data, _, binding = b1.real_inputs(spec)
         data, extra_binding = fr.apply_feat02(data, spec, config['history_len'])
         inputs_binding = {**binding, **extra_binding, 'inputs_sha256': args.inputs_sha}
+        if args.command == 'preflight':
+            print(json.dumps({**preflight(args.manifest, args.manifest_sha, data, config, 'cuda', check, inputs_binding), 'run_id': args.run_id})); return 0
         if args.command == 'export':
             value = export_run(args.manifest, args.manifest_sha, data, config, args.output, 'cuda', check, inputs_binding, args.run_id)
             print(json.dumps({'status': value['status'], 'run_id': value['run_id'], 'manifest_sha256': args.manifest_sha,
