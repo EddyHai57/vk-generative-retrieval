@@ -166,6 +166,14 @@ def verify_export(export_manifest_path, export_sha, manifest_path, manifest_sha,
             'first50_equal': True}
 
 
+def peak_mib():
+    """Measured CUDA peak (allocated and reserved, MiB) of this process; None without CUDA. Reported on stdout only, never in manifests."""
+    import torch
+    if not torch.cuda.is_available():
+        return None
+    return {'allocated': round(torch.cuda.max_memory_allocated() / 2 ** 20, 1), 'reserved': round(torch.cuda.max_memory_reserved() / 2 ** 20, 1)}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='G5 P-side top-100 export (read-only inference; new version, runner untouched)')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -199,16 +207,16 @@ def main(argv=None):
         data, extra_binding = fr.apply_feat02(data, spec, config['history_len'])
         inputs_binding = {**binding, **extra_binding, 'inputs_sha256': args.inputs_sha}
         if args.command == 'preflight':
-            print(json.dumps({**preflight(args.manifest, args.manifest_sha, data, config, 'cuda', check, inputs_binding), 'run_id': args.run_id})); return 0
+            print(json.dumps({**preflight(args.manifest, args.manifest_sha, data, config, 'cuda', check, inputs_binding), 'run_id': args.run_id, 'cuda_peak_mib': peak_mib()})); return 0
         if args.command == 'export':
             value = export_run(args.manifest, args.manifest_sha, data, config, args.output, 'cuda', check, inputs_binding, args.run_id)
             print(json.dumps({'status': value['status'], 'run_id': value['run_id'], 'manifest_sha256': args.manifest_sha,
                               'export_manifest_sha256': value['export_manifest_sha256'], 'top100_sha256': value['top100_sha256'],
-                              'first50_equal': value['gate']['first50_equal']})); return 0
+                              'first50_equal': value['gate']['first50_equal'], 'cuda_peak_mib': peak_mib()})); return 0
         result = verify_export(args.export_manifest, args.export_manifest_sha, args.manifest, args.manifest_sha, data, config, 'cuda', check, inputs_binding)
         if result['run_id'] != args.run_id:
             raise ValueError('run id mismatch')
-        print(json.dumps(result)); return 0
+        print(json.dumps({**result, 'cuda_peak_mib': peak_mib()})); return 0
     except (ValueError, KeyError, TypeError, OSError, RuntimeError) as exc:
         print(f'ERROR P-SEQ-M1-EXPORT100 gate failed: {type(exc).__name__}: {exc}', file=sys.stderr); return 2
 

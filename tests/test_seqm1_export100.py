@@ -162,6 +162,14 @@ class ExportTests(unittest.TestCase):
                             '--manifest-sha', 'c', '--run-id', 'p-other'])
         self.assertEqual(code, 2)
 
+    def test_peak_mib_none_without_cuda_and_never_in_manifest(self):
+        with mock.patch.object(torch.cuda, 'is_available', lambda: False):
+            self.assertIsNone(ex.peak_mib())
+        with tempfile.TemporaryDirectory() as tmp:
+            data, config, manifest, sha = trained(tmp); out = Path(tmp) / 'export'
+            ex.export_run(manifest, sha, data, config, out)
+            self.assertNotIn('cuda_peak', (out / 'export-manifest.json').read_text())
+
     def test_no_holdout_reference_in_source(self):
         text = Path(ex.__file__).read_text(); needle = 'te' + 'st'
         self.assertFalse([l for l in text.splitlines() if needle in l.lower() and 'holdout_split_opened' not in l and 'latest' not in l.lower() and 'attest' not in l.lower() and 'contest' not in l.lower() and 'test (week 26)' not in l.lower() and 'ValueError' not in l])
