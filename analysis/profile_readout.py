@@ -76,11 +76,22 @@ def pack_side(h,s):
  ids=torch.stack((torch.arange(len(h))%17,torch.arange(len(h))%17,torch.arange(len(h))%10),dim=-1).to(s.device)
  return torch.cat((s,ids[:,None,:].expand(-1,s.shape[1],-1)),dim=-1)
 
+def model_origins(root):
+ src=(Path(root)/'src').resolve();out={}
+ for name,module in list(sys.modules.items()):
+  if (name=='vkgr' or name.startswith('vkgr.')) and getattr(module,'__file__',None):
+   path=Path(module.__file__).resolve()
+   if not path.is_relative_to(src):raise ValueError('cached model source outside fixed deployment: '+name)
+   out[name]=path.relative_to(src).as_posix()
+ return out
+
 def latency(req,preflight=False):
  # Reuse the established source-checker and immutable real-length timing functions.
  from analysis.postbatch_latency import checked_source
+ sys.path.insert(0,str(Path(req['profile_source']['root'])/'src'))
  check={**req,'stack_source':req['profile_source']};m=checked_source(check);source=m.load_lengths(req['lengths'],req['lengths_sha256'],2520)
  out={'status':'latency_preflight_ok' if preflight else 'latency_measured','scope':'model.users() only; not end-to-end','test_read':False,'checkpoint_read':False,'read_at_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'length_source':{k:v for k,v in source.items() if k!='lengths'},'source':{'profile_source':req['profile_source'],'bench_source':req['bench_source']}}
+ out['imported_model_sources']=model_origins(req['profile_source']['root'])
  if preflight:return out
  sys.path.insert(0,str(Path(req['profile_source']['root'])/'src'))
  import torch
@@ -88,6 +99,7 @@ def latency(req,preflight=False):
  from vkgr.retrieval_seqm1 import make_seqm1_model
  from vkgr.retrieval_profile import make_profile_model
  from vkgr.profile_io import input_guard
+ out['imported_model_sources']=model_origins(req['profile_source']['root'])
  torch.set_num_threads(1)
  if not torch.cuda.is_available():raise ValueError('actual CUDA required')
  original=m.synthetic_batch

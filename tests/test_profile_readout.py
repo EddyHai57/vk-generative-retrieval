@@ -25,3 +25,24 @@ class ProfileReadoutTests(unittest.TestCase):
   g=torch.Generator().manual_seed(7);h=torch.ones(2,4,dtype=torch.long);s=torch.zeros(2,4,6,dtype=torch.long);before=g.get_state().clone();packed=p.pack_side(h,s)
   self.assertEqual(packed.shape,(2,4,9));self.assertTrue(torch.equal(s,packed[...,:6]));self.assertTrue(torch.equal(before,g.get_state()))
 if __name__=='__main__':unittest.main()
+
+class TimingImportTests(unittest.TestCase):
+ def test_preflight_pins_model_import_root_before_loading_timing_source(self):
+  import sys,types
+  from unittest.mock import patch
+  from analysis import postbatch_latency
+  req={'profile_source':{'root':'/fixture/profile-source'},'lengths':'fixture','lengths_sha256':'a'*64,'bench_source':{}}
+  def checked(_):
+   self.assertEqual(sys.path[0],'/fixture/profile-source/src')
+   return types.SimpleNamespace(load_lengths=lambda *a:{'lengths':[1,50],'histogram':{'1':1,'50':1}})
+  with patch.object(sys,'path',list(sys.path)),patch.object(postbatch_latency,'checked_source',side_effect=checked):
+   self.assertEqual(p.latency(req,True)['status'],'latency_preflight_ok')
+
+class SourceOriginTests(unittest.TestCase):
+ def test_cached_foreign_model_package_is_rejected(self):
+  import sys,types
+  from unittest.mock import patch
+  with patch.dict(sys.modules,{'vkgr.fixture':types.SimpleNamespace(__file__='/fixture/old/src/vkgr/fixture.py')}):
+   with self.assertRaises(ValueError):p.model_origins('/fixture/fixed')
+  with patch.dict(sys.modules,{'vkgr.fixture':types.SimpleNamespace(__file__='/fixture/fixed/src/vkgr/fixture.py')}):
+   self.assertEqual(p.model_origins('/fixture/fixed')['vkgr.fixture'],'vkgr/fixture.py')
