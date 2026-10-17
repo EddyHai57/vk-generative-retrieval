@@ -42,3 +42,9 @@ queue/runs 身份检查包含 queue 全子目录；rejected 读取 reason，失�
 - 全库 `unittest discover -s tests` 额外试跑已出现 E/F、P3 gate与sandbox sysctl warning，长时间未完成，按root授权只停止此本机 synthetic 测试并保留私有日志；没有全库全绿结论，没有为旧基线改scope。
 - **服务器 preflight/CUDA/科学三train+各verify尚未执行**。CUDA工具只做真实工程 context/全A1 shape的两步 synthetic update、beam100 b1与新建内存 checkpoint reload/decode一致，ownPID/context-inclusive峰值按1.15×ceil256MiB。JSON明确 `engineering_only=true`、`memory_checkpoint_replay`、`server_full_runner_train_verify=false`；不得称科学train verified。服务器未执行完整 runner.run/verify，CPU完整runner证据与CUDA工程证据分开记账（root已确认此工程协议）。
 - 真实 input/source/fit receipt 任一绑定不符、科学设计接入变化、NaN/Inf、test/旧CP越界即停该支回root/Kiro；不得降门禁。只有 root 一次独立 code review、public scan/push、真实工程门禁齐后才可发布三科学训练。
+
+## 一次独立 review 后的工程修复
+
+独立 review 的两个 MEDIUM 只改本次新增 ops：deployment 现在要求 Git status clean，并对每个 requested file 同时核物理 SHA 与固定 commit 的 Git blob SHA；request 自报 hash 无法批准 dirty 或 assume-unchanged 隐藏的修改。launcher.prepare 的真实返回值与 job 一起按实际 JSON 编码核最终 `{"spec":job,"prepared":prepared}` envelope，沿 S1 的 47104 字节上限（达到即拒绝）；dry、train publish、verify publish 都执行，先检查再写 intent。拒绝保留 ALERT 并不重投。
+
+fresh RED 五个行为场景全 FAIL，GREEN 五项通过；另补 47103 允许 / 47104 拒绝的精确边界。FINAL 冻结卡从主仓原字节复制新增，SHA256 `da30eebb8caba93f19bfb0b4fc017ffe8f88d634eb75c0ae3f611e7f1b29e2ff`。没有改科学 runner、配置、算法、预算或原 A1/S1 文件；没有再跑全库 suite；真实服务器工程前置仍待 root。

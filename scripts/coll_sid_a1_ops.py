@@ -19,6 +19,7 @@ sys.dont_write_bytecode = True
 ENTRY = 'vkgr.coll_sid_a1_run'
 SEEDS = (42, 2024, 2025)
 READY_TIMEOUT_SECONDS = 30.
+LAUNCH_ENVELOPE_LIMIT = 48*1024-2048
 
 
 def digest(value):
@@ -112,12 +113,18 @@ def identity(req):
     actual = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
     if actual != req['source_commit'] or len(actual) != 40:
         raise ValueError('deployed commit differs from pinned source')
+    status = subprocess.check_output(['git', '-C', str(root), 'status', '--porcelain=v1', '--untracked-files=all'], text=True)
+    if status:
+        raise ValueError('deployed source worktree must be clean')
     if not req['files']:
         raise ValueError('explicit deployed file hashes required')
     for name, expected in req['files'].items():
         path = Path(name)
-        if path.is_absolute() or '..' in path.parts or sha(root/path) != expected:
+        if path.is_absolute() or '..' in path.parts or (root/path).is_symlink() or sha(root/path) != expected:
             raise ValueError('deployed source byte mismatch: ' + name)
+        blob = subprocess.check_output(['git', '-C', str(root), 'show', actual+':'+name])
+        if hashlib.sha256(blob).hexdigest() != expected:
+            raise ValueError('deployed source differs from fixed commit Git blob: ' + name)
     required = {'src/vkgr/coll_sid_a1_run.py', 'scripts/coll_sid_a1_ops.py'}
     if not required <= set(req['files']):
         raise ValueError('new runtime and ops files must be pinned')
@@ -350,6 +357,15 @@ def launcher_prepare(req, job):
     return launcher.prepare(job)
 
 
+def prepare_envelope(req, job):
+    prepared = launcher_prepare(req, job)
+    # Match the actual launcher mux payload, including generated prepared metadata.
+    envelope = json.dumps({'spec':job, 'prepared':prepared}, allow_nan=False).encode()
+    if len(envelope) >= LAUNCH_ENVELOPE_LIMIT:
+        raise ValueError('aux launch metadata exceeds envelope')
+    return prepared
+
+
 def dry_run(req):
     identity(req)
     pf, proof = load(req['preflight_receipt']), load(req['cuda_receipt'])
@@ -367,7 +383,7 @@ def dry_run(req):
         original = dict(wanted, vram_mib=None)
         if entry['job'] != original or entry['config_sha256'] != sha(wanted['config']):
             raise ValueError('preflight job/config differs from current deployment')
-        launcher_prepare(req, wanted)
+        prepare_envelope(req, wanted)
         entries.append(dict(entry, job=wanted))
     if len(entries) != 3:
         raise ValueError('all three seeds required')
@@ -405,9 +421,9 @@ def publish_intents(req, plan):
         job = entry['job']
         result = {'run_id': job['run_id'], 'job_sha256': digest(job), 'status': 'not_attempted'}
         if not stopped:
-            new(ops/f'publication-intent-{index:02d}.json', dict(result, status='attempting'))
             try:
-                launcher_prepare(req, job)
+                prepare_envelope(req, job)
+                new(ops/f'publication-intent-{index:02d}.json', dict(result, status='attempting'))
                 publish(req['queue'], req['runs'], job)
                 result['status'] = 'published'
             except Exception as exc:
@@ -467,8 +483,16 @@ def observe(req, entry):
             raise ValueError('training manifest binding/config mismatch')
         verify = derive_verify(job, sha(manifest_path), runs)
         if not exists(queue, runs, rid+'-verify'):
-            new(Path(req['ops'])/('verify-intent-'+rid+'.json'), {'run_id':rid+'-verify','manifest_sha256':sha(manifest_path),'status':'attempting'})
-            launcher_prepare(req, verify)
+            intent = Path(req['ops'])/('verify-intent-'+rid+'.json')
+            alert = Path(req['ops'])/('verify-ALERT-'+rid+'.json')
+            if intent.exists() or alert.exists():
+                raise FileExistsError('verify publication already attempted or rejected; no retry')
+            try:
+                prepare_envelope(req, verify)
+            except Exception as exc:
+                new(alert, {'status':'ALERT','run_id':rid+'-verify','reason':str(exc),'publication_intent_written':False})
+                raise
+            new(intent, {'run_id':rid+'-verify','manifest_sha256':sha(manifest_path),'status':'attempting'})
             publish(queue, runs, verify)
         if verify_terminal.exists():
             candidates = where(queue, rid+'-verify')['claimed']
