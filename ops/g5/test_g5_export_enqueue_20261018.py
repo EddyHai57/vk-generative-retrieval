@@ -9,6 +9,7 @@ from unittest import mock
 
 spec = importlib.util.spec_from_file_location('enq', Path(__file__).with_name('g5_export_enqueue_20261018.py'))
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.DEPLOY_TEST = '/workspace/vkgr-g5-p-export100-v2'
 
 
 def fake_root(tmp, seeds=(42, 2024, 2025)):
@@ -37,46 +38,57 @@ class EnqueueTests(unittest.TestCase):
     def test_pf_job_shape_and_dry_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = fake_root(tmp)
-            got = run({'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
+            got = run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
             job = got['jobs'][0]
-            self.assertEqual(job['run_id'], 'g5-p-top100-pf-s42'); self.assertEqual(job['cwd'], m.DEPLOY)
+            self.assertEqual(job['run_id'], 'g5-p-top100-pf-s42'); self.assertEqual(job['cwd'], m.DEPLOY_TEST)
             self.assertEqual(job['argv'][3:5], [m.MODULE, 'preflight']); self.assertIn('p-seqm1-mean-s42', job['argv'])
             self.assertNotIn('--output', job['argv']); self.assertEqual(list((root / 'queue/pending').iterdir()), [])
 
     def test_export_and_verify_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = fake_root(tmp)
-            e = run({'root': str(root), 'action': 'dry', 'stage': 'export', 'seeds': [2024], 'vram_mib': 1024, 'wall_hours': 1})['jobs'][0]
+            e = run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'export', 'seeds': [2024], 'vram_mib': 1024, 'wall_hours': 1})['jobs'][0]
             self.assertEqual(e['argv'][e['argv'].index('--output') + 1], str(root / 'runs/g5-p-top100-s2024/out'))
-            v = run({'root': str(root), 'action': 'dry', 'stage': 'verify', 'seeds': [2024], 'vram_mib': 1024, 'wall_hours': 1, 'export_sha': {'2024': 'b' * 64}})['jobs'][0]
+            v = run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'verify', 'seeds': [2024], 'vram_mib': 1024, 'wall_hours': 1, 'export_sha': {'2024': 'b' * 64}})['jobs'][0]
             self.assertEqual(v['run_id'], 'g5-p-top100-s2024-verify'); self.assertEqual(v['inputs'][-1], str(root / 'runs/g5-p-top100-s2024/out/export-manifest.json'))
             self.assertIn('--export-manifest-sha', v['argv'])
             with self.assertRaises(ValueError):
-                run({'root': str(root), 'action': 'dry', 'stage': 'verify', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
+                run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'verify', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
 
     def test_submit_writes_pending_and_refuses_duplicates(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = fake_root(tmp)
-            got = run({'root': str(root), 'action': 'submit', 'stage': 'pf', 'seeds': [42, 2025], 'vram_mib': 1024, 'wall_hours': 1})
+            got = run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'submit', 'stage': 'pf', 'seeds': [42, 2025], 'vram_mib': 1024, 'wall_hours': 1})
             self.assertEqual(len(got['written']), 2); self.assertEqual(len(list((root / 'queue/pending').iterdir())), 2)
             with self.assertRaisesRegex(ValueError, 'already exists'):
-                run({'root': str(root), 'action': 'submit', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
+                run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'submit', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
             (root / 'runs/g5-p-top100-s2024').mkdir(parents=True)
             with self.assertRaisesRegex(ValueError, 'already exists'):
-                run({'root': str(root), 'action': 'dry', 'stage': 'export', 'seeds': [2024], 'vram_mib': 1024, 'wall_hours': 1})
+                run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'export', 'seeds': [2024], 'vram_mib': 1024, 'wall_hours': 1})
 
     def test_generation_tag_gives_new_run_ids_and_output_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = fake_root(tmp)
             (root / 'queue/rejected' / '01-g5-p-top100-pf-s42.json').write_text('{}')
-            got = run({'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, 'gen': 'v2'})
+            got = run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, 'gen': 'v2'})
             self.assertEqual(got['jobs'][0]['run_id'], 'g5-p-top100-v2-pf-s42')
-            e = run({'root': str(root), 'action': 'dry', 'stage': 'export', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, 'gen': 'v2'})['jobs'][0]
+            e = run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'export', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, 'gen': 'v2'})['jobs'][0]
             self.assertIn('g5-p-top100-v2-s42/out', e['argv'][e['argv'].index('--output') + 1])
             with self.assertRaises(ValueError):
-                run({'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, 'gen': 'v2/../x'})
+                run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, 'gen': 'v2/../x'})
             with self.assertRaisesRegex(ValueError, 'already exists'):
-                run({'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
+                run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
+
+    def test_pinned_delta_in_every_command_and_deploy_path_validated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fake_root(tmp)
+            for stage, extra in (('pf', {}), ('export', {}), ('verify', {'export_sha': {'42': 'b' * 64}})):
+                job = run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': stage, 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1, **extra})['jobs'][0]
+                i = job['argv'].index('--pin-new-path')
+                self.assertEqual(job['argv'][i + 1], 'src/vkgr/retrieval_seqm1_export100.py=462a69a16aed0b73f0205b60e538a1dfc16a6fb37d3379f98f251ec49b76d811')
+            for bad in ('/workspace/other', '/workspace/vkgr-g5-p-export100-v2/../x', None):
+                with self.assertRaises(ValueError):
+                    run({'deploy': bad, 'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
 
     def test_identity_drift_and_bad_resources_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -84,9 +96,9 @@ class EnqueueTests(unittest.TestCase):
             path = next((root / 'queue/claimed').glob('*s42-verify.json')); job = json.loads(path.read_text())
             job['argv'][job['argv'].index('--manifest-sha') + 1] = '0' * 64; path.write_text(json.dumps(job))
             with self.assertRaisesRegex(ValueError, 'frozen table'):
-                run({'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
+                run({'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [42], 'vram_mib': 1024, 'wall_hours': 1})
             for bad in ({'vram_mib': 100}, {'wall_hours': 9}, {'seeds': [7]}, {'stage': 'train'}):
-                req = {'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [2024], 'vram_mib': 1024, 'wall_hours': 1, **bad}
+                req = {'deploy': m.DEPLOY_TEST, 'root': str(root), 'action': 'dry', 'stage': 'pf', 'seeds': [2024], 'vram_mib': 1024, 'wall_hours': 1, **bad}
                 with self.assertRaises(ValueError):
                     run(req)
 

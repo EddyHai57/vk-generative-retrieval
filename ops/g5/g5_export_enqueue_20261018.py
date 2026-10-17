@@ -8,12 +8,15 @@ P anchor identity that differs from the frozen table. Never touches an existing 
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
 
 ROOT = Path('/workspace/vkgr-infra01-root')
-DEPLOY = '/workspace/vkgr-g5-p-export100-v1'
+DEPLOY_PATTERN = r'/workspace/vkgr-g5-p-export100-v[0-9]+'
+# Frozen in the G5 FINAL card section 8: the only new path allowed in the source ledger, with its sha256.
+PINNED_DELTA = {'src/vkgr/retrieval_seqm1_export100.py': '462a69a16aed0b73f0205b60e538a1dfc16a6fb37d3379f98f251ec49b76d811'}
 MODULE = 'vkgr.retrieval_seqm1_export100'
 FROZEN = {  # frozen identity table (G5 FINAL card section 7): seed -> (config sha256, train manifest sha256)
     42: ('e88dc757ff4085af020efc1f070ebba8df54876e85adf68120dff730f983b621', 'bdb0e39d6abb721ac8de78dbdd11ebf2da2614b0e25292c3154ca096ec8cdc6e'),
@@ -34,7 +37,9 @@ def run_id(stage, seed, gen=''):
     return f'g5-p-top100-{gen + "-" if gen else ""}{"pf-" if stage == "pf" else ""}s{seed}{"-verify" if stage == "verify" else ""}'
 
 
-def build(root, stage, seed, vram_mib, wall_hours, export_sha=None, gen=''):
+def build(root, stage, seed, vram_mib, wall_hours, export_sha=None, gen='', deploy=None):
+    if type(deploy) is not str or re.fullmatch(DEPLOY_PATTERN, deploy) is None:
+        raise ValueError('bad deployment path')
     if gen and (len(gen) > 8 or not gen.isalnum()):
         raise ValueError('bad generation tag')
     if stage not in STAGES or seed not in FROZEN or type(vram_mib) is not int or vram_mib < 256 or not 0 < wall_hours <= 4:
@@ -50,6 +55,8 @@ def build(root, stage, seed, vram_mib, wall_hours, export_sha=None, gen=''):
     out_dir = root / 'runs' / run_id('export', seed, gen) / 'out'
     cmd = [argv[0], '-B', '-m', MODULE, STAGES[stage], '--inputs', get('--inputs'), '--inputs-sha', get('--inputs-sha'), '--config', get('--config'),
            '--config-sha', config_sha, '--manifest', pm, '--manifest-sha', manifest_sha, '--run-id', source_run]
+    for path, digest in sorted(PINNED_DELTA.items()):
+        cmd += ['--pin-new-path', f'{path}={digest}']
     inputs = list(t['inputs'])
     if stage == 'export':
         cmd += ['--output', str(out_dir)]
@@ -59,7 +66,7 @@ def build(root, stage, seed, vram_mib, wall_hours, export_sha=None, gen=''):
         cmd += ['--export-manifest', str(out_dir / 'export-manifest.json'), '--export-manifest-sha', export_sha]
         inputs.append(str(out_dir / 'export-manifest.json'))
     job = dict(t)
-    job.update(argv=cmd, config=str(Path(DEPLOY) / 'configs/seqm1' / f'{source_run}.json'), cwd=DEPLOY, inputs=inputs,
+    job.update(argv=cmd, config=str(Path(deploy) / 'configs/seqm1' / f'{source_run}.json'), cwd=deploy, inputs=inputs,
                run_id=run_id(stage, seed, gen), vram_mib=vram_mib, wall_hours=float(wall_hours), disk_gib=1 if stage != 'export' else 1)
     return job
 
@@ -74,7 +81,7 @@ def main():
     req = json.loads(sys.stdin.read(65537))
     root = Path(req.get('root', ROOT)); jobs = []
     for seed in req['seeds']:
-        job = build(root, req['stage'], seed, req['vram_mib'], req['wall_hours'], (req.get('export_sha') or {}).get(str(seed)), req.get('gen', ''))
+        job = build(root, req['stage'], seed, req['vram_mib'], req['wall_hours'], (req.get('export_sha') or {}).get(str(seed)), req.get('gen', ''), req.get('deploy'))
         if exists_anywhere(root, job['run_id']):
             raise ValueError('run id already exists: ' + job['run_id'])
         jobs.append(job)

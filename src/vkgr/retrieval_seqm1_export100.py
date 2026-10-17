@@ -147,7 +147,7 @@ def preflight(manifest_path, manifest_sha, data, config, device='cpu', check=Non
     return {'status': 'preflight_ok', 'manifest_sha256': manifest_sha, 'best_epoch': best['epoch'], 'best_checkpoint_sha256': best['sha256'],
             'queries': len(original), 'original_depths': sorted(depths), 'catalog': len(data['catalog']),
             'original_predictions_sha256': evaluation['predictions_sha256'], 'forward_pass_run': False, 'written': False,
-            'source_identity': 'pinned_delta_ok', **provenance, 'pinned_delta': dict(sorted(delta.items()))}
+            'source_identity': 'pinned_delta_ok', 'cuda_peak_scope': 'no_forward_pass_not_valid_for_declaration', **provenance, 'pinned_delta': dict(sorted(delta.items()))}
 
 
 def export_run(manifest_path, manifest_sha, data, config, output, device='cpu', check=None, inputs_binding=None, run_id=None, delta=None):
@@ -212,9 +212,12 @@ def parse_delta(items):
 def peak_mib():
     """Measured CUDA peak (allocated and reserved, MiB) of this process; None without CUDA. Reported on stdout only, never in manifests."""
     import torch
-    if not torch.cuda.is_available():
+    try:
+        if not torch.cuda.is_available():
+            return None
+        return {'allocated': round(torch.cuda.max_memory_allocated() / 2 ** 20, 1), 'reserved': round(torch.cuda.max_memory_reserved() / 2 ** 20, 1)}
+    except Exception:   # a reporting failure must never change the exit code after outputs were published
         return None
-    return {'allocated': round(torch.cuda.max_memory_allocated() / 2 ** 20, 1), 'reserved': round(torch.cuda.max_memory_reserved() / 2 ** 20, 1)}
 
 
 def main(argv=None):

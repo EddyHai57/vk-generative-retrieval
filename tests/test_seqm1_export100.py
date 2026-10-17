@@ -186,9 +186,10 @@ class ExportTests(unittest.TestCase):
     def test_cli_rejects_run_id_not_matching_run_directory(self):
         with mock.patch.object(torch.cuda, 'is_available', lambda: True), mock.patch.object(ex, 'read_pinned', lambda p, d: {}), \
                 mock.patch.object(ex.sm, 'validate_config', lambda c: c), mock.patch.object(ex.fr, 'validate_inputs', lambda v, f: {'disk_cap_bytes': 1}):
-            code = ex.main(['preflight', '--inputs', 'i', '--inputs-sha', 'a', '--config', 'c', '--config-sha', 'b', '--manifest', '/x/runs/p-a/out/manifest.json',
-                            '--manifest-sha', 'c', '--run-id', 'p-other', '--pin-new-path', MODULE_PATH + '=' + 'a' * 64])
-        self.assertEqual(code, 2)
+            with mock.patch('sys.stderr', new_callable=__import__('io').StringIO) as err:
+                code = ex.main(['preflight', '--inputs', 'i', '--inputs-sha', 'a', '--config', 'c', '--config-sha', 'b', '--manifest', '/x/runs/p-a/out/manifest.json',
+                                '--manifest-sha', 'c', '--run-id', 'p-other', '--pin-new-path', MODULE_PATH + '=' + 'a' * 64])
+        self.assertEqual(code, 2); self.assertIn('run id does not match the run directory', err.getvalue())
 
     def test_peak_mib_none_without_cuda_and_never_in_manifest(self):
         with mock.patch.object(torch.cuda, 'is_available', lambda: False):
@@ -253,6 +254,25 @@ class ExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'ledger differs'):
             self._export_with(mutate)
 
+    def test_every_non_source_binding_key_is_strict_and_commit_only_difference_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data, config, manifest, sha = trained(tmp)
+            rows, queries = fr._view(data, config['history_len']); model = run._model(data, config, 'cpu')
+            real = ex.b1.source_identity
+            stored = json.loads(manifest.read_text())['binding']
+            current = run.binding_for4(data, config, rows, queries, model, 'cpu', None)
+            delta = pinned()
+            ex.check_binding(stored, current, delta)                                    # baseline passes
+            self.assertEqual(stored['source']['git_commit'], 'train-commit')
+            keys = [k for k in stored if k != 'source']
+            self.assertGreaterEqual(len(keys), 10)
+            for key in keys:
+                forged = {**current, key: 'forged' if current[key] != 'forged' else 'forged2'}
+                with self.assertRaisesRegex(ValueError, f'binding mismatch: {key}$'):
+                    ex.check_binding(stored, forged, delta)
+            commit_only = {**current, 'source': {**current['source'], 'git_commit': 'another', 'git_dirty': True, 'source_sha': '0' * 64}}
+            self.assertEqual(ex.check_binding(stored, commit_only, delta)['export_source_commit'], 'another')
+
     def test_extra_or_missing_binding_field_fails(self):
         source = {'python': '3', 'dependencies': {}, 'lock_sha': 'l', 'files': {'a.py': '1' * 64}, 'git_commit': 'c', 'git_dirty': False, 'source_sha': 's'}
         delta = {'n.py': '2' * 64}; later = {**source, 'files': {'a.py': '1' * 64, 'n.py': '2' * 64}, 'git_commit': 'd'}
@@ -291,6 +311,15 @@ class ExportTests(unittest.TestCase):
         referrers = [p.name for p in (root / 'src/vkgr').glob('*.py') if p.name != 'retrieval_seqm1_export100.py' and 'export100' in p.read_text()]
         self.assertEqual(referrers, [])
 
+    def test_preflight_peak_is_labelled_not_valid_for_declaration_and_peak_cannot_break_publish(self):
+        import io
+        with tempfile.TemporaryDirectory() as tmp:
+            data, config, manifest, sha = trained(tmp)
+            self.assertEqual(xp(manifest, sha, data, config)['cuda_peak_scope'], 'no_forward_pass_not_valid_for_declaration')
+        with mock.patch.object(torch.cuda, 'is_available', lambda: True), \
+                mock.patch.object(torch.cuda, 'max_memory_allocated', side_effect=RuntimeError('boom')):
+            self.assertIsNone(ex.peak_mib())
+
     def test_no_holdout_reference_in_source(self):
         text = Path(ex.__file__).read_text(); needle = 'te' + 'st'
         self.assertFalse([l for l in text.splitlines() if needle in l.lower() and 'holdout_split_opened' not in l and 'latest' not in l.lower() and 'attest' not in l.lower() and 'contest' not in l.lower() and 'test (week 26)' not in l.lower() and 'ValueError' not in l])
@@ -298,9 +327,10 @@ class ExportTests(unittest.TestCase):
     def test_cli_requires_cuda_and_pins(self):
         with mock.patch.object(torch.cuda, 'is_available', lambda: False), mock.patch.object(ex, 'read_pinned', lambda p, d: {}), \
                 mock.patch.object(ex.sm, 'validate_config', lambda c: c), mock.patch.object(ex.fr, 'validate_inputs', lambda v, f: {'disk_cap_bytes': 1}):
-            code = ex.main(['export', '--inputs', 'i', '--inputs-sha', 'a', '--config', 'c', '--config-sha', 'b', '--manifest', 'm',
-                            '--manifest-sha', 'c', '--run-id', 'r', '--output', 'o', '--pin-new-path', MODULE_PATH + '=' + 'a' * 64])
-        self.assertEqual(code, 2)
+            with mock.patch('sys.stderr', new_callable=__import__('io').StringIO) as err:
+                code = ex.main(['export', '--inputs', 'i', '--inputs-sha', 'a', '--config', 'c', '--config-sha', 'b', '--manifest', 'm',
+                                '--manifest-sha', 'c', '--run-id', 'r', '--output', 'o', '--pin-new-path', MODULE_PATH + '=' + 'a' * 64])
+        self.assertEqual(code, 2); self.assertIn('actual CUDA environment required', err.getvalue())
 
 
 if __name__ == '__main__':
