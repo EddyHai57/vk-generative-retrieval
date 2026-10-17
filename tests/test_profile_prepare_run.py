@@ -37,4 +37,13 @@ class EntryTests(unittest.TestCase):
             bad={**m,'fit_input_sha256':'0'*64};badsha=prep.write_new(out/'bad.json',bad)
             with self.assertRaises(ValueError):prep.load_profiles(out/'bad.json',badsha,{'rows':rows,'queries':qs},'a'*64)
 
+    def test_full_synthetic_cli_under_runtime_guard(self):
+        import json,os,subprocess,sys,tempfile
+        from pathlib import Path
+        from vkgr import retrieval_profile_run as run
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();cfg=root/'config.json';cfg.write_text(json.dumps({**run.default_config('u2'),'batch_size':16,'max_epochs':6,'min_epochs':2}))
+            cp=subprocess.run([sys.executable,'-B','-m','vkgr.retrieval_profile_run','synthetic-train','--config',str(cfg),'--output',str(root/'run')],capture_output=True,text=True,env={**os.environ,'OMP_NUM_THREADS':'1','MKL_NUM_THREADS':'1','OPENBLAS_NUM_THREADS':'1'},timeout=30)
+            self.assertEqual(cp.returncode,0,cp.stderr);self.assertEqual(json.loads(cp.stdout)['status'],'complete')
+
 if __name__=='__main__':unittest.main()
