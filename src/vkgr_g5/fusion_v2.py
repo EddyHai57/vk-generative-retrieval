@@ -119,7 +119,7 @@ def nearest_rank(sorted_values, p):
     return sorted_values[max(rank, 1) - 1]
 
 
-def bootstrap_intervals(diffs, n_resamples=BOOT_N, seed=BOOT_SEED):
+def bootstrap_intervals(diffs, n_resamples, seed):
     """``diffs``: ordered dict name -> per-query integer difference in {-1,0,1}; one shared index stream for all comparisons."""
     names = list(diffs)
     n = len(diffs[names[0]])
@@ -313,7 +313,8 @@ def run(routes, queries, catalog_size, seeds=(42, 2024, 2025)):
         out['localization'] = {name: localization(main_vectors, name, queries, g_short[42]) for name in ('C5', 'C6')}
     else:
         missing = [x for x in ('C1', 'C4', 'C5', 'C6', 'C7') if x not in main_vectors]
-        out['paired'] = out['mechanical_conditions'] = out['localization'] = f'NOT_RUN(main-table rows missing: {missing})'
+        reason = 'seed 42 not requested' if 42 not in seeds else not_run.get('seed42', f'seed 42 ran but rows are missing: {missing}')
+        out['paired'] = out['mechanical_conditions'] = out['localization'] = f'NOT_RUN(main table (seed 42) unavailable: {reason}; missing rows {missing})'
     for name, entry in out['rows'].items():
         oov_hits = entry['slices'].get('oov', {}).get('hits')
         entry['oov_hits'] = oov_hits

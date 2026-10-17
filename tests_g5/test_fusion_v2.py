@@ -210,6 +210,28 @@ class HandComputedReportTests(unittest.TestCase):
         self.assertEqual(self.cell('seed42:C5', 'g_short:full')['vs_C1'], {'new': 0, 'lost': 1, 'net': -1})                     # q3 only
         self.assertEqual(c5['pool_size']['mean'], (100 + 101 + 100 + 200 + 198) / 5)
 
+    def test_final_distinct_items_and_final_coverage_hand_computed(self):
+        # C1: P top50 for every query -> items 0..49 ; C2: union of G top-50 lists ; C4: P ranks 1..25 + Pop ranks 1..25 ; C5: see comments
+        # C5 finals: q0 {0..49}; q1 {0..48,500}; q2 {0..48,77}; q3 {0..24,900..924}; q4 {0..25,1000..1023}  -> 50+1+1+25+24 = 101 distinct
+        for row, distinct in (('C1', 50), ('C2', 104), ('C4', 50), ('C5', 101)):
+            cov = self.out['rows'][f'seed42:{row}']['coverage']
+            self.assertEqual(cov['final_distinct_items'], distinct, row); self.assertAlmostEqual(cov['final_coverage'], distinct / 2000, msg=row)
+
+    def test_run_level_localization_is_hand_computed_and_uses_seed_42_g_lengths(self):
+        # low-support set = {q0,q1,q2,q4}: q1,q4 by support/popularity, q0,q2,q4 by short G list (seed-42 lengths 1,2,1,100,99); q3 is full and well supported
+        # net vs C1 inside the set: q1 +1, q2 +1 -> 2 ; total net = 4 - 3 = 1 ; C6 has the same hit set as C5 here
+        loc = self.out['localization']
+        self.assertEqual(list(loc), ['C5', 'C6'])
+        want = {'low_support_queries': 4, 'net_in_set': 2, 'net_total': 1, 'localized': False}
+        self.assertEqual(loc['C5'], want); self.assertEqual(loc['C6'], want)
+
+    def test_not_run_text_names_the_reason(self):
+        out = f.run({k: v for k, v in self.routes.items() if k != ('P', 2024)}, self.queries, 2000, seeds=(42, 2024))
+        self.assertIn('P2024', out['paired']); self.assertIn('seed 42', out['paired'])
+        out = f.run(self.routes, self.queries, 2000, seeds=(2024,))
+        self.assertIn('seed 42 not requested', out['paired']); self.assertEqual(out['paired'], out['localization']); self.assertEqual(out['paired'], out['mechanical_conditions'])
+        self.assertEqual(sorted(out['rows']), ['seed2024:C1', 'seed2024:C4', 'seed2024:C5'])
+
     def test_oov_hits_are_surfaced_as_an_anomaly_flag(self):
         queries = [dict(q) for q in self.queries]; queries[0].update(oov=True, support='oov', popularity_group='oov')
         out = f.run(self.routes, queries, 2000, seeds=(42,))
@@ -249,7 +271,7 @@ class HandComputedReportTests(unittest.TestCase):
         out = f.run({k: v for k, v in self.routes.items() if k != ('P', 2024)}, self.queries, 2000, seeds=(42,))
         self.assertIn('P2024', out['not_run']['seed42']); self.assertEqual(out['rows'], {})
         for key in ('paired', 'mechanical_conditions', 'localization'):
-            self.assertTrue(out[key].startswith('NOT_RUN(main-table rows missing'), key)
+            self.assertTrue(out[key].startswith('NOT_RUN(main table (seed 42) unavailable'), key)
 
 
 class PairedTableTests(unittest.TestCase):
