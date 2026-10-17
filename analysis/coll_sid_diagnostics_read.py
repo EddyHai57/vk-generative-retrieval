@@ -118,7 +118,8 @@ def read_aggregate(ref):
     return v
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--stdin',action='store_true',required=True);parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--stdin',action='store_true');args=parser.parse_args()
+    require(args.stdin or sys.argv[0]=='-c','--stdin required for file invocation')
     raw=sys.stdin.buffer.read(65537);require(len(raw)<=65536,'request size');request=decode(raw);require(set(request)=={'schema','files'} and request['schema']=='coll-sid-aggregate-request-v1','request schema')
     refs=request['files'];require(type(refs) is list and len(refs)==8,'exactly eight aggregate refs')
     identities={(x['variant'],x['role'],x['seed']) for x in refs}

@@ -1,4 +1,4 @@
-import copy, hashlib, json, tempfile, unittest
+import copy, hashlib, json, tempfile, unittest, subprocess, sys
 from pathlib import Path
 from analysis import coll_sid_diagnostics_read as r
 
@@ -30,6 +30,11 @@ class Tests(unittest.TestCase):
   r.validate_mapping(v)
   v['A']['leaves']['predictions']=[1]
   with self.assertRaises(ValueError):r.validate_mapping(v)
+ def test_bare_stdin_exec_without_file(self):
+  source=Path(r.__file__).read_text()
+  result=subprocess.run([sys.executable,'-c',source],input='{}',text=True,capture_output=True)
+  self.assertNotIn('--stdin',result.stderr)
+  self.assertIn('request schema',result.stderr)
  def test_file_guards(self):
   with tempfile.TemporaryDirectory() as t:
    p=Path(t).resolve()/'runs'/'sid-coll-c1-verify42-v1'/'out'/'prediction-diagnostics.json';p.parent.mkdir(parents=True);p.write_text(json.dumps(fixture()))

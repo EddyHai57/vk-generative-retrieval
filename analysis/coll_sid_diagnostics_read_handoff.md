@@ -6,6 +6,8 @@
 
 `python analysis/coll_sid_diagnostics_read.py --stdin < PRIVATE_REQUEST.json`
 
+main05 可 `python -c SOURCE` 直接读 stdin，无需 `--stdin` 或 `__file__`；文件调用仍需 `--stdin`。
+
 stdin 为 JSON：`schema` 固定 `coll-sid-aggregate-request-v1`；`files` 正好八条，每条字段为 `path`（私有绝对路径）、`sha256`（原 proof pin）、`run_id`、`role`（mapping 或 prediction）、`variant`（C1 或 C2）、`seed`（mapping 为 null；prediction 为 42/2024/2025）。每 variant 一 mapping、三 prediction。reader 不写文件，stdout 为 `coll-sid-aggregate-read-v1`，含 UTC、来源 pins、八个核验后 aggregate。
 
 basename 只接受 mapping-diagnostics.json / prediction-diagnostics.json；路径必须对应 runs/run_id/out；禁止 symlink；单文件最多 2MiB；JSON duplicate/nonfinite 拒绝；严格小 aggregate schema，拒绝额外预测数组。失败 exit 非零，不输出部分科学结果。输出 verified 只表示有限 aggregate 核验，不代替训练原 raw verified 验收。
