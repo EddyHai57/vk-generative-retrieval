@@ -2,7 +2,7 @@
 
 Stages ``asm-pf`` (check-only preflight) and ``asm`` (writing run), one job per G anchor seed. Each job clones the envelope of the accepted
 ``g-coll-a1-c1-s<seed>-verify`` claimed job (same interpreter, env, resources, scheduler pin, every input pin), replaces the command by
-``python -B -m vkgr_g5.assemble_g`` and prepends nothing but the fusion source to the G deployment's PYTHONPATH. The queue root is never taken
+``python -B -m vkgr_g5.assemble_g`` and appends the fusion deployment's source after the G deployment's source on PYTHONPATH (G first, so G's ``vkgr`` shadows any other). The queue root is never taken
 from the request. ``dry`` validates and prints; ``submit`` writes to queue/pending (tmp + rename). Refuses a run id that already exists.
 """
 import hashlib
@@ -35,7 +35,7 @@ def template(root, seed):
 
 
 def build(root, stage, seed, g_deploy, fusion_deploy, vram_mib, wall_hours, gen=''):
-    if stage not in STAGES or seed not in MANIFEST_SHA or type(vram_mib) is not int or vram_mib < 256 or not 0 < wall_hours <= 4:
+    if stage not in STAGES or seed not in MANIFEST_SHA or type(vram_mib) is not int or not 256 <= vram_mib <= 6656 or not 0 < wall_hours <= 4:
         raise ValueError('bad stage/seed/resources')
     if gen and (len(gen) > 8 or not gen.isalnum()):
         raise ValueError('bad generation tag')
@@ -68,6 +68,8 @@ def exists_anywhere(root, rid):
 
 def main(root=ROOT):
     req = json.loads(sys.stdin.read(65537)); root = Path(root); jobs = []
+    if type(req.get('seeds')) is not list or len(set(req['seeds'])) != len(req['seeds']):
+        raise ValueError('seeds must be a list without duplicates')
     for seed in req['seeds']:
         job = build(root, req['stage'], seed, req.get('g_deploy'), req.get('fusion_deploy'), req['vram_mib'], req['wall_hours'], req.get('gen', ''))
         if exists_anywhere(root, job['run_id']):

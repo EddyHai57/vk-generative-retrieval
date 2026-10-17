@@ -8,12 +8,25 @@ regroups the archived rows with those labels and requires the per-slice metrics 
 It never opens a checkpoint, never decodes, never touches a model, and has no held-out split path. Output: one NEW file.
 """
 import argparse
+import hashlib
 import json
+import resource
+import subprocess
 import sys
 from pathlib import Path
 
 SCHEMA = 'g5-g-assembly-v1'
 POP_K = 100
+
+
+def script_sha256():
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def max_rss_mib():
+    """Process high-water RSS in MiB (ru_maxrss is KiB on Linux, bytes on macOS)."""
+    value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return round(value / (1024 * 1024 if sys.platform == 'darwin' else 1024), 1)
 
 
 def labels(stats, queries, item_groups, user_groups):
@@ -62,7 +75,7 @@ def pop_ranking(stats, catalog, k=POP_K):
     return ranking
 
 
-def assemble_core(value, run_dir, context, tokens, read_evaluation, ev, metrics, canonical_bytes, pop_k=POP_K):
+def assemble_core(value, run_dir, context, tokens, read_evaluation, ev, metrics, canonical_bytes, pop_k=POP_K, digest=None):
     """Everything after the context exists. ``read_evaluation`` is the project's ``_read_evaluation(kind, run, record, context, tokens)``."""
     best = value['best']; epoch = best['epoch']
     if type(epoch) is not int or not 1 <= epoch <= len(value['epochs']):
@@ -70,6 +83,8 @@ def assemble_core(value, run_dir, context, tokens, read_evaluation, ev, metrics,
     record = value['epochs'][epoch - 1]
     if record.get('epoch') != epoch or record['evaluation']['kind'] != 'query_evaluation':
         raise ValueError('best epoch must carry a query_evaluation archive')
+    if best.get('sha256') != record['checkpoint_sha256']:
+        raise ValueError('best checkpoint hash differs from the best epoch record')
     aggregate, computation, rows = read_evaluation(record['evaluation']['kind'], Path(run_dir), record, context, tokens)
     if canonical_bytes(aggregate) != canonical_bytes(record['metrics']) or computation != record['evaluation']['computation_sha256']:
         raise ValueError('archive replay differs from the recorded epoch metrics')
@@ -95,6 +110,7 @@ def assemble_core(value, run_dir, context, tokens, read_evaluation, ev, metrics,
             'checkpoint_sha256_recorded': record['checkpoint_sha256'], 'best_metric': list(best['metric']),
             'slice_statistics_manifest_sha256': stats.manifest_sha256, 'thresholds': list(stats.thresholds),
             'item_groups': list(ev.ITEM_GROUPS), 'user_groups': list(ev.USER_GROUPS), 'g_short_queries': short,
+            'catalog_digest': digest(list(context.catalog)) if digest else None,
             'checks': {'archive_replay_equal': True, 'slice_consistency_equal': True, 'metric_equals_best': True},
             'pop': {'ranking': pop, 'counts_depth': pop_k, 'hits_at_50': pop_hits, 'tie_rule': '(-count, item_id)'}, 'rows': out_rows}
 
@@ -111,9 +127,11 @@ def main(argv=None):
     try:
         import vkgr
         root = Path(args.line_root).resolve()
-        if root not in Path(vkgr.__file__).resolve().parents:
+        if Path(vkgr.__file__).resolve().parent != root / 'src' / 'vkgr':
             raise ValueError('vkgr is not imported from --line-root')
         out = Path(args.output).resolve(); scratch = Path(args.scratch).resolve()
+        if out == scratch or out in scratch.parents or scratch in out.parents:
+            raise ValueError('output and scratch must be distinct, non-nested paths')
         for path in (out, scratch):
             if root in path.parents or path.exists() or path.with_name(path.name + '.partial').exists():
                 raise ValueError('output and scratch must be new paths outside the deployment')
@@ -139,19 +157,20 @@ def main(argv=None):
         if fresh['files'] != recorded['source']['files'] or fresh['source_sha256'] != recorded['source']['source_sha256']:
             raise ValueError('deployment source differs from the run source ledger')
         tokens = sd.SIDTokensLD(context.codec, config['history_len'])
-        record = assemble_core(value, manifest_path.parent, context, tokens, b1._read_evaluation, ev, metrics, canonical_bytes)
-        record.update(run_manifest_sha256=args.manifest_sha, seed=config['seed'], run_id=manifest_path.parent.parent.name)
+        record = assemble_core(value, manifest_path.parent, context, tokens, b1._read_evaluation, ev, metrics, canonical_bytes, digest=cr._digest)
+        record.update(run_manifest_sha256=args.manifest_sha, seed=config['seed'], run_id=manifest_path.parent.parent.name, script_sha256=script_sha256())
         import torch
         summary = {'run_id': record['run_id'], 'seed': record['seed'], 'best_epoch': record['best_epoch'], 'query_count': record['query_count'],
                    'evaluation_manifest_sha256': record['evaluation_manifest_sha256'], 'computation_sha256': record['computation_sha256'],
                    'slice_statistics_manifest_sha256': record['slice_statistics_manifest_sha256'], 'g_short_queries': record['g_short_queries'],
-                   'pop_hits_at_50': record['pop']['hits_at_50'], 'cuda_initialized': bool(torch.cuda.is_initialized()), 'manifest_sha256': args.manifest_sha}
+                   'pop_hits_at_50': record['pop']['hits_at_50'], 'cuda_initialized': bool(torch.cuda.is_initialized()), 'manifest_sha256': args.manifest_sha,
+                   'script_sha256': record['script_sha256'], 'catalog_digest': record['catalog_digest'], 'max_rss_mib': max_rss_mib(), 'vkgr_file': str(Path(vkgr.__file__).resolve())}
         if args.check_only:
             print(json.dumps({'status': 'preflight_ok', 'written': False, **summary})); return 0
         out.parent.mkdir(parents=True, exist_ok=True)
         sha = ge._write_json(out, record)             # exclusive-create ('xb'), canonical bytes
         print(json.dumps({'status': 'complete', 'output_sha256': sha, **summary})); return 0
-    except (ValueError, KeyError, TypeError, OSError, RuntimeError) as exc:
+    except (ValueError, KeyError, TypeError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
         print(f'ERROR G5-ASSEMBLE-G gate failed: {type(exc).__name__}: {exc}', file=sys.stderr); return 2
 
 

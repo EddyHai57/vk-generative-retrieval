@@ -10,6 +10,8 @@ from unittest import mock
 spec = importlib.util.spec_from_file_location('aenq', Path(__file__).with_name('g5_assemble_enqueue_20261018.py'))
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 G_DEP, F_DEP = '/workspace/vkgr-coll-a1-g-v1', '/workspace/vkgr-g5-fusion-v1'
+EXPECTED_FLAGS = ('--prepared', '--prepared-sha', '--history-manifest', '--history-sha', '--sid-manifest', '--sid-sha', '--content', '--content-sha',
+                  '--input-manifest', '--input-sha', '--vectors', '--vectors-sha', '--manifest', '--manifest-sha')           # independent literal: renaming a FLAGS entry must fail a test
 
 
 def fake_root(tmp):
@@ -18,7 +20,7 @@ def fake_root(tmp):
         (root / 'queue' / sub).mkdir(parents=True)
     for seed, sha in m.MANIFEST_SHA.items():
         argv = ['/py', '-B', '-m', 'vkgr.coll_sid_a1_run', 'verify']
-        for flag in m.FLAGS:
+        for flag in EXPECTED_FLAGS:
             argv += [flag, sha if flag == '--manifest-sha' else f'/x/{flag.strip("-")}']
         argv += ['--output', '/o', '--scratch', '/s']
         job = {'argv': argv, 'cwd': G_DEP, 'env': ['OMP_NUM_THREADS=1', f'PYTHONPATH={G_DEP}/src', 'VKGR_DATA_ROOT=/d'], 'inputs': ['/a', '/b'], 'run_id': f'g-coll-a1-c1-s{seed}-verify',
@@ -44,7 +46,8 @@ class AssembleEnqueueTests(unittest.TestCase):
             self.assertEqual([j['run_id'] for j in jobs], ['g5-fusion-asm-pf-s42', 'g5-fusion-asm-pf-s2024', 'g5-fusion-asm-pf-s2025'])
             j = jobs[0]; a = j['argv']
             self.assertEqual(a[:5], ['/py', '-B', '-m', 'vkgr_g5.assemble_g', '--line-root']); self.assertEqual(a[5], G_DEP); self.assertIn('--check-only', a)
-            for flag in m.FLAGS:
+            self.assertEqual(m.FLAGS, EXPECTED_FLAGS)
+            for flag in EXPECTED_FLAGS:
                 self.assertEqual(a[a.index(flag) + 1], f'/x/{flag.strip("-")}' if flag != '--manifest-sha' else m.MANIFEST_SHA[42])
             self.assertEqual(a[a.index('--split') + 1], 'validation')
             self.assertEqual(a[a.index('--output') + 1], str(root / 'runs/g5-fusion-asm-pf-s42/out/g-assembly.json')); self.assertEqual(a[a.index('--scratch') + 1], str(root / 'runs/g5-fusion-asm-pf-s42/scratch'))
@@ -83,7 +86,6 @@ class AssembleEnqueueTests(unittest.TestCase):
                 job = json.loads(path.read_text()); job['cwd'] = '/workspace/elsewhere'; job['env'] = ['PYTHONPATH=/workspace/elsewhere/src']; path.write_text(json.dumps(job))
             with self.assertRaisesRegex(ValueError, 'bad deployment path'):
                 run(self.req(g_deploy='/workspace/elsewhere'), root)
-            fake_root(tmp + '/x') if False else None
         with tempfile.TemporaryDirectory() as tmp:
             root = fake_root(tmp)
             self.assertEqual(run(self.req(seeds=[42], gen='abcdefgh'), root)['jobs'][0]['run_id'], 'g5-fusion-asm-pf-s42-abcdefgh')
@@ -93,7 +95,7 @@ class AssembleEnqueueTests(unittest.TestCase):
     def test_identity_and_request_gates(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = fake_root(tmp)
-            for bad in ({'g_deploy': '/workspace/other'}, {'fusion_deploy': '/workspace/vkgr-g5-fusion-v1/../x'}, {'seeds': [7]}, {'vram_mib': 100}, {'wall_hours': 9}, {'stage': 'train'}, {'gen': 'a/b'}):
+            for bad in ({'g_deploy': '/workspace/other'}, {'fusion_deploy': '/workspace/vkgr-g5-fusion-v1/../x'}, {'seeds': [7]}, {'vram_mib': 100}, {'vram_mib': 6657}, {'wall_hours': 9}, {'stage': 'train'}, {'gen': 'a/b'}, {'seeds': [42, 42]}, {'seeds': 42}, {'action': 'delete'}):
                 with self.assertRaises(ValueError):
                     run(self.req(**bad), root)
             path = next((root / 'queue/claimed').glob('*s42-verify.json')); job = json.loads(path.read_text()); job['argv'][job['argv'].index('--manifest-sha') + 1] = '0' * 64; path.write_text(json.dumps(job))
@@ -105,6 +107,27 @@ class AssembleEnqueueTests(unittest.TestCase):
             job['cwd'] = G_DEP; job['env'] = ['PYTHONPATH=/elsewhere/src']; path.write_text(json.dumps(job))
             with self.assertRaisesRegex(ValueError, 'PYTHONPATH'):
                 run(self.req(seeds=[42]), root)
+
+    def test_template_must_be_unique_submit_goes_through_tmp_and_rename_and_input_is_bounded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fake_root(tmp); (root / 'queue/claimed' / '0180-g-coll-a1-c1-s42-verify.json').write_text((root / 'queue/claimed' / '0179-g-coll-a1-c1-s42-verify.json').read_text())
+            with self.assertRaisesRegex(ValueError, 'unique claimed template'):
+                run(self.req(seeds=[42]), root)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fake_root(tmp); calls = []; real = m.os.replace
+            def spy(src, dst):
+                calls.append((Path(src).name, Path(dst).name)); return real(src, dst)
+            with mock.patch.object(m.os, 'replace', spy):
+                run(self.req(action='submit', seeds=[42]), root)
+            self.assertEqual(len(calls), 1); self.assertTrue(calls[0][0].startswith('.') and calls[0][0].endswith('.tmp') and calls[0][0] == '.' + calls[0][1] + '.tmp')
+            self.assertEqual([p.name for p in (root / 'queue/pending').iterdir()], [calls[0][1]])
+            got = run(self.req(seeds=[2024]), root)
+            import hashlib
+            self.assertEqual(got['job_sha256']['g5-fusion-asm-pf-s2024'], hashlib.sha256(json.dumps(got['jobs'][0], sort_keys=True).encode()).hexdigest())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fake_root(tmp)
+            with self.assertRaises(ValueError):
+                run(self.req(pad='x' * 70000), root)                                                             # stdin read is capped at 65537 characters
 
 
 if __name__ == '__main__':

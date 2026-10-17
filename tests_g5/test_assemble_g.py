@@ -81,6 +81,85 @@ class GateTests(unittest.TestCase):
         self.assertEqual(got, {'nonexistent': {'n': 0, 'hits': 0}})
 
 
+CB = lambda v: json.dumps(v, sort_keys=True).encode()
+EV = SimpleNamespace(ITEM_GROUPS=ITEM_GROUPS, USER_GROUPS=USER_GROUPS)
+
+
+def core_world(stats, queries, items, catalog, sha='x'):
+    """A fake run whose archive aggregate is exactly what the real aggregation rule would produce (built with the module's own regroup)."""
+    assigned = ag.labels(stats, queries, ITEM_GROUPS, USER_GROUPS)
+    spec = (('popularity', ITEM_GROUPS + ('oov',)), ('user_history', USER_GROUPS), ('support', ('supported', 'unsupported', 'oov')), ('truncated_history', tuple(str(i) for i in range(1, 51))))
+    aggregate = {s: ag.regroup_metrics(items, queries, catalog, assigned[s], names, fake_metrics) for s, names in spec}
+    aggregate['metrics'] = {'all_eligible': {'recall@50': 0.5, 'ndcg@50': 0.25}}
+    record = {'epoch': 1, 'evaluation': {'kind': 'query_evaluation', 'manifest_sha256': 'm' * 64, 'computation_sha256': 'c' * 64}, 'checkpoint_sha256': sha, 'metrics': aggregate}
+    value = {'best': {'epoch': 1, 'metric': [0.5, 0.25], 'sha256': sha}, 'epochs': [record]}
+    rows = [{'ordinal': i, 'items': list(it)} for i, it in enumerate(items)]
+    reader = lambda kind, run, rec, ctx, toks: (aggregate, 'c' * 64, rows)
+    context = SimpleNamespace(queries=queries, catalog=catalog, slice_definition=stats)
+    return value, context, reader
+
+
+def run_core(value, context, reader, **kw):
+    return ag.assemble_core(value, '/unused', context, None, reader, EV, fake_metrics, CB, **kw)
+
+
+class CoreTests(unittest.TestCase):
+    def setUp(self):
+        self.stats = fake_stats(); self.queries = fake_queries(); self.catalog = [1, 2, 3, 4, 5]
+        self.items = [[1, 2], [2], [3], [4, 5], [5], [1]]
+
+    def world(self, **kw):
+        return core_world(self.stats, self.queries, self.items, self.catalog, **kw)
+
+    def test_rows_carry_query_fields_and_labels_and_catalog_digest(self):
+        value, context, reader = self.world()
+        rec = run_core(value, context, reader, pop_k=3, digest=lambda c: 'd%d' % len(c))
+        self.assertEqual(rec['catalog_digest'], 'd5'); self.assertEqual(rec['catalog_size'], 5); self.assertEqual(rec['query_count'], 6)
+        for row, q, it in zip(rec['rows'], self.queries, self.items):
+            self.assertEqual((row['user_id'], row['target'], row['oov'], row['history'], row['items']), (q['user_id'], q['target'], q['oov'], q['history'], it))
+        self.assertEqual([r['support'] for r in rec['rows']], ['unsupported', 'supported', 'supported', 'supported', 'supported', 'oov'])
+        self.assertEqual([r['popularity_group'] for r in rec['rows']][5], 'oov')
+        self.assertEqual([r['user_group'] for r in rec['rows']], ['1', '2-5', '6-20', '6-20', 'gt20', '1'])
+        self.assertEqual(len(rec['rows'][4]['history']), 50)
+        self.assertIsNone(run_core(*self.world(), pop_k=3)['catalog_digest'])
+
+    def test_g_short_queries_boundary_is_100(self):
+        self.items = [list(range(99)), list(range(100)), list(range(101)), [1], [1], [1]]
+        value, context, reader = self.world()
+        self.assertEqual(run_core(value, context, reader, pop_k=3)['g_short_queries'], 4)      # 99, and the three 1-item rows; 100 and 101 are not short
+
+    def test_pop_hits_at_50_counts_positions_50_not_51(self):
+        stats = SimpleNamespace(item_counts={i: 100 - i for i in range(1, 61)}, user_counts={10: 1, 11: 1}, thresholds=(3, 10), manifest_sha256='s' * 64)
+        catalog = list(range(1, 61)); base = lambda u, t: {'user_id': u, 'target': t, 'oov': False, 'history': [1]}
+        queries = [base(10, 50), base(11, 51), base(10, 1)]; items = [[1], [1], [1]]
+        value, context, reader = core_world(stats, queries, items, catalog)
+        rec = run_core(value, context, reader, pop_k=60)
+        self.assertEqual(rec['pop']['ranking'][:3], [1, 2, 3]); self.assertEqual(rec['pop']['hits_at_50'], 2)      # targets 50 and 1 hit; 51 does not
+
+    def test_best_hash_epoch_kind_and_order_gates(self):
+        import copy
+        value, context, reader = self.world()
+        for mutate, pattern in (
+                (lambda v: v['best'].__setitem__('sha256', 'y'), 'best checkpoint hash'),
+                (lambda v: v['best'].__setitem__('epoch', True), 'best epoch outside'),
+                (lambda v: v['best'].__setitem__('epoch', 0), 'best epoch outside'),
+                (lambda v: v['best'].__setitem__('epoch', 2), 'best epoch outside'),
+                (lambda v: v['epochs'][0].__setitem__('epoch', 2), 'query_evaluation archive'),
+                (lambda v: v['epochs'][0]['evaluation'].__setitem__('kind', 'l100_query_evaluation'), 'query_evaluation archive'),
+                (lambda v: v['best'].__setitem__('metric', [0.5, 0.26]), 'best metric'),
+                (lambda v: v['epochs'][0]['evaluation'].__setitem__('computation_sha256', 'd' * 64), 'archive replay')):
+            bad = copy.deepcopy(value); mutate(bad)
+            with self.assertRaisesRegex(ValueError, pattern):
+                run_core(bad, context, reader, pop_k=3)
+        run_core(value, context, reader, pop_k=3)
+        short = lambda *a: (reader(*a)[0], 'c' * 64, reader(*a)[2][:-1])
+        with self.assertRaisesRegex(ValueError, 'ordinal order'):
+            run_core(value, context, short, pop_k=3)
+        swapped = lambda *a: (reader(*a)[0], 'c' * 64, list(reversed(reader(*a)[2])))
+        with self.assertRaisesRegex(ValueError, 'ordinal order'):
+            run_core(value, context, swapped, pop_k=3)
+
+
 class CliTests(unittest.TestCase):
     def test_argument_and_path_gates(self):
         base = ['--prepared', 'p', '--prepared-sha', 'a', '--history-manifest', 'h', '--history-sha', 'b', '--sid-manifest', 's', '--sid-sha', 'c', '--content', 'c', '--content-sha', 'd',
@@ -132,7 +211,7 @@ class IntegrationTests(unittest.TestCase):
         stats = SliceStatistics((1, 3), MappingProxyType(counts), MappingProxyType(users), 'f' * 64, 'f' * 64, 'f' * 64)
         binding = {'queries_sha256': ge._digest(prepared['queries']), 'catalog_sha256': ge._digest(fixture['catalog']), 'synthetic': True, 'engineering': True, 'b1': {'history_version': 'HIST_V2_OBS_L50'}}
         context = ge.RunContext(ge._CONTEXT_KEY, examples=ListExamples(prepared['examples']), codec=loaded.codec, queries=prepared['queries'], binding=binding, stats=stats).check()
-        cfg = dict(g.default_config(), d_model=8, heads=1, head_dim=8, encoder_layers=1, decoder_layers=1, ff=32, dropout=0.0, microbatch=2, max_epochs=1, min_epochs=1)
+        cfg = dict(g.default_config(), d_model=8, heads=1, head_dim=8, encoder_layers=1, decoder_layers=1, ff=32, dropout=0.0, microbatch=2, max_epochs=1, min_epochs=1, seed=2024)
         g.validate_config(cfg, True)
         args = (Path(G_ROOT), tmp / 'unused-prepared', 'a' * 64, tmp / 'unused-hist', 'b' * 64, *loadargs[:4])
         with mock.patch.object(g, '_contexts', return_value=(context, True, loaded)), mock.patch.dict(os.environ, {'VKGR_DATA_ROOT': str(tmp)}):
@@ -198,6 +277,90 @@ class IntegrationTests(unittest.TestCase):
             tokens = sd.SIDTokensLD(context.codec, value['config']['history_len'])
             with mock.patch.object(torch, 'load', side_effect=AssertionError('checkpoint read')):
                 ag.assemble_core(value, run_dir, context, tokens, b1._read_evaluation, ev, metrics, canonical_bytes, pop_k=len(context.catalog)//2)
+
+    def main_args(self, tmp, g, run_dir, sha, output='asm-out/g.json', scratch='asm-scratch', extra=()):
+        base = []
+        for flag in ('prepared', 'prepared-sha', 'history-manifest', 'history-sha', 'sid-manifest', 'sid-sha', 'content', 'content-sha', 'input-manifest', 'input-sha', 'vectors', 'vectors-sha'):
+            base += ['--' + flag, 'x']
+        return ['--line-root', G_ROOT, *base, '--manifest', str(run_dir / 'manifest.json'), '--manifest-sha', sha, '--output', str(tmp / output), '--scratch', str(tmp / scratch), '--split', 'validation', *extra]
+
+    def patched_main(self, argv, context, engineering=False):
+        real = ag.assemble_core; n = len(context.catalog) // 2
+        import vkgr.coll_sid_a1_run as cr
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(cr, '_contexts', return_value=(context, engineering, None)), mock.patch.object(ag, 'assemble_core', side_effect=lambda *a, **k: real(*a, pop_k=n, **k)), \
+                mock.patch('sys.stdout', out), mock.patch('sys.stderr', err):
+            code = ag.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_main_writes_one_new_file_matches_stdout_sha_and_check_only_writes_nothing(self):
+        from vkgr.data_audit import file_sha256
+        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+            tmp = Path(tmp); g, context, value, run_dir = self.build_world(tmp); sha = file_sha256(run_dir / 'manifest.json')
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, extra=('--check-only',)), context)
+            self.assertEqual(code, 0, err); summary = json.loads(out); self.assertEqual((summary['status'], summary['written']), ('preflight_ok', False))
+            self.assertFalse((tmp / 'asm-out').exists())
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha), context)
+            self.assertEqual(code, 0, err); summary = json.loads(out); target = tmp / 'asm-out/g.json'
+            self.assertEqual(summary['status'], 'complete'); self.assertEqual(summary['output_sha256'], file_sha256(target)); self.assertEqual([p.name for p in (tmp / 'asm-out').iterdir()], ['g.json'])
+            record = json.loads(target.read_text()); self.assertEqual(record['schema'], 'g5-g-assembly-v1')
+            import vkgr.coll_sid_a1_run as cr; self.assertEqual(record['catalog_digest'], cr._digest(list(context.catalog)))
+            self.assertEqual((record['seed'], record['run_manifest_sha256'], record['run_id']), (2024, sha, tmp.name)); self.assertEqual(value['config']['seed'], 2024); self.assertEqual(record['script_sha256'], ag.script_sha256())
+            self.assertEqual(summary['catalog_digest'], record['catalog_digest']); self.assertEqual(Path(summary['vkgr_file']).parent, Path(G_ROOT).resolve() / 'src' / 'vkgr')
+            self.assertIs(summary['cuda_initialized'], False)
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha), context)          # the output now exists: never overwrite
+            self.assertEqual(code, 2); self.assertIn('new paths', err)
+
+    def test_main_refuses_engineering_context_binding_and_source_tamper_and_bad_paths(self):
+        import copy
+        from vkgr.data_audit import file_sha256
+        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+            tmp = Path(tmp); g, context, value, run_dir = self.build_world(tmp); sha = file_sha256(run_dir / 'manifest.json')
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, extra=('--check-only',)), context, engineering=True)
+            self.assertEqual(code, 2); self.assertIn('formal', err)
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, 'f' * 64, extra=('--check-only',)), context)
+            self.assertEqual(code, 2)                                                                   # manifest sha pin mismatch
+            for argv, text in ((self.main_args(tmp, g, run_dir, sha, output='asm-out/g.json', scratch='asm-out', extra=('--check-only',)), 'distinct'),
+                               (self.main_args(tmp, g, run_dir, sha, output='run-inside/g.json', scratch='asm-scratch', extra=('--check-only',)), None)):
+                code, out, err = self.patched_main(argv, context)
+                self.assertEqual(code, 0 if text is None else 2, err)
+                if text:
+                    self.assertIn(text, err)
+            argv = self.main_args(tmp, g, run_dir, sha, extra=('--check-only',)); argv[argv.index('--output') + 1] = str(Path(G_ROOT) / 'x' / 'g.json')
+            code, out, err = self.patched_main(argv, context); self.assertEqual(code, 2); self.assertIn('new paths', err)
+            existing = tmp / 'asm-scratch'; existing.mkdir()
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, extra=('--check-only',)), context); self.assertEqual(code, 2)
+            class Proxy:                                                                              # RunContext is sealed; delegate everything but the binding
+                def __init__(self, inner): self._inner = inner; self.binding = dict(inner.binding, extra='x')
+                def __getattr__(self, name): return getattr(self._inner, name)
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, scratch='asm-scratch2', extra=('--check-only',)), Proxy(context))
+            self.assertEqual(code, 2); self.assertIn('context binding differs from the run binding', err)
+            import vkgr.coll_sid_a1_run as cr
+            fresh = cr._source(Path(G_ROOT)); bad_files = dict(fresh['files']); bad_files[next(iter(bad_files))] = '0' * 64
+            with mock.patch.object(cr, '_source', return_value=dict(fresh, files=bad_files)):
+                code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, scratch='asm-scratch3', extra=('--check-only',)), context)
+            self.assertEqual(code, 2); self.assertIn('deployment source differs', err)
+            with mock.patch.object(cr, '_source', return_value=dict(fresh, source_sha256='0' * 64)):
+                code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, scratch='asm-scratch5', extra=('--check-only',)), context)
+            self.assertEqual(code, 2); self.assertIn('deployment source differs', err)
+            (tmp / 'asm-scratch4.partial').write_text('x')                                          # a leftover partial next to a new path is refused too
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, scratch='asm-scratch4', extra=('--check-only',)), context)
+            self.assertEqual(code, 2); self.assertIn('new paths', err)
+            (tmp / 'asm-out-p').mkdir(); (tmp / 'asm-out-p' / 'g.json.partial').write_text('x')
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, output='asm-out-p/g.json', scratch='asm-scratch6', extra=('--check-only',)), context)
+            self.assertEqual(code, 2); self.assertIn('new paths', err)
+
+    def test_main_rejects_a_line_root_that_is_not_the_imported_vkgr(self):
+        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+            tmp = Path(tmp); argv = self.main_args(tmp, None, tmp, 'a' * 64, extra=('--check-only',)); argv[1] = str(tmp)
+            err = io.StringIO()
+            with mock.patch('sys.stderr', err):
+                self.assertEqual(ag.main(argv), 2)
+            self.assertIn('not imported from --line-root', err.getvalue())
+            argv[1] = str(Path(G_ROOT).parent); err = io.StringIO()                                    # an ancestor of the real root is not the root either
+            with mock.patch('sys.stderr', err):
+                self.assertEqual(ag.main(argv), 2)
+            self.assertIn('not imported from --line-root', err.getvalue())
 
 
 if __name__ == '__main__':

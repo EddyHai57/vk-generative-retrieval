@@ -90,7 +90,7 @@ def build_inputs(p_inputs, g_inputs, meta_input, expected_queries=None, expect_h
     expected_queries = QUERIES if expected_queries is None else expected_queries
     expect_hits = EXPECT_HITS if expect_hits is None else expect_hits
     meta = read_pinned_json(*meta_input)
-    if meta.get('schema') != 'g5-p-query-meta-v1' or meta.get('split') != 'validation' or meta.get('query_count') != expected_queries:
+    if meta.get('schema') != 'g5-p-query-meta-v1' or meta.get('split') != 'validation' or meta.get('query_count') != expected_queries or meta.get('manifests_checked') != 3 or meta.get('history_len') != 50:
         raise ValueError('P query metadata not acceptable')
     p_lists, p_records = {}, {}
     for seed in SEEDS:
@@ -98,8 +98,14 @@ def build_inputs(p_inputs, g_inputs, meta_input, expected_queries=None, expect_h
     assemblies = {seed: load_g(seed, *g_inputs[seed], expected_queries) for seed in SEEDS}
     align(meta, assemblies)
     base = assemblies[42]
-    if any(a['catalog_size'] != meta['catalog_size'] for a in assemblies.values()):
-        raise ValueError('catalog size differs between P metadata and a G assembly')
+    if any(a['catalog_size'] != meta['catalog_size'] or a.get('catalog_digest') != meta['catalog_digest'] for a in assemblies.values()):
+        raise ValueError('catalog size or digest differs between P metadata and a G assembly')
+    shared = ('slice_statistics_manifest_sha256', 'thresholds', 'item_groups', 'user_groups')
+    for seed, assembly in assemblies.items():
+        if any(assembly[k] != base[k] for k in shared) or assembly['pop']['ranking'] != base['pop']['ranking']:
+            raise ValueError(f'G assemblies disagree on slice statistics or the Pop list (seed {seed})')
+        if [(r['support'], r['popularity_group'], r['user_group']) for r in assembly['rows']] != [(r['support'], r['popularity_group'], r['user_group']) for r in base['rows']]:
+            raise ValueError(f'G assemblies disagree on slice labels (seed {seed})')
     targets = [r['target'] for r in meta['rows']]
     got = {('P', s): single_route_hits(p_lists[s], targets) for s in SEEDS}
     got.update({('G', s): single_route_hits([r['items'] for r in assemblies[s]['rows']], targets) for s in SEEDS})
@@ -166,9 +172,11 @@ def main(argv=None):
         if out.exists():
             raise ValueError('output directory must not exist')
         routes, queries, catalog_size, checks = build_inputs(p_inputs, g_inputs, meta_input)
+        result = fv.run(routes, queries, catalog_size)               # the check-only preflight really runs the fusion in memory and serialises it (nothing is written)
+        serialized = len(json.dumps(result, sort_keys=True, allow_nan=False))
         if args.check_only:
-            print(json.dumps({'status': 'preflight_ok', 'written': False, 'checks': checks, 'queries': len(queries)}, sort_keys=True)); return 0
-        result = fv.run(routes, queries, catalog_size)
+            print(json.dumps({'status': 'preflight_ok', 'written': False, 'checks': checks, 'queries': len(queries), 'fusion_serialized_bytes': serialized,
+                              'rows': len(result['rows']), 'oov_nonzero_hits_anomaly_rows': sorted(k for k, v in result['rows'].items() if v['oov_nonzero_hits_anomaly'])}, sort_keys=True)); return 0
         generated = datetime.now(timezone.utc).isoformat()
         result = {'schema': SCHEMA, 'generated_at_utc': generated, 'checks': checks, 'fusion': result,
                   'inputs': {'p_export': {str(s): v[1] for s, v in p_inputs.items()}, 'g_assembly': {str(s): v[1] for s, v in g_inputs.items()}, 'p_query_meta': meta_input[1]},
