@@ -11,9 +11,11 @@ Statistics (frozen): H1 = C5-C1, H2 = C5-C4 and C5-C7 (intersection-union), D1 =
 10000 resamples, indices drawn with ``rng.randrange(n)`` sequentially, ONE shared index set for all four comparisons, nearest-rank
 quantiles (rank = ceil(p * resamples)). The executor reports mechanical condition flags only; no verdict is written here.
 """
+import hashlib
 import math
 import random
 import sys
+from pathlib import Path
 from fractions import Fraction
 
 B = 200
@@ -37,6 +39,22 @@ def row_definitions(seed=42):
         rows = {'C1': [p], 'C2': [g], 'C3': [('POP', None)], 'C4': rows['C4'], 'C5': rows['C5'],
                 'C6': [p, g, ('POP', None)], 'C7': [p, ('P', 2024)]}
     return rows
+
+
+REPORT_NOTES = (
+    'Bootstrap: G5 uses random.Random(20261014) with sequential rng.randrange(n) index draws (protocol inherited from rev3). The earlier P-line batches (stack, bidirectional '
+    'confirmation, user profiles) used NumPy default_rng(0) paired bootstrap. These are NOT the same protocol: intervals must not be compared across batches directly.',
+    'Threshold wording: a net gain of at least 7 hits is a necessary condition for p < 0.025 and is not sufficient; the binding constraint is that the discordant pairs are '
+    'highly concentrated on one side (e.g. b/c = 7/0 passes, 6/0, 8/1 and 10/3 do not). The registered >= 6 hits bar is unchanged.',
+    'Alpha: G5 uses alpha = 0.025 per family (two-family Bonferroni), stricter than the p < 0.05 used by earlier P-line cards; a G5 non-pass is not equivalent to a P-line non-promotion.',
+    'Limitations: G-side candidates have no second decoding cross-check; D-1 type deviation (co-occurrence inputs use training-period events including the target itself); about 0.2% '
+    'of items use a content fallback; the 623 OOV validation queries are structurally zero-hit; early-stopping right-censoring. No online A/B or causal claim.',
+)
+
+
+def script_sha256():
+    """SHA256 of this module's bytes (it contains the bootstrap implementation); recorded in every output so results are exactly reproducible."""
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def quota(n):
@@ -285,7 +303,9 @@ def run(routes, queries, catalog_size, seeds=(42, 2024, 2025)):
                 cell['g_independent_hits'] = g_independent_hits(row, results, queries, idx)
             entry['slices'][s] = cell
         out['rows'][f'seed{seed}:{name}'] = entry
-    out['bootstrap'] = {'resamples': BOOT_N, 'seed': BOOT_SEED, 'index_draw': 'sequential rng.randrange(n) per index; one shared index set for all comparisons', 'python': sys.version.split()[0]}
+    out['bootstrap'] = {'resamples': BOOT_N, 'seed': BOOT_SEED, 'index_draw': 'sequential rng.randrange(n) per index; one shared index set for all comparisons', 'python': sys.version.split()[0],
+                        'fusion_v2_script_sha256': script_sha256(), 'comparable_with_numpy_default_rng_0_batches': False}
+    out['report_notes'] = list(REPORT_NOTES)
     out['not_run'] = not_run
     main_vectors = {name: vectors[(42, name)] for name in ('C1', 'C4', 'C5', 'C6', 'C7') if (42, name) in vectors}
     if all(x in main_vectors for x in ('C1', 'C4', 'C5', 'C6', 'C7')):

@@ -215,6 +215,17 @@ class HandComputedReportTests(unittest.TestCase):
         out = f.run(self.routes, queries, 2000, seeds=(42,))
         self.assertEqual((out['rows']['seed42:C5']['oov_hits'], out['rows']['seed42:C5']['oov_nonzero_hits_anomaly']), (1, True))   # target 0 is a candidate: upstream bug
 
+    def test_manifest_pins_script_hash_and_carries_report_notes(self):
+        import hashlib
+        from pathlib import Path
+        b = self.out['bootstrap']
+        self.assertEqual(b['fusion_v2_script_sha256'], hashlib.sha256(Path(f.__file__).read_bytes()).hexdigest())
+        self.assertEqual((b['resamples'], b['seed'], b['comparable_with_numpy_default_rng_0_batches']), (10000, 20261014, False))
+        notes = ' '.join(self.out['report_notes'])
+        for needle in ('default_rng(0)', 'necessary condition', 'not sufficient', 'alpha = 0.025', 'p < 0.05', 'second decoding cross-check', 'D-1', '0.2%', '623 OOV', 'right-censoring', 'No online A/B'):
+            self.assertIn(needle, notes)
+        self.assertNotIn('at least 7 hits is required', notes)
+
     def test_summarize_even_length_median(self):
         self.assertEqual(f.summarize([4, 1, 3, 2])['median'], 2.5); self.assertEqual(f.summarize([1, 2, 3])['median'], 2)
 
