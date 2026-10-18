@@ -21,7 +21,7 @@
   "schema": "g-sid-structure-a1-run-v1",
   "seed": 2024,
   "sid": "STRUCT_C1_B48D3_S42",
-  "sid_manifest_sha256": "UNSEALED",
+  "sid_manifest_sha256": "67b1f404e7b97a96ffc2a6c303906fa62e3f48234d5f55c771bb8480741fc3d4",
   "task_id": "SID-STRUCTURE-MATCHED",
   "test_gate": "closed",
   "weight_decay": 0.0001

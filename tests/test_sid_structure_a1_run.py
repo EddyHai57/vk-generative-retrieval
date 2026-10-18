@@ -14,6 +14,19 @@ class StructureA1Tests(unittest.TestCase):
             with self.assertRaises(ValueError):run.validate_config({**b,key:value})
         self.assertEqual(old.SID_VERSION,'COLL_C1_B256D3_S42')
 
+    def test_three_committed_configs_require_the_verified_mapping(self):
+        import json
+        from pathlib import Path
+        root=Path(__file__).resolve().parents[1]
+        verified='67b1f404e7b97a96ffc2a6c303906fa62e3f48234d5f55c771bb8480741fc3d4'
+        for seed in (42,2024,2025):
+            cfg=json.loads((root/f'configs/sid_structure/g-structure-a1-s{seed}.json').read_text())
+            self.assertEqual(cfg['sid_manifest_sha256'],verified)
+            self.assertEqual(cfg,{**old.default_config(),'seed':seed,'schema':run.SCHEMA,'task_id':run.TASK_ID,'sid':run.SID_VERSION,'sid_manifest_sha256':verified})
+            run.validate_config(cfg,False)
+            run.check_pins(verified,old.INPUT_SHA,old.VECTORS_SHA,False,config=cfg)
+            with self.assertRaises(ValueError):run.check_pins('f'*64,old.INPUT_SHA,old.VECTORS_SHA,False,config=cfg)
+
     def test_content_and_input_pins_stay_frozen(self):
         cfg={**run.default_config(),'sid_manifest_sha256':'a'*64}
         run.check_pins('a'*64,old.INPUT_SHA,old.VECTORS_SHA,False,config=cfg)
