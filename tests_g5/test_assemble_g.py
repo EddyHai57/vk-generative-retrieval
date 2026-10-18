@@ -17,6 +17,7 @@ from vkgr_g5 import assemble_g as ag  # noqa: E402
 
 ITEM_GROUPS = ('unsupported0', 'positive_le_median', 'positive_gt_median_le_p90', 'positive_gt_p90')
 USER_GROUPS = ('1', '2-5', '6-20', 'gt20')
+REAL_TMP = os.path.realpath(tempfile.gettempdir())      # resolved: the assembly resolves its paths, so a symlinked temp root would defeat the nesting checks
 
 
 def fake_stats():
@@ -222,7 +223,7 @@ class IntegrationTests(unittest.TestCase):
         from vkgr import generative_b1_run as b1, generative_evaluation as ev, sid_depth as sd
         from vkgr.baselines import metrics
         from vkgr.data_audit import canonical_bytes
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory(dir=REAL_TMP) as tmp:
             tmp = Path(tmp); g, context, value, run_dir = self.build_world(tmp)
             tokens = sd.SIDTokensLD(context.codec, value['config']['history_len'])
             record = ag.assemble_core(value, run_dir, context, tokens, b1._read_evaluation, ev, metrics, canonical_bytes, pop_k=len(context.catalog)//2)
@@ -246,7 +247,7 @@ class IntegrationTests(unittest.TestCase):
         from vkgr import generative_b1_run as b1, generative_evaluation as ev, sid_depth as sd
         from vkgr.baselines import metrics
         from vkgr.data_audit import canonical_bytes
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory(dir=REAL_TMP) as tmp:
             tmp = Path(tmp); g, context, value, run_dir = self.build_world(tmp)
             tokens = sd.SIDTokensLD(context.codec, value['config']['history_len']); k = len(context.catalog) // 2; best = value['best']['epoch']
             call = lambda v, reader=b1._read_evaluation: ag.assemble_core(v, run_dir, context, tokens, reader, ev, metrics, canonical_bytes, pop_k=k)
@@ -272,7 +273,7 @@ class IntegrationTests(unittest.TestCase):
         from vkgr import generative_b1_run as b1, generative_evaluation as ev, sid_depth as sd
         from vkgr.baselines import metrics
         from vkgr.data_audit import canonical_bytes
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory(dir=REAL_TMP) as tmp:
             tmp = Path(tmp); g, context, value, run_dir = self.build_world(tmp)
             tokens = sd.SIDTokensLD(context.codec, value['config']['history_len'])
             with mock.patch.object(torch, 'load', side_effect=AssertionError('checkpoint read')):
@@ -295,7 +296,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_main_writes_one_new_file_matches_stdout_sha_and_check_only_writes_nothing(self):
         from vkgr.data_audit import file_sha256
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory(dir=REAL_TMP) as tmp:
             tmp = Path(tmp); g, context, value, run_dir = self.build_world(tmp); sha = file_sha256(run_dir / 'manifest.json')
             code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, extra=('--check-only',)), context)
             self.assertEqual(code, 0, err); summary = json.loads(out); self.assertEqual((summary['status'], summary['written']), ('preflight_ok', False))
@@ -307,14 +308,14 @@ class IntegrationTests(unittest.TestCase):
             import vkgr.coll_sid_a1_run as cr; self.assertEqual(record['catalog_digest'], cr._digest(list(context.catalog)))
             self.assertEqual((record['seed'], record['run_manifest_sha256'], record['run_id']), (2024, sha, tmp.name)); self.assertEqual(value['config']['seed'], 2024); self.assertEqual(record['script_sha256'], ag.script_sha256())
             self.assertEqual(summary['catalog_digest'], record['catalog_digest']); self.assertEqual(Path(summary['vkgr_file']).parent, Path(G_ROOT).resolve() / 'src' / 'vkgr')
-            self.assertIs(summary['cuda_initialized'], False)
+            self.assertIs(summary['cuda_initialized'], False); self.assertGreater(summary['max_rss_mib'], 0); self.assertEqual(summary['script_sha256'], ag.script_sha256())
             code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha), context)          # the output now exists: never overwrite
             self.assertEqual(code, 2); self.assertIn('new paths', err)
 
     def test_main_refuses_engineering_context_binding_and_source_tamper_and_bad_paths(self):
         import copy
         from vkgr.data_audit import file_sha256
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory(dir=REAL_TMP) as tmp:
             tmp = Path(tmp); g, context, value, run_dir = self.build_world(tmp); sha = file_sha256(run_dir / 'manifest.json')
             code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, extra=('--check-only',)), context, engineering=True)
             self.assertEqual(code, 2); self.assertIn('formal', err)
@@ -350,8 +351,16 @@ class IntegrationTests(unittest.TestCase):
             code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, output='asm-out-p/g.json', scratch='asm-scratch6', extra=('--check-only',)), context)
             self.assertEqual(code, 2); self.assertIn('new paths', err)
 
+            code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, output='same/g.json', scratch='same/g.json', extra=('--check-only',)), context)
+            self.assertEqual(code, 2); self.assertIn('distinct', err)                                        # out == scratch
+            import subprocess, vkgr.coll_sid_a1_run as cr2
+            with mock.patch.object(cr2, '_source', side_effect=subprocess.CalledProcessError(1, 'git')):
+                code, out, err = self.patched_main(self.main_args(tmp, g, run_dir, sha, scratch='asm-scratch7', extra=('--check-only',)), context)
+            self.assertEqual(code, 2); self.assertIn('CalledProcessError', err)
+
+
     def test_main_rejects_a_line_root_that_is_not_the_imported_vkgr(self):
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory(dir=REAL_TMP) as tmp:
             tmp = Path(tmp); argv = self.main_args(tmp, None, tmp, 'a' * 64, extra=('--check-only',)); argv[1] = str(tmp)
             err = io.StringIO()
             with mock.patch('sys.stderr', err):

@@ -129,6 +129,15 @@ class AssembleEnqueueTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run(self.req(pad='x' * 70000), root)                                                             # stdin read is capped at 65537 characters
 
+    def test_resource_boundaries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fake_root(tmp)
+            self.assertEqual(run(self.req(vram_mib=256, seeds=[42]), root)['jobs'][0]['vram_mib'], 256); self.assertEqual(run(self.req(vram_mib=6656, seeds=[42]), root)['jobs'][0]['vram_mib'], 6656)
+            self.assertEqual(run(self.req(wall_hours=4, seeds=[42]), root)['jobs'][0]['wall_hours'], 4.0)
+            for bad in ({'vram_mib': 255}, {'wall_hours': 4.5}, {'wall_hours': 5}):
+                with self.assertRaises(ValueError, msg=str(bad)):
+                    run(self.req(**bad), root)
+
 
 if __name__ == '__main__':
     unittest.main()

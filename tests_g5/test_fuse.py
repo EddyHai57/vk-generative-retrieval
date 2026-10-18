@@ -161,6 +161,19 @@ class FuseCliTests(unittest.TestCase):
                 code, _, err = run_main(w.argv(Path(tmp) / 'r', *(['--check-only'] if check_only else [])))
             self.assertEqual(code, 2, message); self.assertIn(message, err); self.assertFalse((Path(tmp) / 'r').exists())
 
+    def test_missing_catalog_digest_and_group_vocabularies_are_gated(self):
+        self.fails([(('g', 2025), lambda v: v.pop('catalog_digest'))], 'catalog size or digest differs')
+        self.fails([(('g', 2024), lambda v: v.__setitem__('item_groups', list(reversed(v['item_groups']))))], 'disagree on slice statistics or the Pop list (seed 2024)')
+        self.fails([(('g', 2025), lambda v: v.__setitem__('user_groups', list(reversed(v['user_groups']))))], 'disagree on slice statistics or the Pop list (seed 2025)')
+
+    def test_oov_anomaly_rows_are_reported_when_a_route_hits_an_oov_query(self):
+        self.w.p[2025][5] = [TARGETS[5]] + list(range(200, 299))                                 # a P route now holds the OOV query's target in its top 50
+        self.w.hits[('P', 2025)] = sum(1 for t, r in zip(TARGETS, self.w.p[2025]) if t in r[:50]); self.w.write_all()
+        with toy(self.w):
+            code, stdout, err = run_main(self.w.argv(self.out, '--check-only'))
+        self.assertEqual(code, 0, err); rows = json.loads(stdout)['oov_nonzero_hits_anomaly_rows']
+        self.assertTrue(rows and all(isinstance(r, str) for r in rows)); self.assertTrue(any('seed2025' in r or '2025' in r for r in rows))
+
     def test_alignment_and_ordinals_fail_closed(self):
         self.fails([(('g', 2024), lambda v: v['rows'][2].__setitem__('history', [4, 5]))], 'query alignment failed at ordinal 2')
         self.fails([(('meta', None), lambda v: v['rows'][1].__setitem__('target', 501))], 'query alignment failed at ordinal 1')

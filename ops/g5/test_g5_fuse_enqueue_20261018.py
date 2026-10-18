@@ -10,6 +10,8 @@ from unittest import mock
 spec = importlib.util.spec_from_file_location('fqenq', Path(__file__).with_name('g5_fuse_enqueue_20261018.py'))
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 F_DEP = '/workspace/vkgr-g5-fusion-v1'
+P_EXPORT_LITERALS = {42: 'be5eb969d47c453105c538f7f57a87ee3eff64b28666bf321fe196c677ce576b', 2024: '531a6c28eea6952f583fe6286648b8e0375755696ad2329802d245c719e3b989',
+                     2025: '38ad413b07ed8b82342749d3f58be8438e99a2388253c06709b838f160413439'}      # independent of the module under test (experiment_log, G5 top-100 export)
 G_SHAS = {'42': '1' * 64, '2024': '2' * 64, '2025': '3' * 64}
 
 
@@ -92,6 +94,20 @@ class FuseEnqueueTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
                 run(self.req(pad='x' * 70000), fake_root(tmp))
+
+    def test_literal_pins_boundaries_and_envelope_extras(self):
+        self.assertEqual(m.P_EXPORT_MANIFEST_SHA, P_EXPORT_LITERALS)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = fake_root(tmp)
+            self.assertEqual(run(self.req(vram_mib=256), root)['job']['vram_mib'], 256); self.assertEqual(run(self.req(vram_mib=6656), root)['job']['vram_mib'], 6656)
+            self.assertEqual(run(self.req(wall_hours=4), root)['job']['wall_hours'], 4.0)
+            for bad in ({'vram_mib': 255}, {'wall_hours': 4.5}, {'wall_hours': 5}, {'wall_hours': 0}):
+                with self.assertRaises(ValueError, msg=str(bad)):
+                    run(self.req(**bad), root)
+            job = run(self.req(), root)['job']; self.assertEqual(job['disk_gib'], 1)
+            path = next((root / 'queue/claimed').glob('*-verify.json')); t = json.loads(path.read_text()); t['env'] = ['OMP_NUM_THREADS=1']; path.write_text(json.dumps(t))
+            with self.assertRaisesRegex(ValueError, 'PYTHONPATH'):
+                run(self.req(), root)
 
 
 if __name__ == '__main__':
