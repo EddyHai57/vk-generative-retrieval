@@ -1,0 +1,11 @@
+{
+  "branching": 48,
+  "depth": 3,
+  "input_dimension": 64,
+  "max_iter": 10,
+  "schema": "structure-fit-v1",
+  "seed": 42,
+  "sid_version": "STRUCT_C1_B48D3_S42",
+  "task_id": "SID-STRUCTURE-MATCHED",
+  "variant": "C1"
+}
