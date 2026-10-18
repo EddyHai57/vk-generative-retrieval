@@ -21,7 +21,7 @@
   "schema": "g-sid-learn-a1-run-v1",
   "seed": 42,
   "sid": "LEARN_LETTER_B256D3_S42",
-  "sid_manifest_sha256": "UNSEALED",
+  "sid_manifest_sha256": "1ecb6619cba1154e0ab48ea00648817745a933bac3d2926d4ad5a17874de272b",
   "task_id": "SID-LEARN-S2",
   "test_gate": "closed",
   "weight_decay": 0.0001

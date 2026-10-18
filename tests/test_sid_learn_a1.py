@@ -19,11 +19,11 @@ class LearnA1Tests(unittest.TestCase):
             self.run.check_pins('a'*64,original.INPUT_SHA,original.VECTORS_SHA,False,config=cfg)
             with self.assertRaises(ValueError):self.run.check_pins('b'*64,original.INPUT_SHA,original.VECTORS_SHA,False,config=cfg)
         with self.assertRaises(ValueError):self.run.validate_config({**new,'sid_manifest_sha256':'a'*64,'learning_rate':.001},False)
-    def test_three_committed_configs_remain_unsealed_before_fit_verified(self):
+    def test_three_committed_configs_sealed_to_original_verified_fit(self):
         for seed in (42,2024,2025):
             cfg=json.loads((ROOT/f'configs/sid_learn/g-learn-a1-s{seed}.json').read_text())
-            self.assertEqual(cfg,{**self.run.default_config(),'seed':seed})
-            with self.assertRaises(ValueError):self.run.validate_config(cfg,False)
+            self.assertEqual(cfg,{**self.run.default_config(),'seed':seed,'sid_manifest_sha256':'1ecb6619cba1154e0ab48ea00648817745a933bac3d2926d4ad5a17874de272b'})
+            self.run.validate_config(cfg,False)
     def test_suffix_vocabulary_is_computed_without_legacy_whitelist_changes(self):
         ids=np.array([1,2,3],dtype='uint32');sids=np.array([[0,0,0,0],[0,0,0,1],[255,255,255,0]],dtype='uint32');flat=sid_v2.build_codec(ids,sids,256)
         loaded=sid_v2.LoadedSID(flat,{}, {'branching':256,'suffix_vocabulary':2,'vocab_size':772,'depth':3})
