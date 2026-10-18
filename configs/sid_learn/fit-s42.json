@@ -1,0 +1,85 @@
+{
+  "alignment_direction": "latent_to_target",
+  "alignment_latent": "straight_through_quantized",
+  "alignment_normalization": "both_l2",
+  "alignment_target": {
+    "dim": 32,
+    "name": "C1_PRIME",
+    "projection": "fixed_pca_train_observed",
+    "quantized_directly": false,
+    "seed": 42,
+    "source_dim": 64
+  },
+  "alpha": 0.1,
+  "architecture": {
+    "content_dim": 64,
+    "encoder_hidden": [
+      512,
+      256,
+      128
+    ],
+    "latent_dim": 32,
+    "levels": 3
+  },
+  "batch_size": 1024,
+  "beta_inherited": 0.25,
+  "codebook_size": 256,
+  "diversity": {
+    "detach_codebook": false,
+    "detach_encoder": false,
+    "distance_dimension": 32,
+    "ema": false,
+    "eps": 1e-12,
+    "layer_reduction": "mean",
+    "mask_fallback": false,
+    "normalize_log_k": true,
+    "probability": "softmax_negative_squared_distance",
+    "q_axis": "batch",
+    "residual_source": "forward_hard_chain",
+    "tau": 1.0
+  },
+  "early_stopping": false,
+  "fallback": {
+    "denominator": 120415,
+    "exclude_align_negatives": true,
+    "expected": 251,
+    "masked_in_align_only": true,
+    "window": 5
+  },
+  "gamma": 0.01,
+  "l2_source_commit": "80f7eed179981c65094c628744099a181a81d907",
+  "loss_base": "L2_total",
+  "max_steps": 300000,
+  "method": "LETTER-style offline tokenizer (original implementation from the paper)",
+  "optimizer": {
+    "eps": 1e-07,
+    "initial_accumulator_value": 0.1,
+    "lr": 0.1,
+    "name": "adagrad"
+  },
+  "reconstruction_input": {
+    "dim": 64,
+    "name": "CONTENT_V1"
+  },
+  "reset": {
+    "dead_window": 500,
+    "enabled": true,
+    "reset_check_every": 100,
+    "reset_until": 270000,
+    "rng_reset_offset": 7919
+  },
+  "schema": "sid-learn-fit-v1",
+  "seed": 42,
+  "select_by_validation": false,
+  "semantic_layers": 3,
+  "sid_version": "LEARN_LETTER_B256D3_S42",
+  "suffix": "deterministic",
+  "task_id": "SID-LEARN-S2",
+  "temperature": 0.07,
+  "usage_diag_steps": [
+    2000,
+    "final"
+  ],
+  "wall_cap_seconds": 14400,
+  "weights_are_priors_not_tuned": true
+}
