@@ -1,0 +1,206 @@
+"""Fixed report contracts; tiny fixtures, no scientific input or model runs."""
+import importlib.util
+import hashlib
+import json
+from pathlib import Path
+import tempfile
+import unittest
+ROOT=Path(__file__).resolve().parents[1]
+
+def tool():
+    p=ROOT/'analysis/sid_learn_report_read.py'
+    assert p.is_file(),'missing read-only structure reporter'
+    spec=importlib.util.spec_from_file_location('learn_report',p)
+    m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
+
+class LearnReportTests(unittest.TestCase):
+    def test_exact_six_authorized_runs_no_subset_or_s2(self):
+        t=tool();t.validate_run_ids(list(t.RUNS))
+        for ids in (list(t.RUNS)[:3],list(reversed(t.RUNS)),[*t.RUNS[:-1],'g-structure-a1-s2025']):
+            with self.assertRaises(ValueError):t.validate_run_ids(ids)
+
+    def test_original_metrics_hand_calculated_bins_and_collision_definitions(self):
+        t=tool();_,metrics=t.frozen(ROOT)
+        mapping={1:(0,0,0,0),2:(0,0,0,1),3:(1,0,0,0)}
+        a=t.catalog_structure(mapping,48,metrics)
+        self.assertEqual(a['semantic_collision_items'],2)
+        self.assertEqual(a['surplus_collision_items'],1)
+        self.assertEqual(a['collision_pairs'],1)
+        self.assertEqual(a['leaf_size_histogram'],[[1,1],[2,1]])
+        self.assertEqual(a['S0']['layers'][0]['avg_items_per_node'],1.5)
+        r=t.summarize_pair([1,2,99],[[1],[3],[1]],[[2],[2],[1]],mapping,mapping,
+                           {1:10,2:1,3:3},{'median':2,'p90':5},metrics)
+        self.assertEqual(r['delta_hits'],0)
+        self.assertEqual(r['popularity_delta_hits'],{'oov':0,'unsupported':0,'low':-1,'mid':0,'high':1})
+        self.assertEqual(r['new']['B']['n_in_catalog'],2)
+        self.assertEqual(r['new']['B']['n_oov'],1)
+        self.assertTrue(r['prefix_descriptive_only'])
+        self.assertNotIn('normalized_prefix_gain',r)
+        self.assertNotIn('predictions',r)
+
+    def test_population_and_item_hits_are_independently_checked(self):
+        t=tool();_,metrics=t.frozen(ROOT)
+        b=metrics.prediction_metrics([1,99],[[1],[1]],{1:(0,0,0,0)})
+        with self.assertRaises(ValueError):t.population(b,1)
+        with self.assertRaises(ValueError):t.population(b,0,total=2,in_catalog=1,oov=1)
+        t.population(b,1,total=2,in_catalog=1,oov=1)
+
+    def test_safe_paths_reject_forbidden_ancestors_and_symlinks_before_read(self):
+        t=tool()
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d).resolve();f=root/'good.json';f.write_text('{}');link=root/'alias.json';link.symlink_to(f)
+            with self.assertRaises(ValueError):t.safe(link,[root])
+            bad=root/'test'/'secret.json';bad.parent.mkdir();bad.write_text('{}')
+            with self.assertRaises(ValueError):t.safe(bad,[root])
+            with self.assertRaises(ValueError):t.safe(f,[root/'elsewhere'])
+            self.assertEqual(t.safe(f,[root]),f)
+
+    def test_exact_pinned_delta_rejects_old_byte_change_and_unlisted_path(self):
+        t=tool()
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d).resolve();old=root/'old.py';old.write_text('old bytes')
+            training={'old.py':t.sha(old)};delta={}
+            for name in t.REPORT_FILES:
+                if name in training:continue
+                p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('fixed '+name);delta[name]=t.sha(p)
+            r=t.check_execution_ledger(root,training,delta)
+            self.assertEqual(r,{**training,**delta})
+            with self.assertRaises(ValueError):t.check_execution_ledger(root,training,{**delta,'unlisted.py':'0'*64})
+            with self.assertRaises(ValueError):t.check_execution_ledger(root,training,{**delta,**training})
+            old.write_text('changed bytes')
+            with self.assertRaises(ValueError):t.check_execution_ledger(root,training,delta)
+
+    def test_raw_verified_and_manifest_identity_cannot_be_replaced_by_auxiliary_json(self):
+        t=tool();rid=t.RUNS[0];pin='a'*64
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d).resolve();vr=root/'runs'/(rid+'-verify');logs=vr/'logs';logs.mkdir(parents=True)
+            log=logs/'stdout.log';log.write_text(json.dumps({'status':'complete'}))
+            with self.assertRaises(ValueError):t.guard_verifier(root,rid,pin,t.sha(log))
+            raw={'status':'verified','run_id':rid,'verify_run_id':rid+'-verify','manifest_sha256':pin}
+            log.write_text(json.dumps(raw));proof=t.guard_verifier(root,rid,pin,t.sha(log))
+            self.assertEqual(proof['status'],'raw_stdout_verified')
+            raw['manifest_sha256']='b'*64;log.write_text(json.dumps(raw))
+            with self.assertRaises(ValueError):t.guard_verifier(root,rid,pin,t.sha(log))
+
+    def test_request_cannot_change_accepted_hits_or_seed_manifests(self):
+        t=tool();self.assertTrue(hasattr(t,'ACCEPTED_STDOUTS'))
+        req={'schema':'sid-learn-report-request-v1','frozen_root':str(ROOT),'source_commit':'a'*40,
+             'scheduler_root':'/workspace/vkgr-infra01-root','run_ids':list(t.RUNS),
+             'manifest_pins':dict(t.ACCEPTED_MANIFESTS),'stdout_pins':dict(t.ACCEPTED_STDOUTS),
+             'history':{'path':'/allowed/history.json','sha256':'c'*64},'catalog':{'path':'/allowed/catalog.json','sha256':'d'*64},
+             'sid_manifests':{k:{'path':'/allowed/'+k+'.json','sha256':pin} for k,pin in t.SID_PINS.items()},
+             'source_delta':{'learn':{},'control':{}}, 'train_audit':dict(t.TRAIN_AUDIT), 'raw_root':t.RAW_ROOT}
+        t.validate_request(req)
+        bad={**req,'manifest_pins':{**req['manifest_pins'],t.RUNS[0]:'0'*64}}
+        with self.assertRaises(ValueError):t.validate_request(bad)
+        with self.assertRaises(ValueError):t.validate_request({**req,'accepted_hits':{}})
+        with self.assertRaises(ValueError):t.validate_request({**req,'stdout_pins':{**req['stdout_pins'],t.RUNS[0]:'0'*64}})
+
+class SourceBindingTests(unittest.TestCase):
+    def test_original_sid_runtime_source_and_delta_are_all_bound(self):
+        import copy
+        t=tool();self.assertTrue(callable(getattr(t,'audit_source',None)))
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d).resolve();(root/'uv.lock').write_text('fixed lock')
+            training={'uv.lock':t.sha(root/'uv.lock')};delta={}
+            for name in t.REPORT_FILES:
+                if name in training:continue
+                p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('fixed '+name);delta[name]=t.sha(p)
+            own={'runtime':{'python':'fixture','exact_dependencies':{}},'lock_sha256':training['uv.lock']}
+            binding={'source':{'git':{'git_base':t.SOURCES['learn'],'git_dirty':False},'files':training},
+                     'sid':{'manifest_sha256':t.SID_PINS['learn']},'runtime':{'environment':own['runtime']}}
+            self.assertEqual(t.audit_source(root,'learn',binding,delta,own),{**training,**delta})
+            for key in ('sid','runtime','source'):
+                bad=copy.deepcopy(binding)
+                if key=='sid':bad[key]['manifest_sha256']='0'*64
+                elif key=='runtime':bad[key]['environment']['python']='changed'
+                else:bad[key]['git']['git_dirty']=True
+                with self.assertRaises(ValueError):t.audit_source(root,'learn',bad,delta,own)
+
+class LegacyLockTests(unittest.TestCase):
+    def test_legacy_missing_lock_is_anchored_to_original_git_not_current_bytes(self):
+        import subprocess
+        t=tool();self.assertTrue(callable(getattr(t,'original_lock_sha',None)))
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d).resolve();old=root/'old.py';old.write_text('original source')
+            training={'old.py':t.sha(old)};delta={}
+            for name in t.REPORT_FILES:
+                p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('original '+name);delta[name]=t.sha(p)
+            for args in (['init','-q'],['add','old.py',*t.REPORT_FILES],['-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','fixture']):
+                subprocess.run(['git','-C',str(root),*args],check=True,capture_output=True)
+            commit=subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip();t.SOURCES['control']=commit
+            expected=t.sha(root/'uv.lock');own={'runtime':{'python':'fixture','exact_dependencies':{}},'lock_sha256':expected}
+            binding={'source':{'git':{'git_base':commit,'git_dirty':False},'files':training},'sid':{'manifest_sha256':t.SID_PINS['control']},'runtime':{'environment':own['runtime']}}
+            self.assertEqual(t.original_lock_sha(root,'control',training),expected)
+            t.audit_source(root,'control',binding,delta,own)
+            (root/'uv.lock').write_text('changed lock');delta['uv.lock']=t.sha(root/'uv.lock');own['lock_sha256']=delta['uv.lock']
+            self.assertEqual(t.original_lock_sha(root,'control',training),expected)
+            with self.assertRaises(ValueError):t.audit_source(root,'control',binding,delta,own)
+
+class OriginalJobBindingTests(unittest.TestCase):
+    def test_report_stdout_binds_real_run_source_config_and_actual_argv(self):
+        from unittest.mock import patch
+        import copy
+        t=tool()
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d).resolve();run=root/'runs'/t.PF_ID;run.mkdir(parents=True)
+            request=root/'request.json';request.write_text('{}');pin=t.sha(request)
+            raw=['--request',str(request),'--request-sha',pin,'--preflight']
+            import sys
+            meta={'run_id':t.PF_ID,'git':{'commit':'a'*40,'dirty':False},'cwd':str(ROOT),'config':{'path':str(request),'sha256':pin},'argv':[sys.executable,'-B',str(ROOT/'analysis/sid_learn_report_read.py'),*raw]}
+            mp=run/'run.json';mp.write_text(json.dumps(meta));req={'scheduler_root':str(root),'source_commit':'a'*40}
+            with patch.dict(t.os.environ,VKGR_RUN_ID=t.PF_ID):
+                b=t.bind_job(req,request,pin,raw,True);self.assertEqual(b['run_manifest_sha256'],t.sha(mp));self.assertEqual(b['run_id'],t.PF_ID)
+                for field in ('source','config','argv'):
+                    bad=copy.deepcopy(meta)
+                    if field=='source':bad['git']['commit']='b'*40
+                    elif field=='config':bad['config']['sha256']='d'*64
+                    else:bad['argv'][-1]='--other'
+                    mp.write_text(json.dumps(bad))
+                    with self.assertRaises(ValueError):t.bind_job(req,request,pin,raw,True)
+
+class ArchivePathTests(unittest.TestCase):
+    def test_lexical_evaluation_symlink_is_rejected_before_resolving_archive(self):
+        t=tool();self.assertTrue(callable(getattr(t,'guard_archive_paths',None)))
+        for link in (False,True):
+            with self.subTest(link=link),tempfile.TemporaryDirectory() as d:
+                root=Path(d).resolve();real=root/('real-evaluation' if link else 'evaluation-007');real.mkdir()
+                if link:(root/'evaluation-007').symlink_to(real,target_is_directory=True)
+                shard=real/'shard-000000-002520.json';shard.write_text('{}')
+                evaluation=real/'manifest.json';evaluation.write_text(json.dumps({'complete':True,'completed_queries':2520,'shards':[{'path':str(shard),'sha256':t.sha(shard)}]}))
+                manifest={'best':{'epoch':7},'selection':{'best_epoch':7},'epochs':[{'epoch':7,'evaluation':{'path':'evaluation-007','manifest_sha256':t.sha(evaluation)}}]}
+                def reader(path,pin):
+                    if link:raise AssertionError('opened symlinked evaluation')
+                    self.assertEqual(t.sha(path),pin);return json.loads(Path(path).read_bytes()),pin
+                if link:
+                    with self.assertRaises(ValueError):t.guard_archive_paths(root/'manifest.json',manifest,reader)
+                else:self.assertEqual(t.guard_archive_paths(root/'manifest.json',manifest,reader)['shards'],1)
+
+if __name__=='__main__':unittest.main()
+
+class LearnCooccurrenceTests(unittest.TestCase):
+    def test_same_global_codes_have_multiple_two_prefixes_and_distinct_random_pairs(self):
+        t=tool();_,m=t.frozen(ROOT)
+        mapping={1:(0,0,0,0),2:(0,0,1,0),3:(1,1,1,0)}
+        a=t.catalog_structure(mapping,256,m)
+        self.assertEqual(a['S0']['layers'][1]['avg_items_per_node'],1.5)
+        self.assertEqual(a['S0']['layers'][2]['distinct_codes'],2)
+        out=t.cooccurrence_reports(mapping,[[1,1,2,3]],m)
+        self.assertEqual(out['D']['n_pairs'],2)
+        self.assertEqual(out['Dprime']['n_pairs'],2)
+        self.assertEqual(out['D']['n_same_item_excluded'],1)
+        self.assertIn('sample(range(N),2)',out['Dprime']['random_algorithm'])
+        self.assertEqual(out['Dprime']['prefix_by_k']['3']['status'],'STRUCT_NA')
+        self.assertEqual(out['Dprime']['catalog_order'],'ascending_item_id')
+        self.assertIn('with_replacement',out['D']['random_algorithm'])
+    def test_train_metadata_is_exactly_registered_not_future_or_reordered(self):
+        t=tool();self.assertTrue(callable(getattr(t,'train_receipts',None)))
+        records=[{'path':f'subsamples/ur0.01_ir0.01/train/week_{w:02d}.parquet','sha256':'a'*64,'size_bytes':3} for w in range(25)]
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d).resolve()
+            for rec in records:
+                p=root/rec['path'];p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'abc')
+            value=t.train_receipts(root,records)
+            self.assertEqual(len(value),25)
+            for bad in (records[:-1],list(reversed(records)),[dict(records[0],path='subsamples/ur0.01_ir0.01/test/week_26.parquet'),*records[1:]]):
+                with self.assertRaises(ValueError):t.train_receipts(root,bad)
