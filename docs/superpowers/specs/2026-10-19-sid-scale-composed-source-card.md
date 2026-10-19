@@ -1,0 +1,39 @@
+# S4正式两分量入口与源码固定卡
+
+依据Eddy顺序授权、S4 FINAL、decision_log两分量冻结及同日更正。新入口scripts/sid_scale_composed.py与新队列桥；旧cost_v1原型、rq_components和L2代码字节不动。CPU非训练，不占训练名额；未过全闸门不入队。
+
+唯一父作业sid-scale-cost-v1（此前未提交），唯一新增只读PF sid-scale-components-preflight-v1；新DEP/OPS由固定SHA部署回执指向。原预算总上限9000s，parent8970s留开销；BHKM原N250000/300000，每点3600s上限；core N120415/3000步、K256，直接原L2 Adagrad/reset、CPU、project=False/diagnostics=False；usage独立各调用一次N120415/250000/300000。每stage自身新child session有界监督、RSS16384MiB；不重置spent、不为censored点重跑。
+
+c_core必须原fit status complete、steps<源码实读usage_interval且usage_log为空；否则不接受核心。c_assign直接原vkgr.sid_rqvae._usage、原module对象及repair.rq身份一致，记录源码SHA/行号、函数和调用数；不为取得usage跑满interval。线性拟合按冻结N*K*D*L，过原点OLS、报R²与残差，不添加拟合质量阈值。主数组按实际chunk解析，RSS只作量级验证。
+
+两步数口径均total_fit=steps*c_core+floor(steps/interval)*N*K*D*L*c_assign，标composed_from_components，所有target写extrapolation=true；不称端到端实测。每物品遍数不变时usage二次、core线性，次数不是墙钟，实际份额只由分别标定常数计算。不得改interval、抽样或关闭usage。
+
+历史自校验：原T1r/T2r的manifest/tokenizer/run/terminal/verify metadata逐文件固定SHA在default_request中；使用实际tokenizer.config.fit.eval_every，不误用effective_prereg默认。原caller Git blob/SHA/行号也实读。端到端job wall与内部fit elapsed分开；原CUDA/diagnostics/project与当前CPU scope不同、历史机器身份UNKNOWN，不放宽两倍判据。K256 core常数用于K16历史比较属于需由固定自校验检验的模型假设，明确披露。任一历史factor_error>2，所有RQ target外推UNKNOWN、model_alert交Kiro；不得为过自校验调系数。历史legacy verify stdout缺显式status=verified的既有限制保留，不借此补造旧验收或重新运行。
+
+真实PF engineering=False：同正式入口/原历史输入路径，仅metadata+源码验证，不生成规模数组/不调用模型。PF原stdout/source/request/实际run/argv/claim/terminal绑定成功后，dry→唯一父作业；已有run/queue/intent/rejected不重投。正式结果原benchmark_reported必须带自身run_id/run_manifest_sha256/request_sha256/source_commit及report物理SHA。旧日志或单分量报告不能代替本次结果。
+
+## 固定执行成员
+
+当前source.files与下表精确相等，runtime依赖/线程环境随每worker producer与parent严格相等。固定公开commit及部署SHA另在experiment_log/私有manifest登记；执行者不写decision_log。
+
+|路径|SHA256|
+|---|---|
+|scripts/sid_scale_benchmark.py|f745b01db98946bc5cacf969ade4461d8c346f81c26f2fe6381d513280d87417|
+|scripts/sid_scale_composed.py|9e045185659cdb9fc1dddf0e432c80d11e6ef6c82aff547385bbb631a098a2fa|
+|scripts/sid_scale_composed_queue.py|8917f6e9b246434819398914b573803625b37e017952c9f77065c3cf7ca6a2d0|
+|scripts/sid_scale_cost_v1.py|501403718c294a3fe2f7b9256a6f098eca3f4e3cb13fd6a718c457ceae239e17|
+|scripts/sid_scale_rq_components.py|b084b9bcd01f267ff2259f52ca83036ec61f980d9506645c26886b0ca0fdc97c|
+|src/vkgr/config.py|540a878c5cfc8945bdfcc083609770e32cae92cebf566f980f9235fe0ba24546|
+|src/vkgr/data_audit.py|c7f5f28cdb7e19181fc46f8d69140dba9711ff66f5b8537399692e37e4ded182|
+|src/vkgr/generative_data.py|ea4357989c3a520e7c7dbc1dfce2bbeff192f3d89e4e5f0703cfd27bf8e0c7c7|
+|src/vkgr/manifest.py|3b06a12b3129aec87320eebbcc17a5859814e99fb479d57d10a6a8febe415f17|
+|src/vkgr/retrieval_data.py|1fa39c85b98ba8aebfabfd0c23659c4a178a1f3f842a5985469656c9deadb867|
+|src/vkgr/sid.py|9602580f907cc2e8cfa3684aec7828df2bdfc87b59e71b6fd3865a9a19de91a3|
+|src/vkgr/sid_rqvae.py|52173bea9b80ffeb40e25943e3d7069ec53f9bd34a4509c97278194714065067|
+|src/vkgr/sid_rqvae_r.py|c786848ab85c6ce2a593ccdfc626688484ae58d2ee0406c889a5ad48c5f54392|
+|src/vkgr/sid_tok_audit.py|d4f0afb554a6f48f787c91c81ffcb0baa7360a614b91152aa2d73cfd91b3f8ba|
+|uv.lock|8b231cef0c5056b4a6a8365f5a02070ba4e1c043b55fc9faa020188c10bf2063|
+
+入队前review修复：正式usage_sizes拒绝浮点等值，固定父资源声明不得下调，均在预算消耗前拒绝；C档需新独立复核。没有正式标定或入队。
+
+后续新C档复核发现BHKM列表同类浮点等值缺口；新wrapper也已严格plain-int冻结两点，旧validator不改。尚未正式标定或入队。

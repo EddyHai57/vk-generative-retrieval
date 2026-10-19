@@ -1,0 +1,9 @@
+# S4正式两分量入队前独立review
+
+初轮reviewer s4_composed_formal_review，审核353f6e3，CHANGES_REQUESTED：两个P2，usage_sizes浮点等值被误接纳，以及CPU父资源声明允许下调到不足原预算。review独立跑63相关测试通过；初次受ps沙箱限制，提权重跑通过。核八隔离变异矩阵及source卡SHA，未独立重跑变异，未访问服务器/真实payload。
+
+执行者fresh RED两断言复现，最小修复正式usage点plain int与固定资源声明；65相关回归通过。旧入口/L2不改、科学配方和预算不改。按AGENTS 4A判C档（判定/准入合同逻辑改变），新独立复核不可省。此记录不宣称已放行，尚未S4 push/部署/PF/入队。
+
+新C档reviewer s4_composed_contract_c_review审核fa02cce：原两P2已修复，65相关tests独立GREEN、十变异和源卡SHA已核；另发现BHKM点浮点列表同类剩余P2，CHANGES_REQUESTED。执行者再fresh RED单断言→新wrapper最小plain-int检查→66相关GREEN；原十变异加该回退变异全量隔离重跑中，再派新独立C档复核这一合同修复及原review结论是否保留。不改旧base、不改科学点或预算。
+
+最终新C档reviewer s4_final_integer_c_review：APPROVED，审核ba435c0相对fa02cce，无P0/P1/P2阻断。正式BHKM/usage成员plain int且顺序固定；默认合法请求过，独立36项无效输入/资源案例全拒绝。固定资源检查保留，唯一新增guard未改变科学路径或旧source/job/PF/发布绑定。66相关tests独立GREEN（首次ps沙箱失败，获准后重跑过）；15成员源卡SHA匹配。核最终baseline GREEN及11隔离assertion kill，矩阵SHA4a9772a0086faa8142473de7b1ce7beaa0f7c40330dd5e4f8b69de571daaf9dc，未独立重跑变异。未修改文件、未接触服务器/真实payload/规模点；不代替真实PF。
