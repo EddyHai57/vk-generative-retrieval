@@ -177,3 +177,62 @@ class ArchivePathTests(unittest.TestCase):
                 else:self.assertEqual(t.guard_archive_paths(root/'manifest.json',manifest,reader)['shards'],1)
 
 if __name__=='__main__':unittest.main()
+
+class FrozenSupplementTests(unittest.TestCase):
+    def test_query_weighted_baseline_correction_and_no_top50_correction(self):
+        t=tool();self.assertTrue(callable(getattr(t,'prefix_description',None)))
+        _,m=t.frozen(ROOT)
+        mapping={1:(0,0,0,0),2:(0,0,1,0),3:(1,1,1,0)}
+        targets=[1,1,3,99];pred=[[1],[3],[1],[1]]
+        r=t.prefix_description(targets,m.prediction_metrics(targets,pred,mapping),mapping)
+        self.assertAlmostEqual(r['1']['q'],5/9)
+        self.assertAlmostEqual(r['1']['C_top1'],-.5)
+        self.assertAlmostEqual(r['1']['A_top1'],1/3)
+        self.assertNotIn('C_top50',r['1'])
+        one={1:(0,0,0,0)}
+        r=t.prefix_description([1],m.prediction_metrics([1],[[1]],one),one)
+        self.assertIsNone(r['2']['C_top1'])
+    def test_positive_total_and_head_mid_half_rule_inclusive_boundary(self):
+        t=tool();self.assertTrue(callable(getattr(t,'head_mid_check',None)))
+        for deltas,ok in [({'high':0,'mid':0,'low':0,'unsupported':0,'oov':0},False),({'high':1,'mid':0,'low':1,'unsupported':0,'oov':0},True),({'high':0,'mid':0,'low':1,'unsupported':0,'oov':0},False),({'high':2,'mid':-3,'low':1,'unsupported':0,'oov':0},False),({'high':-2,'mid':1,'low':0,'unsupported':0,'oov':0},False)]:
+            result=t.head_mid_check([deltas,deltas,deltas]);self.assertEqual(result['passed'],ok)
+            self.assertEqual(result['delta_by_bin']['high'],3*deltas['high'])
+    def test_integrity_pins_all_bin_denominators_zero_oov_and_original_fit(self):
+        import copy
+        t=tool();self.assertTrue(callable(getattr(t,'fit_integrity',None)))
+        _,m=t.frozen(ROOT);mapping={1:(0,0,0,0),2:(0,0,0,1),3:(1,1,1,0)}
+        structure=t.catalog_structure(mapping,48,m)
+        audit={'items':3,'positions':[{'distinct':2,'utilization':2/48}]*3,'prefix_groups':{'1':2,'2':2,'3':2},'leaves':{'count':2,'max':2,'histogram_head':[[1,1],[2,1]],'distinct_sizes':2},'semantic_collision_items':2,'semantic_collision_groups':1,'full_sid_collisions':0}
+        self.assertTrue(t.fit_integrity(structure,audit)['passed'])
+        for key in ('positions','semantic_collision_items','prefix_groups'):
+            bad=copy.deepcopy(audit)
+            if key=='positions':bad[key][2]['distinct']=1
+            elif key=='prefix_groups':bad[key]['2']=3
+            else:bad[key]=1
+            self.assertFalse(t.fit_integrity(structure,bad)['passed'])
+        pair={'new':{'C':{'bins':{k:{'n':n,'hits':0} for k,n in t.BIN_DENOMINATORS.items()}}},'control':{'C':{'bins':{k:{'n':n,'hits':0} for k,n in t.BIN_DENOMINATORS.items()}}}}
+        self.assertTrue(t.bin_integrity([pair])['passed'])
+        pair['new']['C']['bins']['high']['n']-=1
+        self.assertFalse(t.bin_integrity([pair])['passed'])
+
+class SupplementAggregationTests(unittest.TestCase):
+    def test_seed_means_and_anchor_ignore_prefix_values_but_require_completeness(self):
+        import copy
+        t=tool();_,m=t.frozen(ROOT)
+        mapping={1:(0,0,0,0),2:(0,0,0,1),3:(1,1,1,0)}
+        structure=t.catalog_structure(mapping,48,m)
+        audit={'items':3,'positions':[{'distinct':2,'utilization':2/48}]*3,'prefix_groups':{'1':2,'2':2,'3':2},'leaves':{'count':2,'max':2,'histogram_head':[[1,1],[2,1]],'distinct_sizes':2},'semantic_collision_items':2,'semantic_collision_groups':1,'full_sid_collisions':0}
+        reports={}
+        for seed,value in zip(t.SEEDS,(.1,.2,.6)):
+            r={role:{'C':{'bins':{k:{'n':n,'hits':0} for k,n in t.BIN_DENOMINATORS.items()}},'prefix_description':{k:{field:value for field in ('A_top1','A_top50','q','C_top1')} for k in ('1','2','3')}} for role in ('new','control')}
+            r['popularity_delta_hits']={'high':2,'mid':1,'low':0,'unsupported':0,'oov':0};reports[str(seed)]=r
+        out=t.supplement(reports,{'structure':structure,'control':structure},{'structure':audit,'control':audit})
+        self.assertAlmostEqual(out['prefix_seed_means']['new']['2']['A_top1'],.3)
+        self.assertTrue(out['anchor_rule_components_satisfied'])
+        altered=copy.deepcopy(reports)
+        for row in altered.values():
+            row['new']['prefix_description']['2']['C_top1']=-1
+            row['control']['prefix_description']['2']['C_top1']=1
+        self.assertTrue(t.supplement(altered,{'structure':structure,'control':structure},{'structure':audit,'control':audit})['anchor_rule_components_satisfied'])
+        altered['42']['new']['C']['bins']['oov']['hits']=1
+        self.assertFalse(t.supplement(altered,{'structure':structure,'control':structure},{'structure':audit,'control':audit})['anchor_rule_components_satisfied'])

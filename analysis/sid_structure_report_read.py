@@ -162,6 +162,72 @@ def summarize_pair(targets,new_predictions,control_predictions,new_mapping,contr
     require(sum(delta.values())==difference and delta['oov']==0,'bin deltas do not sum to item delta')
     return {**result,'delta_hits':difference,'popularity_delta_hits':delta,'prefix_descriptive_only':True}
 
+BIN_DENOMINATORS={'high':963,'mid':548,'low':155,'unsupported':231,'oov':623}
+
+def prefix_description(targets,b,mapping):
+    valid=[target for target in targets if target in mapping]
+    require(len(valid)==b['n_in_catalog'] and bool(mapping),'prefix query denominator differs')
+    out={}
+    for k in (1,2,3):
+        sizes=collections.Counter(tuple(code[:k]) for code in mapping.values())
+        q=sum(sizes[tuple(mapping[target][:k])] for target in valid)/(len(valid)*len(mapping)) if valid else None
+        row=b['prefix_by_k'][str(k)];a=row['top1_rate']
+        out[str(k)]={'n':len(valid),'A_top1':a,'A_top50':row['top50_rate'],'q':q,
+                     'C_top1':(a-q)/(1-q) if a is not None and q is not None and q<1 else None}
+    return out
+
+def head_mid_check(deltas):
+    total={key:sum(row[key] for row in deltas) for key in BIN_DENOMINATORS}
+    gain=sum(total.values());numerator=total['high']+total['mid']
+    return {'delta_by_bin':total,'total_delta':gain,'head_mid_delta':numerator,
+            'head_mid_share':numerator/gain if gain>0 else None,
+            'passed':gain>0 and 2*numerator>=gain,
+            'interpretation':'weak_sanity_check_not_mechanism_evidence'}
+
+def bin_integrity(pairs):
+    checks=[]
+    for pair in pairs:
+        for role in ('new','control'):
+            bins=pair[role]['C']['bins']
+            checks.append({k:bins[k]['n'] for k in bins}==BIN_DENOMINATORS and bins['oov']['hits']==0)
+    return {'passed':bool(checks) and all(checks),'original_denominators':BIN_DENOMINATORS}
+
+def fit_integrity(structure,audit):
+    a=structure['S0'];layers=a['layers'];positions=audit['positions'][:3]
+    checks={'items':a['n_items']==audit['items'],
+            'layer_used':[x['distinct_codes'] for x in layers]==[x['distinct'] for x in positions],
+            'layer_utilization':[x['utilization'] for x in layers]==[x['utilization'] for x in positions],
+            'prefix_nodes':{str(x['k']):x['nodes'] for x in layers}==audit['prefix_groups'],
+            'semantic_leaves':a['leaves']['count']==audit['leaves']['count'] and a['leaves']['max_items']==audit['leaves']['max'],
+            'collided_items':structure['semantic_collision_items']==audit['semantic_collision_items'],
+            'collision_groups':a['leaves']['collided_leaves']==audit['semantic_collision_groups'],
+            'suffix_resolves':a['full_code_leaves']['collision_items']==audit['full_sid_collisions']==0}
+    # Existing audits retain the complete size histogram for these accepted fits.
+    hist=audit['leaves'].get('histogram_head')
+    checks['collision_pairs']=hist is not None and len(hist)==audit['leaves'].get('distinct_sizes') and structure['collision_pairs']==sum(size*(size-1)//2*count for size,count in hist)
+    return {'passed':all(checks.values()),'checks':checks}
+
+def supplement(reports,structures,audits):
+    bins=bin_integrity(list(reports.values()));fits={role:fit_integrity(structures[role],audits[role]) for role in ('structure','control')}
+    sanity=head_mid_check([reports[str(s)]['popularity_delta_hits'] for s in SEEDS])
+    means={}
+    for role in ('new','control'):
+        means[role]={}
+        for k in ('1','2','3'):
+            means[role][k]={}
+            for field in ('A_top1','A_top50','q','C_top1'):
+                values=[reports[str(seed)][role]['prefix_description'][k][field] for seed in SEEDS]
+                means[role][k][field]=sum(values)/len(values) if all(v is not None for v in values) else None
+    complete=bins['passed'] and all(x['passed'] for x in fits.values())
+    return {'prefix_seed_means':means,'head_mid_sanity':sanity,'completeness':{'passed':complete,'bins':bins,'fit_audits':fits},
+            'anchor_rule_components_satisfied':complete and sanity['passed'],
+            'anchor_change_authority':'Kiro_only',
+            'limitations':['Different granularities: raw and corrected prefix values cannot be directly compared.',
+                           'Head and middle cover about 80 percent of in-catalog queries; sanity check has almost no discriminating power and is not mechanism evidence.',
+                           'Hierarchy and output vocabulary change together (148 versus 771); contributions cannot be separated.',
+                           'Boundary efficacy: mean gain equals threshold and seed2025 gain is zero.',
+                           'Semantic collisions are resolved using the original suffix.']}
+
 def execute(req,preflight=False):
     validate_request(req);own=source_identity(req);diag,metrics=frozen(req['frozen_root']);archive=diag.archive
     root=Path(req['scheduler_root']);require(root==archive.ROOT,'original archive root required')
@@ -179,10 +245,11 @@ def execute(req,preflight=False):
         slices=diag.read_json({'path':str(hp/'train-slices.json'),'sha256':hist['artifacts']['train-slices.json']})
         require(len(queries)==2520 and sum(q['oov'] for q in queries)==623,'query population differs')
         hist['_g_catalog_digest']=archive.digest(catalog);hist['_base_queries_canonical_digest']=hist['binding']['query_sha']
-        refs={};states={};source_checks={};ledgers={}
+        refs={};audits={};states={};source_checks={};ledgers={}
         for role,ref in req['sid_manifests'].items():
             sid=diag.read_json(ref);require(sid['sid_version']=={'structure':'STRUCT_C1_B48D3_S42','control':'COLL_C1_B256D3_S42'}[role],'SID family differs')
             refs[role]={'path':str(Path(ref['path']).parent/'mapping.npz'),'sha256':sid['artifacts']['mapping.npz']};safe(refs[role]['path'],allowed);diag.stat_ref(refs[role])
+            audit_path=safe(Path(ref['path']).parent/'audit.json',allowed);audits[role]=diag.read_json({'path':str(audit_path),'sha256':sid['artifacts']['audit.json']})
         for rid in RUNS:
             role='structure' if rid.startswith('g-structure') else 'control'
             raw=guard_verifier(root,rid,req['manifest_pins'][rid],req['stdout_pins'][rid]);archive.READS[raw['path']]=raw['sha256']
@@ -205,9 +272,12 @@ def execute(req,preflight=False):
                 for role,rid,summary in (('new',nr,ns),('control',cr,cs)):
                     population(pair[role]['B'],HITS[rid]);require(summary['hits']==HITS[rid],'archive differs from accepted hits')
                     pair[role]['archive_selfcheck']=summary
+                    pair[role]['prefix_description']=prefix_description(targets,pair[role]['B'],mappings['structure' if role=='new' else 'control'])
                 reports[str(seed)]=pair
             deltas=[reports[str(seed)]['delta_hits'] for seed in SEEDS]
             result.update(seeds=reports,mechanical_conditions={'three_train_and_raw_verify':True,'mean_delta_hits':sum(deltas)/3,'mean_delta_ge_6':sum(deltas)>=18,'seeds_delta_ge_6':sum(d>=6 for d in deltas),'at_least_two_delta_ge_6':sum(d>=6 for d in deltas)>=2})
+            result['supplement']=supplement(reports,result['structure'],audits)
+            result['supplement']['anchor_rule_components_satisfied'] &= all(result['mechanical_conditions'][key] for key in ('three_train_and_raw_verify','mean_delta_ge_6','at_least_two_delta_ge_6'))
         result['input_sha256']={**archive.READS,**diag.READS}
         return result
     finally:archive.read=original

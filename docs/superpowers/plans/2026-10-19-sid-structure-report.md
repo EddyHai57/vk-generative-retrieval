@@ -51,3 +51,6 @@
 ## Pre-flight interfaces
 
 Task1 execute(req,preflight)由Task2固定file CLI调用；Task2阶段名preflight/report必须与main的--preflight一致。报告只复用S0 math，不读取S2结果或改变其在机作业；无共享修改文件。
+
+
+2026-10-19补充裁决覆盖旧“不折算”约束：先写入FINAL附记，再按Kiro公式新增top1机会校正（纯描述），top50不校正；新增合理性及完整性机械检查，C档fresh RED/GREEN、隔离变异与新独立review。原训练/门禁/算法字节不变，固定新增执行清单仅runner SHA更新。
