@@ -1,0 +1,10 @@
+{
+  "schema": "p-watch-positive-train-only-v1",
+  "train_weeks": [0, 24],
+  "duration_bins_source": "scripts/p3_label_eda.py:DURATION_BINS",
+  "duration_bins": ["1-10", "11-20", "21-40", "41-60", "61-120", "121-255"],
+  "threshold_fraction": 0.8,
+  "quantile_method": "nearest_rank",
+  "quantile_method_status": "frozen by docs/decision_log.md section 1833",
+  "reads_validation_metrics": false
+}
