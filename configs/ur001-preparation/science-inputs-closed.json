@@ -1,0 +1,36 @@
+{
+  "metadata": [
+    "/workspace/vkgr-ur001-data-20261020-v1/metadata/users_metadata.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/metadata/items_metadata.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/metadata/item_embeddings.npz"
+  ],
+  "schema": "ur001-science-inputs-v1",
+  "train": [
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_00.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_01.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_02.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_03.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_04.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_05.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_06.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_07.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_08.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_09.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_10.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_11.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_12.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_13.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_14.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_15.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_16.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_17.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_18.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_19.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_20.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_21.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_22.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_23.parquet",
+    "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/train/week_24.parquet"
+  ],
+  "validation": "/workspace/vkgr-ur001-data-20261020-v1/subsamples/ur0.01/validation/week_25.parquet"
+}

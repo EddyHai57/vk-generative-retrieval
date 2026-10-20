@@ -1,0 +1,183 @@
+{
+  "schema": "overnight-local-public-evidence-v1",
+  "implementation_commit": "db43a1a",
+  "synthetic_tests": 18,
+  "existing_week26_synthetic_tests": 16,
+  "mutation_receipt": {
+    "schema": "tensor-cache-isolated-mutations-v1",
+    "results": [
+      {
+        "case": "baseline",
+        "returncode": 0,
+        "assertion_killed": false,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": false
+      },
+      {
+        "case": "padding_width",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "tail_batch",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "cursor_order",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "rng_consumption",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "map_key_omission",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "input_hash_omission",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "sid_hash_omission",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "config_hash_omission",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "source_hash_omission",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "runtime_hash_omission",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "constructor_hash_omission",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": null,
+        "target_killed": true
+      },
+      {
+        "case": "negative_passthrough",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": "negative input passthrough",
+        "target_killed": true
+      },
+      {
+        "case": "mask_passthrough",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": "mask input passthrough",
+        "target_killed": true
+      },
+      {
+        "case": "logq_passthrough",
+        "returncode": 1,
+        "assertion_killed": true,
+        "accepted": true,
+        "fresh_copy": true,
+        "bytecode_disabled": true,
+        "unique_cache_prefix": true,
+        "target_assertion": "logq input passthrough",
+        "target_killed": true
+      }
+    ],
+    "pass": true
+  },
+  "real_anchor_parity": "NOT_RUN",
+  "profiling": "NOT_RUN",
+  "server_connected": false,
+  "checkpoint": false,
+  "review": "docs/superpowers/reviews/2026-10-22-tensor-cache-luna-c-review.md",
+  "arithmetic_receipt_sha256": "b63dbc346c76c02ff643ab268ae926551620b65fccb5fef71016d57a1b262824"
+}
