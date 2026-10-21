@@ -58,3 +58,16 @@ git diff --check
 | docs/ops/codex-allow.rules.draft | eb527e6e0767c7811657656f633fdef7f758bf1b1d87ee0679306eee2a190eee |
 | docs/ops/2026-10-21-fixed-ops-v2-install.md | 32a7bd1fc6d6e898a9c35179ad42abde1ef168cff5dbedb088b10dca543e9b87 |
 | tests/test_fixed_ops_installable.py | 8073ad93ed0662195e022373fb1a0bce5bee7654b1ad713a1fbf8217b785c4e4 |
+
+## 发布包可复现性补核（2026-10-21）
+
+发布前隔离archive回归发现发布清单漏带两份复用工具；执行者补入原字节，尚未push。本次仅核补入工具身份与`tests/test_fixed_ops.py`中身份测试的变更，不重新扩大生产代码review范围。
+
+原测试在运行时`git show 5840e6b`取原blob，独立公开clone未必拥有该历史。现改为固定SHA256比较，仍对两份文件的完整字节做精确约束；没有放宽判定。复核者独立从原`5840e6b`取出blob计算并与当前文件逐字节比较，得到：
+
+| 文件 | 原blob及当前文件共同SHA256 |
+| --- | --- |
+| ops/tools/local/deploy_spec.py | 1382787f43a240729a0adf6b5873e4fbd2bb9ec8a21a52951bae1a4455a8999c |
+| ops/tools/remote/g_deploy.py | 5338241831645bf861c341548968a465afc30677280131e112ac11a490c4b85b |
+
+复核者将改后测试及两份工具复制到全新隔离目录，该目录无`.git`，运行`test_reused_tools_match_original_blobs`通过；使用`python -B`与`PYTHONDONTWRITEBYTECODE=1`隔离。原始输出：`cache/ops-installable-20261021/reviewer-public-tool-hashes.log`。该补核没有发现Blocking/Important/Minor，不涉及安装、服务器动作或规则写入；现场两项证据继续PENDING。

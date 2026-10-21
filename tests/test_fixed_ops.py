@@ -1,4 +1,5 @@
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -113,9 +114,13 @@ class FixedOpsTests(unittest.TestCase):
             self.assertEqual((pins/'foreign').read_text(),'preserve')
 
     def test_reused_tools_match_original_blobs(self):
-        for rel in ('ops/tools/local/deploy_spec.py', 'ops/tools/remote/g_deploy.py'):
-            expected=subprocess.run(['git','-C',str(ROOT),'show',f'5840e6b:{rel}'],capture_output=True,check=True).stdout
-            self.assertEqual((ROOT/rel).read_bytes(),expected)
+        # Pinned from original 5840e6b blobs; independent public clones need no private history.
+        expected = {
+            'ops/tools/local/deploy_spec.py': '1382787f43a240729a0adf6b5873e4fbd2bb9ec8a21a52951bae1a4455a8999c',
+            'ops/tools/remote/g_deploy.py': '5338241831645bf861c341548968a465afc30677280131e112ac11a490c4b85b',
+        }
+        for rel, digest in expected.items():
+            self.assertEqual(hashlib.sha256((ROOT/rel).read_bytes()).hexdigest(), digest)
 
     def test_deploy_git_worktree_and_hashes_real(self):
         m = load_server()
