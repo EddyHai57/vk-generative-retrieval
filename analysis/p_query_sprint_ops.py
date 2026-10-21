@@ -21,6 +21,10 @@ P3C='docs/p3c_validation.md'
 P3C_SHA='c89b6466c509628f6482b7d7dbc9f51c202ab665075caf580beed64bb3274b5f'
 COST_SHA='a18d2523df8ae5e002d161b416e0a229c994884891b9e65e593a63df93a0a15f'
 MIB=1024**2
+MEASUREMENT_SOURCE='43eb5bec6d32a5d37746a033452824fd399f2dc4'
+SOURCE_DELTA_PATHS={'analysis/p_query_sprint_ops.py','tests/test_p_query_sprint_capacity.py',
+                    'tests/fixtures/p_query_sprint_capacity_chain.py',
+                    'docs/superpowers/reviews/2026-10-21-p-query-sprint-capacity-implementation.md'}
 
 
 def absolute(value):
@@ -39,7 +43,7 @@ def read(path):
 def validate_request(req):
     required={'schema','stage','run_id','runner_source','original_source','workers','query_count',
               'engine','root','lock','original_ops_root','ops_root','output'}
-    if set(req)-required-{'measurement_request','previous_failure_request','previous_failure_request_sha256'} or required-set(req) or req['schema']!='p-query-sprint-v1':
+    if set(req)-required-{'measurement_request','previous_failure_request','previous_failure_request_sha256','source_delta','source_delta_sha256'} or required-set(req) or req['schema']!='p-query-sprint-v1':
         raise ValueError('fixed sprint request contract required')
     if req['stage'] not in ('diagnostic','cost-parity') or type(req['workers'])is not int or req['workers'] not in (1,2,4,8):
         raise ValueError('fixed stage/workers required')
@@ -63,6 +67,12 @@ def validate_request(req):
     elif 'measurement_request'in req:absolute(req['measurement_request'])
     elif req['stage']!='diagnostic' or count!=32 or req['run_id']!=expected+'1':
         raise ValueError('subsequent jobs require a measured diagnostic producer')
+    if 'source_delta'in req or 'source_delta_sha256'in req:
+        if ('measurement_request'not in req or 'source_delta'not in req
+            or type(req.get('source_delta_sha256'))is not str or len(req['source_delta_sha256'])!=64
+            or any(c not in '0123456789abcdef' for c in req['source_delta_sha256'])):
+            raise ValueError('measurement source delta path and SHA required')
+        absolute(req['source_delta'])
     return req
 
 
@@ -173,14 +183,16 @@ def invocation(request_path):
     return [sys.executable,'-B','-m','analysis.p_query_sprint_ops','run','--request',str(request_path),'--execute-on-new-instance']
 
 
-def input_files(req,request_path):
+def input_files(req,request_path,*,runner_root=None):
+    runner_root=ROOT if runner_root is None else runner_root
     paths=[absolute(req['lock']),absolute(req['root'])/'inputs.json',absolute(req['root'])/'preflight.json',
-           absolute(req['engine'])/'analysis/a40_cost.py',Path(__file__).resolve()]
+           absolute(req['engine'])/'analysis/a40_cost.py',runner_root/'analysis/p_query_sprint_ops.py']
     stages=['generate','preflight']+(['run'] if req['stage']=='cost-parity' else [])
     for stage in stages:
         base=absolute(req['original_ops_root'])/'runs'/('a40-exact-'+stage+'-v1')
         paths.extend(base/name for name in ('run.json','terminal.json','logs/stdout.log'))
     if req['stage']=='cost-parity':paths.append(absolute(req['root'])/'cost.json')
+    if 'source_delta'in req:paths.append(absolute(req['source_delta']))
     if 'measurement_request'in req:
         old=load_request(req['measurement_request']);base=absolute(old['ops_root'])/'runs'/old['run_id']
         paths.extend([absolute(req['measurement_request']),absolute(old['output'])/'result.json',
@@ -196,22 +208,24 @@ def ops_resources(declaration):
             'wall_seconds':declaration['wall_hours']*3600.0}
 
 
-def accepted(request_path,payload):
+def accepted(request_path,payload,*,runner_root=None,runner_ledger=None):
+    runner_root=ROOT if runner_root is None else runner_root
     req=load_request(request_path);base=absolute(req['ops_root'])/'runs'/req['run_id']
     record=read(base/'run.json');terminal=read(base/'terminal.json');stdout=read(base/'logs/stdout.log')
-    expected_pins={str(path):digest(path) for path in input_files(req,request_path)}
+    expected_pins={str(path):digest(path) for path in input_files(req,request_path,runner_root=runner_root)}
     pins={pin['path']:pin['sha256'] for pin in record.get('inputs',[])}
     dirty=record.get('git',{}).get('dirty_files')
-    expected_dirty=([{'path':P3C,'sha256':P3C_SHA}] if (ROOT/P3C).exists() and digest(ROOT/P3C)==P3C_SHA else [])
+    expected_dirty=([{'path':P3C,'sha256':P3C_SHA}] if (runner_root/P3C).exists() and digest(runner_root/P3C)==P3C_SHA else [])
     if (record.get('schema')!='vkgr-run-v1' or terminal.get('schema')!='vkgr-terminal-v1'
         or record.get('run_id')!=req['run_id'] or terminal.get('run_id')!=req['run_id']
         or terminal.get('status')!='succeeded' or terminal.get('exit_code')!=0 or record.get('kind')!='ops'
         or record.get('git')!={'commit':req['runner_source'],'dirty':bool(expected_dirty),'dirty_files':expected_dirty}
-        or record.get('cwd')!=str(ROOT) or record.get('argv')!=invocation(request_path)
+        or record.get('cwd')!=str(runner_root) or record.get('argv')!=invocation(request_path)
         or record.get('config')!={'path':str(request_path),'sha256':digest(request_path)}
         or payload.get('schema')!='p-query-sprint-result-v1' or payload.get('status')!='verified'
         or payload.get('run_id')!=req['run_id'] or payload.get('request_sha256')!=digest(request_path)
         or payload.get('argv')!=invocation(request_path) or payload.get('runner_source',{}).get('commit')!=req['runner_source']
+        or (runner_ledger is not None and payload.get('runner_source')!=runner_ledger)
         or record.get('resources')!=ops_resources(payload.get('resources',{}))
         or payload.get('resources',{}).get('cpu_cores')!=(req['workers']+1 if req['workers']>1 else 1)
         or pins!=expected_pins or len(record.get('inputs',[]))!=len(pins) or stdout!=payload):
@@ -259,11 +273,53 @@ def previous_failure(req):
             'stdout_sha256':digest(stdout),'stderr_sha256':digest(stderr)}
 
 
+def measurement_source(req,old):
+    """Closed transport-only delta; both actual worktrees must match full Git ledgers."""
+    if old['runner_source']!=MEASUREMENT_SOURCE:raise ValueError('fixed old measurement source required')
+    if 'source_delta'not in req:raise ValueError('cross-source measurement requires a fixed delta')
+    path=absolute(req['source_delta'])
+    if digest(path)!=req['source_delta_sha256']:raise ValueError('measurement source delta SHA differs')
+    if ROOT in path.parents:raise ValueError('source delta must be outside source tree')
+    delta=read(path)
+    if (set(delta)!={'schema','old_source','new_source','files'} or delta['schema']!='p-query-source-delta-v1'
+        or delta['old_source']!=MEASUREMENT_SOURCE or delta['new_source']!=req['runner_source']
+        or type(delta['files'])is not dict or not delta['files']
+        or not set(delta['files'])<=SOURCE_DELTA_PATHS or 'analysis/p_query_sprint_ops.py'not in delta['files']):
+        raise ValueError('closed fixed measurement source delta required')
+    base=absolute(old['ops_root'])/'runs'/old['run_id']
+    oldroot=absolute(read(base/'run.json')['cwd'])
+    if oldroot in path.parents:raise ValueError('source delta must be outside producer tree')
+    oldledger=source(oldroot,MEASUREMENT_SOURCE,overlay=True)
+    newledger=source(ROOT,req['runner_source'],overlay=True)
+    old_p3c=oldroot/P3C
+    # Fixed 43eb synthetic producers predate the D0 overlay; never retrofit them.
+    legacy_absent=(not oldledger['p3c_data_channel'] and not old_p3c.exists() and not old_p3c.is_symlink()
+                   and not git(oldroot,'ls-tree','--name-only',MEASUREMENT_SOURCE,'--',P3C))
+    if (not newledger['p3c_data_channel'] or digest(ROOT/P3C)!=P3C_SHA
+        or (not legacy_absent and (not oldledger['p3c_data_channel'] or digest(absolute(old_p3c))!=P3C_SHA))):
+        raise ValueError('measurement P3C data channel differs')
+    names=git(ROOT,'diff','--name-only',MEASUREMENT_SOURCE,req['runner_source']).splitlines()
+    if set(names)!=set(delta['files']):raise ValueError('source delta paths differ')
+    for name in names:
+        before=digest(oldroot/name) if (oldroot/name).exists() else None
+        after=digest(ROOT/name)
+        if (delta['files'][name]!={'old_sha256':before,'new_sha256':after}
+            or (before is not None and name!='analysis/p_query_sprint_ops.py')):
+            raise ValueError('source delta bytes differ: '+name)
+    return oldroot,oldledger
+
+
 def measurement(req,binding):
     if 'measurement_request'not in req:return None,None
     path=absolute(req['measurement_request']);old=load_request(path)
-    if old['runner_source']!=req['runner_source']:raise ValueError('measurement fixed source differs')
-    previous=read(absolute(old['output'])/'result.json');proof=accepted(path,previous)
+    previous=read(absolute(old['output'])/'result.json')
+    if old['runner_source']!=req['runner_source']:
+        root,ledger=measurement_source(req,old)
+        proof=accepted(path,previous,runner_root=root,runner_ledger=ledger)
+        proof['source_delta_sha256']=req['source_delta_sha256']
+    else:
+        if 'source_delta'in req:raise ValueError('same-source measurement cannot carry a delta')
+        proof=accepted(path,previous)
     measured_resources(req,previous,binding)
     return previous,proof
 
@@ -331,8 +387,9 @@ def execute(args):
     with phase('plan_and_inputs'):
         req,runner,binding,arrays,declaration,proof=plan(request_path,open_arrays=True)
     output=absolute(req['output'])
+    # Each fixed prefetch=1 worker gets the prior conservative one-task cap.
     config=Engineering(eval_workers=req['workers'],use_mmap=True,prefetch=1,
-                       memory_limit_bytes=int(declaration['ram_mib']*MIB*.9),max_in_flight_bytes=128*MIB)
+                       memory_limit_bytes=int(declaration['ram_mib']*MIB*.9),max_in_flight_bytes=128*MIB*req['workers'])
     guard(config,output.parent,projected_disk=1024**2)
     output.mkdir()
     with phase(req['stage']):
