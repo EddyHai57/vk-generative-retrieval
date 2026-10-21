@@ -1,0 +1,3 @@
+## I-2026-10-22-throughput-capacity-and-integration
+
+来源：Codex本地实现与独立Luna C审。状态：真实资源准入待补；不是科学结果ALERT。BHKM外排必须累计所有节点/轮次与replay保留量，单轮估算不足以证明实例磁盘可容纳；A40配置先关闭外排，dense候选须经过保守模型与真实RSS前置，不够则STOP/交Kiro，不删旧run。tensor结果可变row导致stale输入的本地P1已按独立快照修复，模型动态属性/设备/拓扑/hooks与预算缺口已补定向验证；旧初审和失败日志保留。只支持锁定runtime与固定纯构造器/只读session，未知模型状态failclosed，不支持对torch/numpy运行库monkeypatch。初始化与任务瞬时峰值不由RSS前后检查硬保证；真实anchor/CPU/CUDA/磁盘与性能前置仍NOT_RUN。证据与收口见experiment_log本轮工具链节和最终定点review，科学history合同另按已有issue交Kiro。

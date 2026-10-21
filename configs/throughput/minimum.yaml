@@ -1,0 +1,14 @@
+assembly_workers: 2
+bhkm_external: true
+bhkm_rows: 2048
+bhkm_workers: 2
+decode_workers: 1
+disk_limit_bytes: 322122547200
+eval_workers: 2
+max_in_flight_bytes: 268435456
+memory_limit_bytes: 34359738368
+prefetch: 2
+sequence_enabled: true
+temp_dir: /workspace/throughput-new-temp
+use_mmap: true
+week_workers: 2

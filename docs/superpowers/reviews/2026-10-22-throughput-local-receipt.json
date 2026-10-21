@@ -1,0 +1,357 @@
+{
+  "scope": "synthetic CPU only",
+  "implementation_commit": "d3f37bf376bfe87b1acd031f643be79dfb3bdcbd",
+  "suite": {
+    "tests": 54,
+    "pass": true,
+    "log": "release-suite-v4.log"
+  },
+  "steps": {
+    "g": {
+      "baseline_workers": 0,
+      "branch": "g",
+      "exact_step_state": true,
+      "fixture": "synthetic-only",
+      "quality_metric": false,
+      "real_anchor": "NOT_RUN",
+      "train_step_code_unchanged": true,
+      "workers": [
+        1,
+        2,
+        8
+      ]
+    },
+    "p": {
+      "baseline_workers": 0,
+      "branch": "p",
+      "exact_step_state": true,
+      "fixture": "synthetic-only",
+      "quality_metric": false,
+      "real_anchor": "NOT_RUN",
+      "train_step_code_unchanged": true,
+      "workers": [
+        1,
+        2,
+        8
+      ]
+    }
+  },
+  "mutations": {
+    "sequence": {
+      "group": "sequence",
+      "results": [
+        {
+          "case": "baseline",
+          "returncode": 0,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "sequence_future",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "sequence_order",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "sequence_mask",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "sequence_key",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        }
+      ],
+      "pass": true
+    },
+    "worker": {
+      "group": "worker",
+      "results": [
+        {
+          "case": "baseline",
+          "returncode": 0,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "worker_rng",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "worker_order",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "worker_cursor",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        }
+      ],
+      "pass": true
+    },
+    "bhkm": {
+      "group": "bhkm",
+      "results": [
+        {
+          "case": "baseline",
+          "returncode": 0,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "bhkm_tie",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "bhkm_capacity",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "bhkm_dimension",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "bhkm_rng",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        }
+      ],
+      "pass": true
+    },
+    "week": {
+      "group": "week",
+      "results": [
+        {
+          "case": "baseline",
+          "returncode": 0,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "week_order",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "week_holdout",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        }
+      ],
+      "pass": true
+    },
+    "exact": {
+      "group": "exact",
+      "results": [
+        {
+          "case": "baseline",
+          "returncode": 0,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "exact_tie",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "exact_precision",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        }
+      ],
+      "pass": true
+    },
+    "decode": {
+      "group": "decode",
+      "results": [
+        {
+          "case": "baseline",
+          "returncode": 0,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "decode_order",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "decode_identity",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        }
+      ],
+      "pass": true
+    },
+    "tensor": {
+      "group": "tensor",
+      "results": [
+        {
+          "case": "baseline",
+          "returncode": 0,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "tensor_snapshot",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "tensor_memory",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "tensor_order",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "tensor_padding",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "tensor_namespace",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "tensor_arguments",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        }
+      ],
+      "pass": true
+    },
+    "probe": {
+      "group": "probe",
+      "results": [
+        {
+          "case": "baseline",
+          "returncode": 0,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "probe_limit",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        },
+        {
+          "case": "probe_gpu",
+          "returncode": 1,
+          "accepted": true,
+          "isolated_copy": true,
+          "unique_cache": true,
+          "bytecode_disabled": true
+        }
+      ],
+      "pass": true
+    }
+  },
+  "real_anchor": "NOT_RUN",
+  "CUDA": "NOT_RUN",
+  "performance": "NOT_RUN",
+  "context": "UNKNOWN"
+}

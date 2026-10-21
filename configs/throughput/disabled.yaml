@@ -1,0 +1,14 @@
+assembly_workers: 1
+bhkm_external: false
+bhkm_rows: 8192
+bhkm_workers: 1
+decode_workers: 1
+disk_limit_bytes: 0
+eval_workers: 1
+max_in_flight_bytes: 0
+memory_limit_bytes: 0
+prefetch: 1
+sequence_enabled: false
+temp_dir: null
+use_mmap: false
+week_workers: 1

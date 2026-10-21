@@ -1,0 +1,18 @@
+# A40 48GB; cgroup CPU 61.2, planning RAM cap 513GB, INSTANCE disk 500GB.
+# Initial local plan only: G parallel awaits measured peaks; BHKM dense-vs-spill
+# must pass new-instance RSS/disk preflight. No server measurement performed here.
+assembly_workers: 8
+bhkm_external: false
+bhkm_rows: 16384
+bhkm_workers: 8
+decode_workers: 1
+disk_limit_bytes: 400000000000
+eval_workers: 8
+max_in_flight_bytes: 4294967296
+memory_limit_bytes: 256000000000
+prefetch: 2
+planning_memory_bytes: 513000000000
+sequence_enabled: true
+temp_dir: /workspace/throughput-a40-temp
+use_mmap: true
+week_workers: 8
