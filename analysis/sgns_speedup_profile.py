@@ -204,11 +204,14 @@ def subset_inputs(bundle,sha,lock):
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__);sub=p.add_subparsers(dest='command',required=True)
     sub.add_parser('dry');sub.add_parser('estimates')
-    run=sub.add_parser('profile');run.add_argument('--device',choices=('cpu','cuda'),required=True)
-    run.add_argument('--batches',type=int,default=4)
-    source=run.add_mutually_exclusive_group(required=True)
-    source.add_argument('--synthetic',action='store_true');source.add_argument('--subset-bundle',type=Path)
-    run.add_argument('--subset-manifest-sha256');run.add_argument('--lock',type=Path)
+    for command in ('inspect','profile'):
+        run=sub.add_parser(command)
+        if command=='profile':
+            run.add_argument('--device',choices=('cpu','cuda'),required=True)
+            run.add_argument('--batches',type=int,default=4)
+        source=run.add_mutually_exclusive_group(required=True)
+        source.add_argument('--synthetic',action='store_true');source.add_argument('--subset-bundle',type=Path)
+        run.add_argument('--subset-manifest-sha256');run.add_argument('--lock',type=Path)
     args=p.parse_args(argv)
     try:
         if args.command=='dry':result={'status':'dry','configuration':frozen_configuration(),'science_training':False,'cuda_measured':False}
@@ -216,7 +219,13 @@ def main(argv=None):
         else:
             if args.subset_bundle is not None and args.subset_manifest_sha256 is None:raise ValueError('subset manifest SHA required')
             inputs=synthetic_inputs() if args.synthetic else subset_inputs(args.subset_bundle,args.subset_manifest_sha256,args.lock)
-            result=profile_prefix(inputs,args.device,args.batches)
+            if args.command=='inspect':
+                result={'status':'verified','verified':True,'science_training':False,'test_read':False,
+                        'catalog_items':len(inputs[0]),'users':len(inputs[1]),
+                        'events':sum(map(len,inputs[1].values())),
+                        'configuration':frozen_configuration(),'vectors_saved':False}
+            else:
+                result=profile_prefix(inputs,args.device,args.batches)
             result['synthetic']=args.synthetic
             if not args.synthetic:
                 subset_inputs(args.subset_bundle,args.subset_manifest_sha256,args.lock)

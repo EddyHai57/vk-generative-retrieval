@@ -79,4 +79,9 @@ class ProfileTests(unittest.TestCase):
         import torch
         if not torch.cuda.is_available():
             with self.assertRaisesRegex(ValueError,'CUDA unavailable'):p.profile_prefix(p.synthetic_inputs(),'cuda',1)
+    def test_inspect_reads_inputs_without_fit(self):
+        from analysis import sgns_speedup_profile as p
+        from unittest.mock import patch
+        with patch.object(p.native(),'fit_sgns',side_effect=AssertionError('fit forbidden')):
+            self.assertEqual(p.main(['inspect','--synthetic']),0)
 if __name__=='__main__':unittest.main()
