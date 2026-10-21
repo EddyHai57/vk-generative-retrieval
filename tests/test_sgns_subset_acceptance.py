@@ -17,6 +17,34 @@ class AcceptanceClosed(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'four-gate receipt code pins'):
                     s.read_request(Path('/nonexistent/request.json'),'a'*64)
 
+    def test_frozen_retry1_a1_source_is_complete_and_rejects_other_trees(self):
+        import hashlib
+        from analysis import sgns_subset_acceptance as s
+        pins,_=s.code_pins();source=pins['a1_source']
+        self.assertEqual(source['commit'],'b7254990e8f8babbd77ed9b61c6339599616eaea')
+        repo=Path(__file__).resolve().parents[1]
+        def git(*args):return subprocess.check_output(['git',*args],stderr=subprocess.PIPE,text=True).strip()
+        names=git('ls-tree','-r','--name-only',source['commit']).splitlines()
+        expected={n:hashlib.sha256(subprocess.check_output(['git','show',source['commit']+':'+n],cwd=repo)).hexdigest() for n in names}
+        self.assertEqual(len(expected),158)
+        self.assertEqual(source['files'],expected)
+        with tempfile.TemporaryDirectory(prefix='a1-retry1-frozen-source-') as temp:
+            code=Path(temp).resolve()/'CODE'
+            git('clone','-q','--shared','--no-checkout',str(repo),str(code))
+            git('-C',str(code),'checkout','-q','--detach',source['commit'])
+            self.assertEqual(s.source_tree(code,source),source)
+            with self.assertRaisesRegex(ValueError,'clean fixed'):
+                s.source_tree(code,{**source,'commit':'f'*40})
+            changed={**source,'files':{**source['files'],'README.md':'0'*64}}
+            with self.assertRaisesRegex(ValueError,'frozen file ledger'):
+                s.source_tree(code,changed)
+            extra=code/'cache/unknown.py';extra.parent.mkdir(exist_ok=True);extra.write_bytes(b'unknown')
+            with self.assertRaisesRegex(ValueError,'frozen file ledger'):
+                s.source_tree(code,source)
+            git('-C',str(code),'checkout','-q','--detach','1ca14e4971df4d40534e28b6a89d2a2d151a1c8f')
+            with self.assertRaisesRegex(ValueError,'clean fixed'):
+                s.source_tree(code,source)
+
     def test_handwritten_success_is_not_authorization(self):
         from analysis import sgns_gpu_full as full
         with tempfile.TemporaryDirectory() as temp:
@@ -94,7 +122,16 @@ class AcceptanceClosed(unittest.TestCase):
             self.assertIn('complete fixed four-gate request',run.stderr)
             self.assertFalse(scratch.exists())
 
-    def test_original_input_producer_complete_transport_closure(self):
+    def test_retry1_input_producer_complete_transport_closure(self):
+        self._input_producer_transport_closure('sgns-gpu-subset-a1-inputs-retry1-v1',True)
+
+    def test_original_input_id_is_not_a_retry1_producer(self):
+        self._input_producer_transport_closure('sgns-gpu-subset-a1-inputs-v1',False)
+
+    def test_unregistered_input_id_is_not_a_retry1_producer(self):
+        self._input_producer_transport_closure('sgns-gpu-subset-a1-inputs-retry2-v1',False)
+
+    def _input_producer_transport_closure(self,rid,accepted_id):
         # Transport-only synthetic source/artifacts; never a four-gate receipt.
         import importlib.util
         from analysis import sgns_subset_acceptance as s
@@ -102,7 +139,7 @@ class AcceptanceClosed(unittest.TestCase):
         adapter=importlib.util.module_from_spec(spec);spec.loader.exec_module(adapter)
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp).resolve();code=root/'CODE';code.mkdir();output=root/'family';output.mkdir()
-            ops=root/'OPS';rid='sgns-gpu-subset-a1-inputs-v1';job=ops/'runs'/rid;(job/'logs').mkdir(parents=True)
+            ops=root/'OPS';job=ops/'runs'/rid;(job/'logs').mkdir(parents=True)
             def write(name,value):
                 p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(value if type(value) is bytes else s.encoded(value))
                 return {'path':str(p),'sha256':s.sha(p.read_bytes())}
@@ -140,6 +177,10 @@ class AcceptanceClosed(unittest.TestCase):
                     'gpu_sid':{'manifest':{'sha256':sid_sha}}}
                 return accepted,receipt
             accepted,receipt=fixture(run,terminal)
+            if not accepted_id:
+                with self.assertRaisesRegex(ValueError,'original input producer derive argv differs'):
+                    adapter.check_input_producer(accepted,source,env,code)
+                return
             checked=adapter.check_input_producer(accepted,source,env,code)
             self.assertEqual(checked['receipt'],receipt)
             good_records={k:write('GOOD/'+rid+'/'+k,Path(rec['path']).read_bytes()) for k,rec in accepted['input_producer'].items()}

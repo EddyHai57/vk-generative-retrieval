@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parents[1]
-PINS_SHA='5d83dcaee024a5746ee8d16ad8bb5967f8a2bfb245b6632db933c2449e08fc59'
+PINS_SHA='0603166e98bbc880fbc2aa2c7b5e9943d211e639a9fc6696324aeff4f10528d3'
 RUN_ID='sgns-gpu-subset-four-gate-verify-v1'
 SCHEMA='gpu-sgns-subset-four-gate-request-v1'
 RECEIPT='gpu-sgns-subset-four-gate-receipt-v1'

@@ -52,7 +52,7 @@ def check_input_producer(accepted,source,env,code):
     """Complete original derive transport, independent of its older checker."""
     records=accepted['input_producer']
     run,receipt,_=s.producer_records(records)
-    argv=run.get('argv',[]);rid='sgns-gpu-subset-a1-inputs-v1'
+    argv=run.get('argv',[]);rid='sgns-gpu-subset-a1-inputs-retry1-v1'
     if (len(argv)!=9 or argv[:6]!=[sys.executable,'-B','-m','analysis.sgns_subset_a1_inputs','derive','--request']
             or argv[7]!='--request-sha256' or run.get('run_id')!=rid):
         raise ValueError('original input producer derive argv differs')

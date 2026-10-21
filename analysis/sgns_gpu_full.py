@@ -372,7 +372,8 @@ def fit(args):
     output = secure(args.output)
     if output.exists() or ROOT == output or ROOT in output.parents or output in ROOT.parents:
         raise ValueError('exclusive full fit output outside deployment required')
-    guards(output,projected_memory=96*1024**3)
+    # The full input bundle is already loaded; retain its full-sized cap.
+    full_input_guards(output,projected_memory=96*1024**3)
     started = time.monotonic()
     vectors,audit = fit_sgns(*inputs,device='cuda',engineering=False)
     read_bundle(args.bundle,args.bundle_sha,source,env)

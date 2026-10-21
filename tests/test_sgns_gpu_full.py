@@ -165,4 +165,68 @@ class FullIdentityBinding(unittest.TestCase):
                     s.producer(root,argv,source,receipt,expected_job=expected)
 
 
+class FullFitGuards(unittest.TestCase):
+    def _fit_to_guard(self, *, rss=1024**3, disk_used=500):
+        # Only the environment and earlier receipt/data readers are synthetic.
+        # fit(), full_input_guards() and the registered guard remain real.
+        from contextlib import ExitStack
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from analysis import sgns_gpu_full as s
+        from vkgr import throughput_config as controls
+        from vkgr import sid_coll_sgns
+        original_exists = Path.exists
+        original_read_text = Path.read_text
+        def exists(path):
+            return True if path == Path('/proc/meminfo') else original_exists(path)
+        def read_text(path, *args, **kwargs):
+            if path == Path('/proc/meminfo'):
+                return 'MemTotal: 1073741824 kB\n'
+            return original_read_text(path, *args, **kwargs)
+        class BeforeTraining(RuntimeError): pass
+        with tempfile.TemporaryDirectory() as temp, ExitStack() as stack:
+            root = Path(temp).resolve()
+            output = root/'never-written'
+            args = SimpleNamespace(acceptance=root/'acceptance', acceptance_sha256='a'*64,
+                acceptance_scratch=root/'scratch', deployment_sha='b'*40, lock=root/'lock',
+                bundle=root/'bundle', bundle_sha='c'*64, predecessor_run=root/'prepare-run',
+                output=output)
+            for name, value in (('require_acceptance', {}), ('source_identity', {}),
+                    ('check_source', {}), ('runtime', {}),
+                    ('read_bundle', (([], {}, []), {'prepare_argv':[]})),
+                    ('producer', {}), ('full_job_contract', {})):
+                stack.enter_context(patch.object(s, name, return_value=value))
+            stack.enter_context(patch.object(Path, 'exists', exists))
+            stack.enter_context(patch.object(Path, 'read_text', read_text))
+            stack.enter_context(patch('vkgr.throughput_cgroups.effective_limits',
+                                      return_value={'memory_bytes':1024**4}))
+            stack.enter_context(patch.object(controls, 'rss_bytes', return_value=rss))
+            stack.enter_context(patch.object(controls.shutil, 'disk_usage',
+                return_value=SimpleNamespace(total=1000, used=disk_used, free=1000-disk_used)))
+            stack.enter_context(patch.object(sid_coll_sgns, 'fit_sgns',
+                side_effect=BeforeTraining('guard passed; no scientific function executed')))
+            try:
+                s.fit(args)
+            except BeforeTraining:
+                self.assertFalse(output.exists())
+                return 'before-training'
+            finally:
+                self.assertFalse(output.exists())
+
+    def test_loaded_full_fit_has_room_for_nonzero_rss_and_96gib_projection(self):
+        self.assertEqual(self._fit_to_guard(), 'before-training')
+
+    def test_full_fit_retains_registered_rss_stop_before_training(self):
+        with self.assertRaisesRegex(MemoryError, 'registered RSS limit exceeded'):
+            self._fit_to_guard(rss=200*1024**3)
+
+    def test_full_fit_retains_registered_disk_stop_before_training(self):
+        with self.assertRaisesRegex(OSError, 'registered disk headroom exceeded'):
+            self._fit_to_guard(disk_used=801)
+
+    def test_full_fit_retains_192gib_engineering_cap_before_training(self):
+        with self.assertRaisesRegex(MemoryError, 'engineering memory cap exceeded'):
+            self._fit_to_guard(rss=100*1024**3)
+
+
 if __name__ == '__main__': unittest.main()
