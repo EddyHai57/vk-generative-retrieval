@@ -98,6 +98,25 @@ def test_compact_adapter_matches_original_side_and_validation(tmp_path,native):
         assert not (tmp_path/'not-created').exists()
 
 
+def test_train_support_membership_does_not_scan_list_per_row(tmp_path,native):
+    class NoLinearMembership(list):
+        def __contains__(self,value):
+            raise AssertionError('linear supported membership per training row')
+    m=module();side=importlib.import_module(native.__package__+'.history_side')
+    event=lambda item:{'item_id':item,'timespent':20,**{key:False for key in side.FEEDBACK_BITS}}
+    row={'example_id':0,'user_id':1,'history':[10],'history_positions':[[0,0]],
+         'target':11,'target_position':[0,1],'past_likes':[10]}
+    args=(native,[row],[],[10,11,12],NoLinearMembership([10,11]),
+          [(0,[event(10),event(11)])],{10:30,11:40},np.zeros((4,64),dtype=np.float32))
+    data=m.adapt_rows(*args,root=tmp_path/'side',guard=lambda:None,synthetic=True)
+    assert data['support']=={10,11} and data['supported_indices']==[1,2]
+    assert data['rows'][0]['target']==11
+    with pytest.raises(ValueError,match='history/target identity'):
+        m.adapt_rows(native,[{**row,'target':12}],*args[2:],
+                     root=tmp_path/'rejected',guard=lambda:None,synthetic=True)
+    assert not (tmp_path/'rejected').exists()
+
+
 def test_guard_and_original_drift_fail_closed(tmp_path):
     m=module();source=tmp_path/'rows.jsonl';digest=write_rows(source,[{'history':[]}])
     def stop():raise OSError('synthetic resource headroom')

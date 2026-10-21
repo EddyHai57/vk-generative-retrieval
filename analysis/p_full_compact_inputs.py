@@ -276,7 +276,8 @@ def adapt_rows(native,rows,queries,catalog,supported,partitions,durations,featur
     import importlib
     from vkgr.retrieval_data import catalog_map
     idmap=catalog_map(catalog)
-    if supported!=sorted(set(supported)) or not set(supported)<=set(catalog):raise ValueError('train support/catalog differs')
+    support=set(supported)
+    if supported!=sorted(support) or not support<=set(catalog):raise ValueError('train support/catalog differs')
     if (features.dtype!=np.float32 or features.shape!=(len(catalog)+1,64)
             or not np.isfinite(features).all() or np.any(features[0])):raise ValueError('original content shape/dtype/PAD differs')
     for train,collection in ((True,rows),(False,queries)):
@@ -288,13 +289,13 @@ def adapt_rows(native,rows,queries,catalog,supported,partitions,durations,featur
                     or any(a>=b for a,b in zip(positions,positions[1:]))
                     or type(target)is not list or len(target)!=2
                     or any(type(v)is not int or v<0 for v in target) or positions[-1]>=target
-                    or (train and (target[0]>24 or row.get('example_id')!=ordinal or row['target'] not in supported))
+                    or (train and (target[0]>24 or row.get('example_id')!=ordinal or row['target'] not in support))
                     or (not train and (target[0]!=25 or row.get('oov') is not (row['target'] not in idmap)))):
                 raise ValueError('UR001 history/target identity differs')
     side_module=importlib.import_module(native.__package__+'.history_side')
     side=DenseSide.build(root,{'train':rows,'validation':queries},partitions,durations,side_module._encode,guard)
     return {'rows':SideRows(rows,side),'queries':SideRows(queries,side),'catalog':catalog,'idmap':idmap,
-            'content':torch.from_numpy(features),'support':set(supported),'supported_indices':[idmap[i] for i in supported],
+            'content':torch.from_numpy(features),'support':support,'supported_indices':[idmap[i] for i in supported],
             'synthetic':synthetic}
 
 
