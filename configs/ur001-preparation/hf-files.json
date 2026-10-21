@@ -1,0 +1,151 @@
+{
+  "dataset": "deepvk/VK-LSVD",
+  "revision": "084a18386e149a454dd6dbe0123478e75c6b09ce",
+  "files": [
+    {
+      "path": "subsamples/ur0.01/train/week_00.parquet",
+      "size": 73834323,
+      "sha256": "3f57c0c1f900a5f864fc9ce43c541d9fcfa74599da8a648de3e0dcab22a8740c"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_01.parquet",
+      "size": 108185176,
+      "sha256": "3d3f7f33df93364558179707af1940998dbfa1c1c32125f46285de20aef6f63e"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_02.parquet",
+      "size": 109142940,
+      "sha256": "27c2a28f72d98f8b6793ad31308c0397fd40188bf80e90309fabb994f210267e"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_03.parquet",
+      "size": 101536204,
+      "sha256": "7ba6996aa6d08dc64b5c4db913525b182dff6830b7217f241ffe3f63c0819197"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_04.parquet",
+      "size": 105087214,
+      "sha256": "af96c8f57fe419ab495c9a6d851ad80590d39ef7680991d52d0ae39686d3818d"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_05.parquet",
+      "size": 72126236,
+      "sha256": "5515b19a2d94aba54a076236ec106a69601254133854d10abce3a64a58e22872"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_06.parquet",
+      "size": 86060284,
+      "sha256": "ae2038b56cd6f9fefb9aa7a8131b76ba8ccd5712b2293bcfb7716eada526cf2f"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_07.parquet",
+      "size": 117325619,
+      "sha256": "9fdcf5c177303389c88bf17213a4da4fc720a70c13bf1bcf7b1522874bb26e9a"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_08.parquet",
+      "size": 118232667,
+      "sha256": "f6592ef3f06ef63e00d368beb5be2a402d338fb9667cf717a3b1ed365661087c"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_09.parquet",
+      "size": 119821078,
+      "sha256": "778e9d623150949693820e4b9c7e1b4d3a3c8aea17141f2c226b180b3519bfdf"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_10.parquet",
+      "size": 117706137,
+      "sha256": "dc9b94ad48763d0c099dcebd37a48a8b89a3ecab673d7bc96c52af283e0b9347"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_11.parquet",
+      "size": 118018635,
+      "sha256": "5c74d4aa5ffb96d61b7588034643b631c3fd665470fc82327711680655c7063c"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_12.parquet",
+      "size": 118157314,
+      "sha256": "436bc4eaadf4b43e06a96987d14f311a61dcc66f4cb8d29e893e02dab9ca9ed3"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_13.parquet",
+      "size": 121552609,
+      "sha256": "b2fcf835789f4118af87ab51074da4e34f4c03bbdb164a5c89e20a600fdb39ad"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_14.parquet",
+      "size": 120846297,
+      "sha256": "ec5139fa506c538a7d142db6548e61e2c37877b5c3f6d545ec8cc2095beaecd6"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_15.parquet",
+      "size": 122891904,
+      "sha256": "e71e46ea2def011c04c947c7b39869bfe528d1a0d65867737cc4e5e6c544cd1b"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_16.parquet",
+      "size": 121165948,
+      "sha256": "55cfc12a3a093f3f7f0b9e721deb96241843fba8e6cb9a3636b6d44b92034906"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_17.parquet",
+      "size": 123784144,
+      "sha256": "1d9d79feb81bab283688d4e7b651fa5ca4df7003ba3810129c8de85509025483"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_18.parquet",
+      "size": 118784119,
+      "sha256": "8c7d8531e8eff9e18208b22bc16c677170e270b6990eb529b6642e5d40e3fd1e"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_19.parquet",
+      "size": 114014112,
+      "sha256": "14a9dd995f3c45e19f5a1da20814bf289469ded455904b949afe81aa49eaf0dc"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_20.parquet",
+      "size": 111057166,
+      "sha256": "0568214f67dc34ed22bb237331c957ade8793b99ba8d510f5db0547f9b8b493f"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_21.parquet",
+      "size": 114853116,
+      "sha256": "1ee4a349f932065af81f85cf8f7b86f15bc7514ac707045def0c3e286097633f"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_22.parquet",
+      "size": 117967613,
+      "sha256": "16df3e9e8da3ca4b59ed48a830fc52fe3b5da62ae5738b4511b82f7c6105c1b7"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_23.parquet",
+      "size": 124775658,
+      "sha256": "81077a253808d8daaff8e38e097fdcc276b7187c6290eeb799b4ced255b0130e"
+    },
+    {
+      "path": "subsamples/ur0.01/train/week_24.parquet",
+      "size": 126471482,
+      "sha256": "a0cea5deeeb7770647c4524e56fcfb67186597fdf8cc12f148dc598ff52f7d6e"
+    },
+    {
+      "path": "subsamples/ur0.01/validation/week_25.parquet",
+      "size": 128402026,
+      "sha256": "9976efe6171522a6ada9229608b237f4392a53bed49f16b420477f636851474a"
+    },
+    {
+      "path": "metadata/item_embeddings.npz",
+      "size": 2362338243,
+      "sha256": "6a4024ad7623f5d8150e59c5faaaf42fb7d7f48e2beec44c6917e5e57debea7c"
+    },
+    {
+      "path": "metadata/items_metadata.parquet",
+      "size": 155747843,
+      "sha256": "607ffd09d3fb6627f7eec07ed53583d45c47263a2e6538e4deee66cd8a22e51e"
+    },
+    {
+      "path": "metadata/users_metadata.parquet",
+      "size": 72526148,
+      "sha256": "51fa9528f71bb0da947311d7baa4727d325285a3e748b54816477b82492aff20"
+    }
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "dataset": "deepvk/VK-LSVD",
+  "revision": "084a18386e149a454dd6dbe0123478e75c6b09ce",
+  "files": [
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_00.parquet",
+      "size": 642528,
+      "sha256": "c4a8dae41596b357872ee9dc0297c8abb2b43d3bb936823fc8b7127453ff7741"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_01.parquet",
+      "size": 922739,
+      "sha256": "f19dd3ea9e992c1f10aea85702afd0b328e10888b8a37105d341e27aeda97467"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_02.parquet",
+      "size": 942380,
+      "sha256": "2875cbccc3753b657beeeaccf3e9f08ab13276984cdfa01c046822156cc0cdb5"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_03.parquet",
+      "size": 873211,
+      "sha256": "bcc1e2fc1074f79c581560cbb16e0b55de8772046c98df2b47e39811dbfd58a4"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_04.parquet",
+      "size": 937393,
+      "sha256": "766d617cbc467b8e538a86dfeae6640c1c6ce664202c9114838865582cc23a4c"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_05.parquet",
+      "size": 632565,
+      "sha256": "c00228268b91c94458a19a5c003d84dbdf0c5779690cbf73157ee87d8ab2fb8a"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_06.parquet",
+      "size": 799185,
+      "sha256": "67ac9fefb171f700cc26aebea50ac71b00aef9da8aa938297b7985565578c237"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_07.parquet",
+      "size": 983655,
+      "sha256": "8507384d295c7b284476775662d62d8efa7ab6a4de537174e8ac137d931e9a9f"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_08.parquet",
+      "size": 1026089,
+      "sha256": "2d7f64545ec8cb7b8ebbbe3fcb7f720b47297446031b6a6d74f7a11b700bc26a"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_09.parquet",
+      "size": 994597,
+      "sha256": "6bed90de8472d792ff82bed80c5d7227c06c1e76c781b603c2d18fafed62533c"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_10.parquet",
+      "size": 955811,
+      "sha256": "8ac871a9561686cb0073389b2f006e1a31246040678ea00e229fb368bf72263c"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_11.parquet",
+      "size": 947285,
+      "sha256": "b65b0c1ea3d943bd7d9bb1865f886226159116ede0438d0681df43cdded592ef"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_12.parquet",
+      "size": 976913,
+      "sha256": "274f44b9caf07f8c3b5ebb4f910e77d387021bffc6009fd7b4a064907b0e410a"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_13.parquet",
+      "size": 1082104,
+      "sha256": "751d066a4b85e70676ff4254065cd5deaee903a98198c4eebab12fcd35632949"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_14.parquet",
+      "size": 1025175,
+      "sha256": "47ed124a1ea4ac77391d22ee13ff5d4a00ab6de62b9be4f8ba02af3a2b4597cd"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_15.parquet",
+      "size": 1034010,
+      "sha256": "8a5e82d603e53e39b7c6a98af1091a24b806c961fd1f74d5a733749f8a12b75d"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_16.parquet",
+      "size": 1009990,
+      "sha256": "48bed166e1d9fe2d2467fd1c528cf933a18e5008fe3d3d6a3935b685aec12608"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_17.parquet",
+      "size": 974139,
+      "sha256": "9e63b92aeb3e16b4f8daeefe91bd89a106802e68b086bc74ef0e76a86d8ed415"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_18.parquet",
+      "size": 971015,
+      "sha256": "efd0e5ff6ffc02e4ec603496f4d241937434dbdfb670bf6df42bc7670329620b"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_19.parquet",
+      "size": 977046,
+      "sha256": "a44e9f4cfc69c1662e563b6f9000dbec3a6674af1c641a43bd9b2af523ce60f7"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_20.parquet",
+      "size": 936557,
+      "sha256": "b35b54f7aa35a6ee1a4fa8b5a184a8237836810c52efddaf063d90ae0ef4a6d0"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_21.parquet",
+      "size": 1011466,
+      "sha256": "d50be2f1a7772a34c1046c656524885526507878a43b1ceb4c46c47d9709cdff"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_22.parquet",
+      "size": 998624,
+      "sha256": "479721322e6d497794d7adf43ba71b01815080680b6c1e63edd9289de1a316a5"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_23.parquet",
+      "size": 1104283,
+      "sha256": "8cb680ca0427cdbe30af90b575fb19dae63ecc961e25317583db025e7e86c63c"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/train/week_24.parquet",
+      "size": 1032816,
+      "sha256": "b103a275faf89cd90b000501db11b12b97817a334bf83bd473a4b21d477592b6"
+    },
+    {
+      "path": "subsamples/ur0.01_ir0.01/validation/week_25.parquet",
+      "size": 1072155,
+      "sha256": "73ebe28c42cbe9c457d77d25a475e3e2b355f200ef877140a9d3918206ac2570"
+    }
+  ]
+}
