@@ -117,7 +117,6 @@ def profile_prefix(inputs,device,batches):
     sections={};completed=0;positives=0;batch_wall=0.;first_batch_at=None
     active=None;active_name=None;active_at=None;batch_at=None
     previous_batch_end=None;pair_loop_seconds=0.;pair_loop_intervals=0
-    batch_failed=False
     def close():
         nonlocal active,active_at
         if active is not None:
@@ -126,26 +125,23 @@ def profile_prefix(inputs,device,batches):
             sections[active_name]=sections.get(active_name,0.)+elapsed
             active=None
     def lines(frame,event,arg):
-        nonlocal active,active_name,active_at,completed,positives,batch_wall,previous_batch_end,batch_failed
+        nonlocal active,active_name,active_at,completed,positives,batch_wall,previous_batch_end
         if event=='line':
             name=_section(frame.f_lineno)
             if name!=active_name or active is None:
                 close();active_name=name;active=record_function('sgns_profile::'+name)
                 active.__enter__();active_at=time.perf_counter()
         elif event=='return':
-            close()
-            if batch_failed:return None
-            completed+=1;positives+=len(frame.f_locals['batch'])
+            close();completed+=1;positives+=len(frame.f_locals['batch'])
             batch_wall+=time.perf_counter()-batch_at
             previous_batch_end=time.perf_counter()
             if completed>=batches:raise _PrefixComplete()
-        elif event=='exception':
-            batch_failed=True;close()
+        elif event=='exception':close()
         return lines
     def calls(frame,event,arg):
-        nonlocal first_batch_at,batch_at,active_name,pair_loop_seconds,pair_loop_intervals,batch_failed
+        nonlocal first_batch_at,batch_at,active_name,pair_loop_seconds,pair_loop_intervals
         if event=='call' and frame.f_code is step_code:
-            batch_at=time.perf_counter();active_name=None;batch_failed=False
+            batch_at=time.perf_counter();active_name=None
             if previous_batch_end is not None:
                 pair_loop_seconds+=batch_at-previous_batch_end;pair_loop_intervals+=1
             if first_batch_at is None:first_batch_at=batch_at
@@ -186,10 +182,11 @@ def profile_prefix(inputs,device,batches):
 def subset_inputs(bundle,sha,lock):
     from analysis.ur001_derive_cli import secure,digest
     from analysis.sgns_gpu_subset import read_bundle
-    from analysis.new_instance_prepare import runtime,LOCK_SHA
+    from analysis.new_instance_prepare import runtime
+    from vkgr.sgns_subset_a1 import NATIVE_LOCK_SHA
     if lock is None:raise ValueError('frozen runtime lock required')
     lock=secure(lock)
-    if digest(lock)!=LOCK_SHA:raise ValueError('frozen runtime lock SHA differs')
+    if digest(lock)!=NATIVE_LOCK_SHA:raise ValueError('frozen runtime lock SHA differs')
     bundle=secure(bundle)
     path=bundle/'manifest.json'
     if digest(path)!=sha:raise ValueError('fixed subset manifest SHA required')
