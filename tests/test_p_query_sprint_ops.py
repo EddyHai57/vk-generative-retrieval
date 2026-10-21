@@ -1,4 +1,6 @@
 import json
+import io
+from contextlib import redirect_stderr
 import os
 from pathlib import Path
 import subprocess
@@ -87,7 +89,7 @@ class SprintTests(unittest.TestCase):
                     'git':{'commit':req['runner_source'],'dirty':bool(dirty),'dirty_files':dirty},
                     'cwd':str(sprint.ROOT),'argv':sprint.invocation(path),'config':{'path':str(path),'sha256':sprint.digest(path)},
                     'inputs':[{'path':str(pin),'sha256':sprint.digest(pin)}],
-                    **{key:payload['resources'][key] for key in ('cpu_cores','ram_mib','vram_mib','disk_gib','wall_hours')}}
+                    'resources':sprint.ops_resources(payload['resources'])}
             terminal={'schema':'vkgr-terminal-v1','run_id':req['run_id'],'status':'succeeded','exit_code':0}
             def write(r=record,t=terminal,p=payload):
                 (run/'run.json').write_text(json.dumps(r));(run/'terminal.json').write_text(json.dumps(t))
@@ -95,7 +97,7 @@ class SprintTests(unittest.TestCase):
             write()
             with patch.object(sprint,'input_files',return_value=[pin]):
                 self.assertEqual(sprint.accepted(path,payload)['run_id'],req['run_id'])
-                variants=[({'ram_mib':1},{}),({'cpu_cores':1},{}),({'argv':['wrong']},{}),({'config':{'path':str(path),'sha256':'wrong'}},{}),
+                variants=[({'resources':{**record['resources'],key:record['resources'][key]+1}}, {}) for key in ('cpu_cores','ram_mib','vram_mib','disk_gib','wall_seconds')]+[({'argv':['wrong']},{}),({'config':{'path':str(path),'sha256':'wrong'}},{}),
                           ({'inputs':[]},{}),({'cwd':'wrong'},{}),({'git':{'commit':'b'*40}},{}),({}, {'status':'failed'})]
                 for change,termchange in variants:
                     write({**record,**change},{**terminal,**termchange})
@@ -127,6 +129,93 @@ class SprintTests(unittest.TestCase):
                               {'inputs_manifest_sha256':'wrong'},arrays,declaration,None)):
                 with self.assertRaisesRegex(ValueError,'manifest changed'):sprint.execute(SimpleNamespace(request=request))
             self.assertFalse((Path(bad['output'])/'result.json').exists())
+
+    def test_full_catalog_transport_reservation_with_real_ordered_map(self):
+        # Reserve a 24 MiB trace/output contract, but return only one integer.
+        # The real ordered_map must account for its own triple reservation;
+        # no large catalog or score arrays are constructed by this test.
+        from vkgr.throughput_workers import ordered_map
+        with tempfile.TemporaryDirectory() as raw:
+            base=Path(raw).resolve();req=self.request(base);data=Path(req['root']);data.mkdir()
+            (data/'inputs.json').write_text(json.dumps({'files':[]}))
+            request=base/'request.json';request.write_text(json.dumps(req))
+            binding={'inputs_manifest_sha256':sprint.digest(data/'inputs.json')}
+            declaration={'ram_mib':98304,'measurement':'not_measured'}
+            def transport(request,arrays,config):
+                got=list(ordered_map(abs,[-1],workers=2,prefetch=1,
+                         max_in_flight_bytes=config.max_in_flight_bytes,
+                         result_size_hint=lambda _:24*1024**2))
+                self.assertEqual(got,[1])
+                self.assertEqual(config.memory_limit_bytes,int(98304*sprint.MIB*.9))
+                path=Path(request['output'])/'queries-q32.npy';np.save(path,np.zeros((32,64),dtype='f4'))
+                return {'status':'verified','query_copy':{'file':path.name,'sha256':sprint.digest(path)}}
+            stderr=io.StringIO()
+            with redirect_stderr(stderr),patch.object(sprint,'plan',return_value=(req,{'commit':req['runner_source']},binding,None,declaration,None)),patch.object(sprint,'diagnostic',side_effect=transport):
+                result=sprint.execute(SimpleNamespace(request=request))
+            self.assertEqual(result['status'],'verified')
+            events=[json.loads(line) for line in stderr.getvalue().splitlines()]
+            self.assertEqual([(row['stage'],row['event']) for row in events],
+                [(stage,event) for stage in ('plan_and_inputs','diagnostic','post_read_verify','receipt') for event in ('begin','end')])
+            # Keeping the old cap must still trigger the real reservation guard.
+            with self.assertRaisesRegex(MemoryError,'reservation cap'):
+                list(ordered_map(abs,[-1],workers=2,prefetch=1,
+                     max_in_flight_bytes=64*1024**2,result_size_hint=lambda _:24*1024**2))
+
+    def test_stage_error_is_stderr_and_original_exception_propagates(self):
+        stderr=io.StringIO()
+        with redirect_stderr(stderr),patch.object(sprint,'plan',side_effect=ValueError('original binding failed')):
+            with self.assertRaisesRegex(ValueError,'original binding failed'):
+                sprint.execute(SimpleNamespace(request=Path('/synthetic-request.json')))
+        events=[json.loads(line) for line in stderr.getvalue().splitlines()]
+        self.assertEqual([(row['stage'],row['event']) for row in events],
+                         [('plan_and_inputs','begin'),('plan_and_inputs','error')])
+
+    def test_fixed_retry1_failure_producer_and_rejections(self):
+        import copy
+        with tempfile.TemporaryDirectory() as raw:
+            base=Path(raw).resolve();old=self.request(base,runner_source='669297abe65c3ec699b3476c13ccf867736ab56a',output=str(base/'failed-output'))
+            Path(old['output']).mkdir();oldpath=base/'old-request.json';oldpath.write_text(json.dumps(old))
+            oldcode=base/'old-code';(oldcode/'analysis').mkdir(parents=True)
+            oldscript=oldcode/'analysis/p_query_sprint_ops.py';oldscript.write_text('frozen previous adapter fixture')
+            pins=[]
+            for path in sprint.input_files(old,oldpath):
+                if path==Path(sprint.__file__).resolve():path=oldscript
+                else:
+                    path.parent.mkdir(parents=True,exist_ok=True)
+                    if not path.exists():path.write_text('{}')
+                pins.append({'path':str(path),'sha256':sprint.digest(path)})
+            run=Path(old['ops_root'])/'runs'/old['run_id'];(run/'logs').mkdir(parents=True)
+            record={'schema':'vkgr-run-v1','run_id':old['run_id'],'kind':'ops',
+                    'git':{'commit':old['runner_source'],'dirty':False,'dirty_files':[]},'cwd':str(oldcode),
+                    'argv':sprint.invocation(oldpath),'config':{'path':str(oldpath),'sha256':sprint.digest(oldpath)},'inputs':pins,
+                    'resources':{'cpu_cores':3,'ram_mib':98304,'vram_mib':0,'disk_gib':1,'wall_seconds':28800.0}}
+            terminal={'schema':'vkgr-terminal-v1','run_id':old['run_id'],'status':'failed','exit_code':1}
+            request={**old,'runner_source':'a'*40,'run_id':'p-query-diagnostic-q32-w2-v2','output':str(base/'retry-output'),
+                     'previous_failure_request':str(oldpath),'previous_failure_request_sha256':sprint.digest(oldpath)}
+            def reset():
+                oldpath.write_text(json.dumps(old));(run/'run.json').write_text(json.dumps(record))
+                (run/'terminal.json').write_text(json.dumps(terminal));(run/'logs/stdout.log').write_bytes(b'')
+                (run/'logs/stderr.log').write_text('throughput_workers.py\nMemoryError: one task exceeds input/output reservation cap\n')
+            reset()
+            with patch.object(sprint,'source',return_value={'p3c_data_channel':False}):
+                self.assertEqual(sprint.previous_failure(request)['run_id'],old['run_id'])
+                cases=['failed_terminal','nonempty_stdout','wrong_stderr','different_inputs','recursive_retry','missing_sha','wrong_sha','wrong_retry_id','bad_input_pin','bad_resource','existing_result']
+                for case in cases:
+                    reset();changed=copy.deepcopy(request)
+                    if case=='failed_terminal':(run/'terminal.json').write_text(json.dumps({**terminal,'status':'succeeded','exit_code':0}))
+                    elif case=='nonempty_stdout':(run/'logs/stdout.log').write_text('{}')
+                    elif case=='wrong_stderr':(run/'logs/stderr.log').write_text('different error')
+                    elif case=='different_inputs':changed['root']=str(base/'other-input')
+                    elif case=='recursive_retry':
+                        oldpath.write_text(json.dumps({**old,'previous_failure_request':str(oldpath),'previous_failure_request_sha256':'0'*64}))
+                        changed['previous_failure_request_sha256']=sprint.digest(oldpath)
+                    elif case=='missing_sha':changed.pop('previous_failure_request_sha256')
+                    elif case=='wrong_sha':changed['previous_failure_request_sha256']='0'*64
+                    elif case=='wrong_retry_id':changed['run_id']='p-query-diagnostic-q32-w2-v3'
+                    elif case=='bad_input_pin':(run/'run.json').write_text(json.dumps({**record,'inputs':[]}))
+                    elif case=='bad_resource':(run/'run.json').write_text(json.dumps({**record,'resources':{**record['resources'],'ram_mib':1}}))
+                    elif case=='existing_result':(Path(old['output'])/'result.json').write_text('{}')
+                    with self.subTest(case=case),self.assertRaises(ValueError):sprint.previous_failure(changed)
 
     def test_cli_dry_illegal_and_missing_execute(self):
         cmd=[sys.executable,'-B','-m','analysis.p_query_sprint_ops']

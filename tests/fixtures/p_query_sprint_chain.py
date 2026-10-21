@@ -76,6 +76,35 @@ assert value['spec']['cpu_cores']==3 and value['spec']['ram_mib']==98304
 dry=subprocess.run(cmd+['dry','--request',str(request_path)],cwd=runner,env=env,capture_output=True,text=True)
 assert dry.returncode==0,dry.stderr
 assert json.loads(dry.stdout)['status']=='dry';(base/'dry.json').write_text(dry.stdout)
+# Build a transport-only run fixture directly from real launcher.prepare output
+# using the exact nested resources schema written by OPS 5840e6b launcher.launch.
+newrun=Path(request['ops_root'])/'runs'/request['run_id'];(newrun/'logs').mkdir(parents=True)
+res={key:value['spec'][key] for key in ('cpu_cores','ram_mib','vram_mib','disk_gib')}
+res['wall_seconds']=value['spec']['wall_hours']*3600.0
+record={'schema':'vkgr-run-v1','run_id':request['run_id'],'kind':value['spec']['kind'],
+        **{key:value['metadata'][key] for key in ('cwd','git','config','inputs')},
+        'argv':value['spec']['argv'],'resources':res}
+payload={'schema':'p-query-sprint-result-v1','status':'verified','run_id':request['run_id'],
+         'request_sha256':sha(request_path),'argv':value['spec']['argv'],
+         'runner_source':{'commit':request['runner_source']},'resources':value['resources']}
+newoutput=Path(request['output']);newoutput.mkdir();(newoutput/'result.json').write_text(json.dumps(payload))
+(newrun/'terminal.json').write_text(json.dumps({'schema':'vkgr-terminal-v1','run_id':request['run_id'],'status':'succeeded','exit_code':0}))
+(newrun/'logs/stdout.log').write_text(json.dumps(payload))
+(newrun/'run.json').write_text(json.dumps(record))
+verified=subprocess.run(cmd+['verify','--request',str(request_path)],cwd=runner,env=env,capture_output=True,text=True)
+assert verified.returncode==0,verified.stderr
+(base/'verify-nested.json').write_text(verified.stdout)
+for key in ('cpu_cores','ram_mib','vram_mib','disk_gib','wall_seconds'):
+    wrong={**record,'resources':{**res,key:res[key]+1}}
+    (newrun/'run.json').write_text(json.dumps(wrong))
+    rejected=subprocess.run(cmd+['verify','--request',str(request_path)],cwd=runner,env=env,capture_output=True,text=True)
+    assert rejected.returncode!=0 and 'binding differs'in rejected.stderr,key
+# No fallback to the old fictional top-level resource fixture is permitted.
+wrong={key:val for key,val in record.items() if key!='resources'}
+wrong.update({key:value['spec'][key] for key in ('cpu_cores','ram_mib','vram_mib','disk_gib','wall_hours')})
+(newrun/'run.json').write_text(json.dumps(wrong))
+rejected=subprocess.run(cmd+['verify','--request',str(request_path)],cwd=runner,env=env,capture_output=True,text=True)
+assert rejected.returncode!=0 and 'binding differs'in rejected.stderr
 # A failed original preflight is rejected before any catalog array exists.
 terminal=original_ops/'runs/a40-exact-preflight-v1/terminal.json';bad=json.loads(terminal.read_text());bad['status']='failed';terminal.write_text(json.dumps(bad))
 rejected=subprocess.run(cmd+['prepare','--request',str(request_path),'--ops-code',str(ops)],cwd=runner,env=env,capture_output=True,text=True)

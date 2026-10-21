@@ -1,5 +1,6 @@
 """Fixed OPS adapter for synthetic P catalog diagnostics and original-cost parity."""
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
@@ -38,7 +39,7 @@ def read(path):
 def validate_request(req):
     required={'schema','stage','run_id','runner_source','original_source','workers','query_count',
               'engine','root','lock','original_ops_root','ops_root','output'}
-    if set(req)-required-{'measurement_request'} or required-set(req) or req['schema']!='p-query-sprint-v1':
+    if set(req)-required-{'measurement_request','previous_failure_request','previous_failure_request_sha256'} or required-set(req) or req['schema']!='p-query-sprint-v1':
         raise ValueError('fixed sprint request contract required')
     if req['stage'] not in ('diagnostic','cost-parity') or type(req['workers'])is not int or req['workers'] not in (1,2,4,8):
         raise ValueError('fixed stage/workers required')
@@ -53,7 +54,13 @@ def validate_request(req):
     output=paths['output']
     for parent in (ROOT,paths['root'],paths['engine'],paths['original_ops_root'],paths['ops_root']):
         if output==parent or output in parent.parents or parent in output.parents:raise ValueError('exclusive outside-source/input/ops output required')
-    if 'measurement_request'in req:absolute(req['measurement_request'])
+    if 'previous_failure_request'in req or 'previous_failure_request_sha256'in req:
+        if (req.get('run_id')!='p-query-diagnostic-q32-w2-v2' or req['stage']!='diagnostic' or count!=32 or req['workers']!=2
+            or 'measurement_request'in req or 'previous_failure_request'not in req or type(req.get('previous_failure_request_sha256'))is not str
+            or len(req['previous_failure_request_sha256'])!=64 or any(c not in '0123456789abcdef' for c in req['previous_failure_request_sha256'])):
+            raise ValueError('fixed retry1 request and original request SHA required')
+        absolute(req['previous_failure_request'])
+    elif 'measurement_request'in req:absolute(req['measurement_request'])
     elif req['stage']!='diagnostic' or count!=32 or req['run_id']!=expected+'1':
         raise ValueError('subsequent jobs require a measured diagnostic producer')
     return req
@@ -178,7 +185,15 @@ def input_files(req,request_path):
         old=load_request(req['measurement_request']);base=absolute(old['ops_root'])/'runs'/old['run_id']
         paths.extend([absolute(req['measurement_request']),absolute(old['output'])/'result.json',
                       *(base/name for name in ('run.json','terminal.json','logs/stdout.log'))])
+    if 'previous_failure_request'in req:
+        path=absolute(req['previous_failure_request']);old=load_request(path);base=absolute(old['ops_root'])/'runs'/old['run_id']
+        paths.extend([path,*(base/name for name in ('run.json','terminal.json','logs/stdout.log','logs/stderr.log'))])
     return paths
+
+
+def ops_resources(declaration):
+    return {**{key:declaration[key] for key in ('cpu_cores','ram_mib','vram_mib','disk_gib')},
+            'wall_seconds':declaration['wall_hours']*3600.0}
 
 
 def accepted(request_path,payload):
@@ -197,11 +212,51 @@ def accepted(request_path,payload):
         or payload.get('schema')!='p-query-sprint-result-v1' or payload.get('status')!='verified'
         or payload.get('run_id')!=req['run_id'] or payload.get('request_sha256')!=digest(request_path)
         or payload.get('argv')!=invocation(request_path) or payload.get('runner_source',{}).get('commit')!=req['runner_source']
-        or any(record.get(key)!=payload.get('resources',{}).get(key) for key in ('cpu_cores','ram_mib','vram_mib','disk_gib','wall_hours'))
+        or record.get('resources')!=ops_resources(payload.get('resources',{}))
         or payload.get('resources',{}).get('cpu_cores')!=(req['workers']+1 if req['workers']>1 else 1)
         or pins!=expected_pins or len(record.get('inputs',[]))!=len(pins) or stdout!=payload):
         raise ValueError('diagnostic producer terminal/stdout/source/argv/input binding differs')
     return {'run_id':req['run_id'],'stdout_sha256':digest(base/'logs/stdout.log')}
+
+
+def previous_failure(req):
+    validate_request(req)
+    path=absolute(req['previous_failure_request'])
+    if digest(path)!=req['previous_failure_request_sha256']:raise ValueError('previous failed request SHA differs')
+    old=load_request(path)
+    if ('previous_failure_request'in old or 'measurement_request'in old
+        or old['run_id']!='p-query-diagnostic-q32-w2-v1'
+        or old['runner_source']!='669297abe65c3ec699b3476c13ccf867736ab56a'):
+        raise ValueError('only fixed original v1 failure can authorize retry1')
+    unchanged=set(old)-{'run_id','runner_source','output'}
+    if any(req.get(key)!=old[key] for key in unchanged):raise ValueError('retry original scientific/input/resource request differs')
+    previous_output=absolute(old['output']);output=absolute(req['output'])
+    if (not previous_output.is_dir() or output==previous_output or output in previous_output.parents or previous_output in output.parents
+        or (previous_output/'result.json').exists() or (previous_output/'result.json').is_symlink()):
+        raise ValueError('previous failed output must remain separate with no result')
+    base=absolute(old['ops_root'])/'runs'/old['run_id']
+    record=read(base/'run.json');terminal=read(base/'terminal.json')
+    oldroot=absolute(record['cwd']);ledger=source(oldroot,old['runner_source'],overlay=True)
+    dirty=[{'path':P3C,'sha256':P3C_SHA}] if ledger['p3c_data_channel'] else []
+    expected_pins={str(oldroot/'analysis/p_query_sprint_ops.py') if p==Path(__file__).resolve() else str(p):
+                   digest(oldroot/'analysis/p_query_sprint_ops.py') if p==Path(__file__).resolve() else digest(p)
+                   for p in input_files(old,path)}
+    pins={p['path']:p['sha256'] for p in record.get('inputs',[])}
+    stdout=absolute(base/'logs/stdout.log');stderr=absolute(base/'logs/stderr.log')
+    if stdout.stat().st_size!=0 or stderr.stat().st_size>2*MIB:raise ValueError('previous failure stdout/stderr invalid')
+    error=stderr.read_text()
+    if ('throughput_workers.py'not in error or not error.rstrip().endswith('MemoryError: one task exceeds input/output reservation cap')
+        or record.get('schema')!='vkgr-run-v1' or terminal.get('schema')!='vkgr-terminal-v1'
+        or record.get('run_id')!=old['run_id'] or terminal.get('run_id')!=old['run_id']
+        or terminal.get('status')!='failed' or terminal.get('exit_code')!=1 or record.get('kind')!='ops'
+        or record.get('git')!={'commit':old['runner_source'],'dirty':bool(dirty),'dirty_files':dirty}
+        or record.get('argv')!=invocation(path) or record.get('config')!={'path':str(path),'sha256':digest(path)}
+        or record.get('resources')!={'cpu_cores':3,'ram_mib':98304,'vram_mib':0,'disk_gib':1,'wall_seconds':28800.0}
+        or pins!=expected_pins or len(record.get('inputs',[]))!=len(pins)):
+        raise ValueError('fixed previous failure producer binding differs')
+    return {'kind':'previous_failure','run_id':old['run_id'],'request_sha256':digest(path),
+            'run_sha256':digest(base/'run.json'),'terminal_sha256':digest(base/'terminal.json'),
+            'stdout_sha256':digest(stdout),'stderr_sha256':digest(stderr)}
 
 
 def measurement(req,binding):
@@ -216,7 +271,9 @@ def measurement(req,binding):
 def plan(request_path,*,open_arrays=False):
     req=load_request(request_path);runner=source(ROOT,req['runner_source'],overlay=True)
     old,binding,arrays=original(req)
-    previous,proof=measurement(req,binding);declaration=resources(req,previous,binding)
+    previous,proof=measurement(req,binding)
+    if 'previous_failure_request'in req:proof=previous_failure(req)
+    declaration=resources(req,previous,binding)
     if open_arrays and req['stage']=='diagnostic':
         config=Engineering(memory_limit_bytes=int(declaration['ram_mib']*MIB*.9))
         guard(config,absolute(req['output']).parent,projected_memory=2*old.array_bytes(old.N_ITEMS,old.N_QUERIES))
@@ -249,28 +306,44 @@ def job(args):
     spec=launcher.spec_from_args(launcher.build_parser().parse_args([*raw,'--',*invocation(request_path)]))
     metadata=launcher.prepare(spec)
     value={'status':'prepared_dry','spec':spec,'metadata':metadata,'input_binding':binding,
-           'runner_source':runner,'resources':declaration,'measurement_producer':proof}
+           'runner_source':runner,'resources':declaration,'measurement_producer':None if 'previous_failure_request'in req else proof,
+           'previous_failure_producer':proof if 'previous_failure_request'in req else None}
     if args.command=='submit':
         path=scheduler.submit(launcher.resolve_root(req['ops_root']),spec)
         value.update(status='written',queue_file=path.name,claimed_verified=False)
     return value
 
 
+@contextmanager
+def phase(stage):
+    def emit(event):
+        print(json.dumps({'stage':stage,'event':event,'monotonic_seconds':time.monotonic()},sort_keys=True),file=sys.stderr,flush=True)
+    emit('begin')
+    try:
+        yield
+    except BaseException:
+        emit('error');raise
+    else:emit('end')
+
+
 def execute(args):
     request_path=absolute(args.request)
-    req,runner,binding,arrays,declaration,proof=plan(request_path,open_arrays=True)
+    with phase('plan_and_inputs'):
+        req,runner,binding,arrays,declaration,proof=plan(request_path,open_arrays=True)
     output=absolute(req['output'])
     config=Engineering(eval_workers=req['workers'],use_mmap=True,prefetch=1,
-                       memory_limit_bytes=int(declaration['ram_mib']*MIB*.9),max_in_flight_bytes=64*MIB)
+                       memory_limit_bytes=int(declaration['ram_mib']*MIB*.9),max_in_flight_bytes=128*MIB)
     guard(config,output.parent,projected_disk=1024**2)
     output.mkdir()
-    value=diagnostic(req,arrays,config) if req['stage']=='diagnostic' else formal_cost(req,config)
+    with phase(req['stage']):
+        value=diagnostic(req,arrays,config) if req['stage']=='diagnostic' else formal_cost(req,config)
     # Inputs remain original immutable data; hash after use, before final receipt.
-    manifest=read(absolute(req['root'])/'inputs.json')
-    for record in manifest['files']:
-        if digest(absolute(req['root'])/record['path'])!=record['sha256']:raise ValueError('original input changed during work')
-    if digest(absolute(req['root'])/'inputs.json')!=binding['inputs_manifest_sha256']:raise ValueError('original input manifest changed during work')
-    if req['stage']=='diagnostic' and digest(output/value['query_copy']['file'])!=value['query_copy']['sha256']:raise ValueError('query copy changed during work')
+    with phase('post_read_verify'):
+        manifest=read(absolute(req['root'])/'inputs.json')
+        for record in manifest['files']:
+            if digest(absolute(req['root'])/record['path'])!=record['sha256']:raise ValueError('original input changed during work')
+        if digest(absolute(req['root'])/'inputs.json')!=binding['inputs_manifest_sha256']:raise ValueError('original input manifest changed during work')
+        if req['stage']=='diagnostic' and digest(output/value['query_copy']['file'])!=value['query_copy']['sha256']:raise ValueError('query copy changed during work')
     # Conservative bound: sum parent maximum with one maximum for each worker
     # plus the multiprocessing resource tracker. This is not a sampled peak.
     unit=1 if sys.platform=='darwin' else 1024
@@ -282,8 +355,10 @@ def execute(args):
                   'runner_source':runner,'request_sha256':digest(request_path),'resources':{**declaration,
                   'parent_peak_rss_bytes':parent,'max_child_peak_rss_bytes':child,
                   'process_tree_peak_rss_upper_bound_bytes':peak,'peak_scope':'parent maximum + (workers+tracker) times maximum child RSS'},
-                  'measurement_producer':proof,'argv':invocation(request_path)})
-    with (output/'result.json').open('x') as stream:json.dump(value,stream,sort_keys=True)
+                  'measurement_producer':None if 'previous_failure_request'in req else proof,
+           'previous_failure_producer':proof if 'previous_failure_request'in req else None,'argv':invocation(request_path)})
+    with phase('receipt'):
+        with (output/'result.json').open('x') as stream:json.dump(value,stream,sort_keys=True)
     return value
 
 
