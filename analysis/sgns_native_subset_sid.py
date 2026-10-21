@@ -208,6 +208,13 @@ def successful_stage(v,stage,path,sha):
     return receipt,{'receipt_sha256':hashlib.sha256(receipt_raw).hexdigest(),'native_receipt_sha256':hashlib.sha256(envelope_raw).hexdigest(),**{n:hashlib.sha256(b).hexdigest() for n,b in raw.items()}}
 
 
+def checked_stage_bytes(raw,result):
+    # The original writer serializes TorchVersion (a str subclass) as JSON str.
+    # Compare its exact canonical bytes, preserving bool/int/float distinctions.
+    if raw!=encoded(result):raise ValueError('original scientific stage bytes differ')
+    return json.loads(raw)
+
+
 def execute(stage,path,sha):
     from analysis.new_instance_prepare import runtime
     v=load(path,sha)
@@ -220,7 +227,7 @@ def execute(stage,path,sha):
     # Re-close actual producers and the request after the unchanged pipeline.
     if source_identity()!=v['source'] or not exact(load(path,sha),v) or not exact(pins(v,path,stage),before) or not exact(native_input(v,env)['job_proof'],native['job_proof']) or not exact(cpu_reference(v,env),cpu) or not exact(own_job(v,stage,path,sha),own):raise ValueError('native SID source/input/runtime/job closure changed')
     result_raw=(secure(v['outputs'][stage])/'stage-receipt.json').read_bytes()
-    if not exact(json.loads(result_raw),result):raise ValueError('original scientific stage bytes differ')
+    result=checked_stage_bytes(result_raw,result)
     envelope={'schema':'sgns-native-subset-sid-stage-v1','status':'verified','verified':True,'engineering':False,'backend':'B','authority':'4b0a8a1',
         'stage':stage,'source':v['source'],'request_sha256':sha,**own,'science_receipt':result,'science_receipt_sha256':hashlib.sha256(result_raw).hexdigest(),
         'native_producer':native['job_proof'],'native_request_sha256':v['native_request_sha256'],'cpu_reference':cpu[1],

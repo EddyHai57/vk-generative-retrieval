@@ -13,6 +13,16 @@ class TransportTests(unittest.TestCase):
     def setUp(self):
         from analysis import sgns_native_subset_sid as p
         self.p=p
+    def test_original_stage_bytes_accept_runtime_version_string_subclass_only(self):
+        import torch
+        p=self.p;value={'runtime':{'torch':torch.__version__},'verified':True,'count':1,'rate':1.0}
+        raw=p.encoded(value)
+        self.assertIsNot(type(torch.__version__),str)
+        self.assertEqual(p.checked_stage_bytes(raw,value),json.loads(raw))
+        for key,replacement in (('verified',1),('count',1.0),('rate',1)):
+            with self.subTest(key=key),self.assertRaises(ValueError):
+                p.checked_stage_bytes(raw,{**value,key:replacement})
+        with self.assertRaises(ValueError):p.checked_stage_bytes(raw+b'\n',value)
     def test_real_cli_dry_and_illegal(self):
         for command,code in [('dry',0),('illegal',2)]:
             run=subprocess.run([sys.executable,'-B','-m','analysis.sgns_native_subset_sid',command],cwd=ROOT,
