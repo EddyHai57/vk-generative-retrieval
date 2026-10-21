@@ -134,6 +134,27 @@ def driver_identity(expected_sha,expected=None):
     return identity
 
 
+def wait_preflight(args,base,backend,identity,deadline,*,now,sleep):
+    """Wait only for the already claimed original PF; never submit or retry it."""
+    while True:
+        if now()>=deadline:raise TimeoutError('finite P chain deadline waiting for original preflight')
+        identity()
+        value=backend.read_transport(args.inputs,args.request,args.request_sha256)
+        if canonical(value)!=canonical(base):raise ValueError('original preflight request changed while waiting')
+        run_id=base['run_ids']['preflight'];run=Path(base['ops_root'])/'runs'/run_id
+        state=queue_state(base['ops_root'],run_id)
+        if state['state']!='claimed' or not (run/'run.json').exists():
+            raise ValueError('original preflight must remain claimed with its original job')
+        records=backend.stage_inputs(base,args.inputs,args.request,args.request_sha256,'preflight')
+        expected=backend.job_contract(base,records,args.request,args.request_sha256,'preflight')
+        compare_job(backend.strict_json((run/'run.json').read_bytes()),expected)
+        done=terminal(run,run_id)
+        with (args.evidence/'preflight-wait.jsonl').open('a') as stream:
+            stream.write(json.dumps({'run_id':run_id,'claimed':True,'terminal_succeeded':done},sort_keys=True)+'\n')
+        if done:return
+        sleep(POLL_SECONDS)
+
+
 def run_chain(args,backend,helper,dag,launcher,scheduler,*,now=time.monotonic,sleep=time.sleep,driver_check=None):
     deadline=now()+deadline_seconds(args.deadline_hours)
     base=backend.read_transport(args.inputs,args.request,args.request_sha256)
@@ -152,6 +173,8 @@ def run_chain(args,backend,helper,dag,launcher,scheduler,*,now=time.monotonic,sl
         for contract in base['job_contract'].values():
             if launcher._ops_source()!=contract['ops_source']:raise ValueError('fixed original OPS source differs')
     identity()
+    if getattr(args,'wait_preflight',False):
+        wait_preflight(args,base,backend,identity,deadline,now=now,sleep=sleep)
     predecessor,binding=complete(backend,helper,dag,base,args.inputs,args.request,args.request_sha256,'preflight')
     submitted=[];observations=[]
     for stage in ('train','verify'):
@@ -205,6 +228,7 @@ def main(argv=None):
     for name in ('inputs','request','ops-code','evidence','consumer-code'):p.add_argument('--'+name,type=Path,required=True)
     p.add_argument('--request-sha256',required=True);p.add_argument('--deadline-hours',type=float,required=True)
     p.add_argument('--driver-sha256',required=True)
+    p.add_argument('--wait-preflight',action='store_true',help='wait for the already claimed original PF before the unchanged acceptance checks')
     args=parser.parse_args(argv)
     if args.command=='dry':
         print(json.dumps({'status':'dry','submitted':False,'poll_seconds':POLL_SECONDS}));return 0
