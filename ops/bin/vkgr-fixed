@@ -1,0 +1,7 @@
+#!/usr/bin/python3 -I
+"""Fixed-word entrypoint; environment and remote command stay inside the client."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'fixed'))
+from local import main
+raise SystemExit(main())

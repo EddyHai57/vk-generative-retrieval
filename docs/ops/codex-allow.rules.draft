@@ -1,0 +1,41 @@
+# DRAFT ONLY: render @INSTALLED_ENTRY@ to the reviewed, root-owned installed absolute path.
+# All six rules are in scope (1c5c15f); do not install these rules yet.
+# Exact prefixes, not whole-command equality. Extra args are refused by the CLI.
+# `deploy existing` is invalid syntax and cannot match `deploy execute`.
+# Actual existing-target rejection is server-side, tested separately.
+prefix_rule(
+    pattern = ["@INSTALLED_ENTRY@", "plan"],
+    decision = "allow",
+    match = ["@INSTALLED_ENTRY@ plan"],
+    not_match = ["git push origin main", "@INSTALLED_ENTRY@ deploy existing", "bash -lc '@INSTALLED_ENTRY@ plan && rm arbitrary'"],
+)
+prefix_rule(
+    pattern = ["@INSTALLED_ENTRY@", "status", "execute"],
+    decision = "allow",
+    match = ["@INSTALLED_ENTRY@ status execute"],
+    not_match = ["git push origin main", "@INSTALLED_ENTRY@ deploy existing", "bash -lc '@INSTALLED_ENTRY@ status execute && rm arbitrary'"],
+)
+prefix_rule(
+    pattern = ["@INSTALLED_ENTRY@", "resources", "execute"],
+    decision = "allow",
+    match = ["@INSTALLED_ENTRY@ resources execute"],
+    not_match = ["git push origin main", "@INSTALLED_ENTRY@ deploy existing", "bash -lc '@INSTALLED_ENTRY@ resources execute && rm arbitrary'"],
+)
+prefix_rule(
+    pattern = ["@INSTALLED_ENTRY@", "queue", "execute"],
+    decision = "allow",
+    match = ["@INSTALLED_ENTRY@ queue execute"],
+    not_match = ["git push origin main", "@INSTALLED_ENTRY@ deploy existing", "bash -lc '@INSTALLED_ENTRY@ queue execute && rm arbitrary'"],
+)
+prefix_rule(
+    pattern = ["@INSTALLED_ENTRY@", "receipts", "execute"],
+    decision = "allow",
+    match = ["@INSTALLED_ENTRY@ receipts execute"],
+    not_match = ["git push origin main", "@INSTALLED_ENTRY@ deploy existing", "bash -lc '@INSTALLED_ENTRY@ receipts execute && rm arbitrary'"],
+)
+prefix_rule(
+    pattern = ["@INSTALLED_ENTRY@", "deploy", "execute"],
+    decision = "allow",
+    match = ["@INSTALLED_ENTRY@ deploy execute"],
+    not_match = ["git push origin main", "@INSTALLED_ENTRY@ deploy existing", "bash -lc '@INSTALLED_ENTRY@ deploy execute && rm arbitrary'"],
+)
