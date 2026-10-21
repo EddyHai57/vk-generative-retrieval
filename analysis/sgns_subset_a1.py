@@ -219,6 +219,11 @@ def _execute(stage,request,sha,sampler):
         if engineering is not False or context.binding.get('synthetic') is not False:
             raise ValueError('formal real-input preflight only')
         runtime=engine['_runtime'](False)
+        # The read-only CPU input path otherwise never creates our CUDA context.
+        # Keep this non-random allocation alive through the final own-PID sample.
+        import torch
+        context_hold=torch.empty(1,device='cuda')
+        torch.cuda.synchronize()
         details={'status':'ready','query_count':len(context.queries),'catalog_size':len(context.catalog),
                  'native_runtime':runtime,'payload_written':False,'scratch_written':True}
     elif stage=='train':

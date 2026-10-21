@@ -38,7 +38,7 @@ p=subprocess.run(cmd,cwd=code,env=env,capture_output=True,text=True)
 assert p.returncode==0,p.stderr
 result=json.loads(p.stdout);spec=result['spec'];metadata=result['metadata']
 assert metadata['git']['commit']==value['source_commit'] and metadata['git']['dirty_files']==[]
-assert spec['seed']==42 and spec['run_id']=='sgns-gpu-subset-a1-preflight-v1'
+assert spec['seed']==42 and spec['run_id']=='sgns-gpu-subset-a1-preflight-retry1-v1'
 assert spec['argv'][3:5]==['analysis.sgns_subset_a1','preflight']
 assert metadata['config']['sha256']==sha
 (base/'prepared.json').write_text(p.stdout)
@@ -67,3 +67,21 @@ assert json.loads(p.stdout)['subset_only'] is True
 (base/'inputs-dry.json').write_text(p.stdout)
 print(json.dumps({'status':'input_launcher_metadata_dry_verified','source':value['source_commit'],
                   'real_preflight':False,'payload_read':False,'submitted':False,'evidence':str(base.relative_to(repo))}))
+
+# Training remains the original unused slot. Metadata is not a training run.
+tcmd=[part if part!='preflight' else 'train' for part in cmd]
+p=subprocess.run(tcmd,cwd=code,env=env,capture_output=True,text=True)
+assert p.returncode==0,p.stderr
+trained=json.loads(p.stdout)
+assert trained['spec']['run_id']=='sgns-gpu-subset-a1-train-v1'
+assert trained['spec']['ram_mib']==98304
+assert trained['spec']['vram_mib']==32768
+(base/'train-prepared.json').write_text(p.stdout)
+# A missing actual training predecessor must still block verify preparation.
+vcommand=[part if part!='preflight' else 'verify' for part in cmd]
+p=subprocess.run(vcommand,cwd=code,env=env,capture_output=True,text=True)
+assert p.returncode!=0
+assert 'sgns-gpu-subset-a1-train-v1' in p.stderr
+(base/'verify-blocked-no-train.log').write_text(p.stderr)
+print(json.dumps({'status':'train_metadata_and_verify_fail_closed',
+                  'science_training':False,'submitted':False,'real_preflight':False}))

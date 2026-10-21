@@ -190,7 +190,7 @@ def input_producer(record,prepared,history,source):
     raw={key:file_bytes(value) for key,value in record.items()}
     run=json.loads(raw['run']);terminal=json.loads(raw['terminal']);receipt=json.loads(raw['receipt'])
     stdout=json.loads(next((line for line in reversed(raw['stdout'].splitlines()) if line.strip()),b'{}'))
-    run_id='sgns-gpu-subset-a1-inputs-v1';argv=run.get('argv',[])
+    run_id='sgns-gpu-subset-a1-inputs-retry1-v1';argv=run.get('argv',[])
     if (run.get('run_id')!=run_id or absolute(record['run']['path']).parent.name!=run_id
             or run.get('kind')!='ops' or run.get('seed')!=42
             or run.get('git')!={'commit':source['commit'],'dirty':False,'dirty_files':[]}

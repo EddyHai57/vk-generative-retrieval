@@ -120,7 +120,7 @@ class InputProducerTests(unittest.TestCase):
         from pathlib import Path
         from vkgr import sgns_subset_a1_inputs as inputs
         with tempfile.TemporaryDirectory() as td:
-            base=Path(td).resolve();run_id='sgns-gpu-subset-a1-inputs-v1';out=base/'family';out.mkdir();ops=base/run_id;ops.mkdir()
+            base=Path(td).resolve();run_id='sgns-gpu-subset-a1-inputs-retry1-v1';out=base/'family';out.mkdir();ops=base/run_id;ops.mkdir()
             def write(path,value):
                 raw=canonical_bytes(value);path.write_bytes(raw);return {'path':str(path),'sha256':hashlib.sha256(raw).hexdigest()}
             prepared=write(out/'manifest.json',{'x':1});history={'path':str(out/'history/manifest.json'),'sha256':'1'*64}
@@ -134,6 +134,14 @@ class InputProducerTests(unittest.TestCase):
                      'science_training':False,'test_read':False,'subset_four_gate_acceptance':False}
             record['receipt']=write(out/'stage-receipt.json',receipt);record['stdout']=write(ops/'stdout.log',receipt)
             self.assertEqual(inputs.input_producer(record,prepared,history,source),receipt)
+            with self.assertRaisesRegex(ValueError,'original input producer'):
+                inputs.input_producer(record,prepared,history,{'commit':'b'*40})
+            old_receipt=copy.deepcopy(receipt);old_receipt['run_id']='sgns-gpu-subset-a1-inputs-v1'
+            record['receipt']=write(out/'stage-receipt.json',old_receipt)
+            record['stdout']=write(ops/'stdout.log',old_receipt)
+            with self.assertRaisesRegex(ValueError,'original input producer'):
+                inputs.input_producer(record,prepared,history,source)
+            record['receipt']=write(out/'stage-receipt.json',receipt);record['stdout']=write(ops/'stdout.log',receipt)
             record['terminal']=write(ops/'terminal.json',{'run_id':run_id,'status':'succeeded','exit_code':0,'signal':9})
             with self.assertRaisesRegex(ValueError,'original input producer'):
                 inputs.input_producer(record,prepared,history,source)

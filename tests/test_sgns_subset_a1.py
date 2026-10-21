@@ -177,7 +177,7 @@ class A1PredecessorAttackTests(unittest.TestCase):
         value={'source_commit':'a'*40,'ops_root':str(base/'ops'),'output_root':str(base/'out'),'prepared':fixed,'history':fixed,'content':fixed,'lock':fixed,
                'input_producer':producer,'cpu_sgns':producer,'gpu_sgns':producer,
                'cpu_sid':{'producer':producer,'manifest':fixed,'input_manifest':fixed},'gpu_sid':{'producer':producer,'manifest':fixed,'input_manifest':fixed}}
-        request=put(base/'request.json',value);rid='sgns-gpu-subset-a1-preflight-v1'
+        request=put(base/'request.json',value);rid='sgns-gpu-subset-a1-preflight-retry1-v1'
         run={'run_id':rid,'kind':'ops','cwd':str(ROOT),'argv':cli.invocation('preflight',Path(request['path']),request['sha256']),
              'seed':42,'git':{'commit':'a'*40,'dirty':False,'dirty_files':[]},'config':request,
              'inputs':cli.stage_inputs(value,Path(request['path']),request['sha256'])}
@@ -208,7 +208,7 @@ class A1ReceiptSemanticsTests(unittest.TestCase):
         expected={'prior':'preflight','source':{'commit':'a'*40},'env':{'lock':'b'*64,'flags':False},'config':{'seed':42,'dropout':0.0},
                   'proof':{'producer':{'verified':True}},'request_sha':'c'*64,'run_sha':'d'*64}
         receipt={'schema':'gpu-sgns-subset-a1-stage-v1','authority':'ad1c428','engineering':False,'stage':'preflight',
-                 'run_id':'sgns-gpu-subset-a1-preflight-v1','run_manifest_sha256':'d'*64,'request_sha256':'c'*64,
+                 'run_id':'sgns-gpu-subset-a1-preflight-retry1-v1','run_manifest_sha256':'d'*64,'request_sha256':'c'*64,
                  'source':expected['source'],'runtime':expected['env'],'config':expected['config'],'input_producers':expected['proof'],
                  'test_read':False,'subset_four_gate_acceptance':False,'status':'ready',
                  'context_inclusive_peak_mib':512,'context_samples':2,'rss_tree_upper_bound_mib':1024,'resource_scope':cli.RESOURCE_SCOPE,
@@ -325,7 +325,7 @@ class A1IntegratedRealFunctionsTests(unittest.TestCase):
             prepared=inputs.write_family(base/'family',payload,parts,raw_data=str(base/'raw'),raw_records=[{'path':'train/week_00.parquet','size':1,'sha256':'e'*64}],
                  ur001={'path':str(base/'UR001-manifest.json'),'sha256':inputs.SUBSET_MANIFEST_SHA},content=content,
                  sid_sha=sids['cuda']['manifest']['sha256'],source=actual,runtime=env)
-            rid='sgns-gpu-subset-a1-inputs-v1';request=put(base/'input-request.json',{'fixture':'synthetic only'})
+            rid='sgns-gpu-subset-a1-inputs-retry1-v1';request=put(base/'input-request.json',{'fixture':'synthetic only'})
             run={'run_id':rid,'kind':'ops','seed':42,'git':{'commit':actual['commit'],'dirty':False,'dirty_files':[]},'config':request,'inputs':[request],
                  'argv':['python','-B','-m','analysis.sgns_subset_a1_inputs','derive','--request',request['path'],'--request-sha256',request['sha256']]}
             r=put(base/'OPS/runs'/rid/'run.json',run)
@@ -392,3 +392,49 @@ class A1IntegratedRealFunctionsTests(unittest.TestCase):
                     engine['_contexts'](*common,core.registered_config(sids['cuda']['manifest']['sha256']),base/'contexts',**extra)
             print(json.dumps({'integration':'actual engine_for and original _contexts, no function stubs','a1_paths':len(delta),
                               'sid_paths':4,'cutoff':cutoff,'formal_preflight':False,'scientific_passed':False},sort_keys=True))
+
+class A1PreflightContextTests(unittest.TestCase):
+    def test_formal_preflight_creates_context_before_final_sample_without_rng(self):
+        # Missing allocation, wrong GPU, early release or missing sync must fail.
+        import contextlib, os, tempfile, threading, weakref
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import torch
+        from analysis import sgns_subset_a1 as cli, g_decode_timing as timing
+        from vkgr import sgns_subset_a1_inputs as inputs
+        state={};rng=torch.get_rng_state().clone();empty=torch.empty
+        def allocate(size,*,device):
+            self.assertEqual(size,1);self.assertEqual(device,'cuda')
+            tensor=empty(size);state['held']=weakref.ref(tensor)
+            return tensor
+        def sync():state['synced']=True
+        def nvidia(*args,**kwargs):
+            if state.get('held',lambda:None)() is not None and state.get('synced'):
+                return f'{os.getpid()}, 512\n'
+            return '999999999, 512\n'
+        sampler=timing.ContextSampler.__new__(timing.ContextSampler)
+        sampler.peak=0;sampler.samples=0;sampler.lock=threading.Lock()
+        with tempfile.TemporaryDirectory(prefix='a1-context-contract-') as td,contextlib.ExitStack() as stack:
+            base=Path(td).resolve()
+            value={'data_root':str(base/'raw'),'output_root':str(base/'out'),'scratch_root':str(base/'scratch'),
+                   'input_producer':{},'prepared':{},'history':{},'gpu_sid':{'manifest':{'sha256':'1'*64}}}
+            def contexts(*a,**k):
+                (base/'scratch/preflight').mkdir(parents=True)
+                return SimpleNamespace(binding={'synthetic':False},queries=[{}],catalog=[1,2]),False,None
+            engine={'_contexts':contexts,'_runtime':lambda x:{'device':'cuda'}}
+            for name,value_ in [('read_request',value),('identity',({'commit':'a'*40},{})),('own_job','b'*64)]:
+                stack.enter_context(patch.object(cli,name,return_value=value_))
+            stack.enter_context(patch.object(cli.core,'engine_for',return_value=(engine,(),{},{})))
+            stack.enter_context(patch.object(cli.core,'closure',return_value={}))
+            stack.enter_context(patch.object(inputs,'input_producer',return_value={}))
+            stack.enter_context(patch.dict(os.environ,{'VKGR_DATA_ROOT':value['data_root']}))
+            stack.enter_context(patch.object(torch,'empty',side_effect=allocate))
+            stack.enter_context(patch.object(torch.cuda,'synchronize',side_effect=sync))
+            stack.enter_context(patch.object(timing.subprocess,'check_output',side_effect=nvidia))
+            receipt=cli._execute('preflight',base/'request.json','c'*64,sampler)
+            self.assertEqual(receipt['context_inclusive_peak_mib'],512)
+            self.assertEqual(receipt['context_samples'],1)
+            self.assertEqual(receipt['status'],'ready')
+            self.assertFalse(receipt['payload_written'])
+            self.assertEqual(torch.get_rng_state().tolist(),rng.tolist())
+            self.assertEqual(json.loads((base/'out/preflight/stage-receipt.json').read_bytes()),receipt)

@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 from vkgr import sgns_subset_a1 as a1,sgns_subset_a1_inputs as core
 ROOT=Path(__file__).resolve().parents[1]
-RUN_ID='sgns-gpu-subset-a1-inputs-v1'
+RUN_ID='sgns-gpu-subset-a1-inputs-retry1-v1'
 
 
 def invocation(path,sha):

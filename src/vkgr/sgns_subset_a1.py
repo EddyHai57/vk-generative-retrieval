@@ -11,7 +11,7 @@ NATIVE_LOCK_SHA='8b231cef0c5056b4a6a8365f5a02070ba4e1c043b55fc9faa020188c10bf206
 SID_VERSION='GPU_SGNS_SUBSET_B48D3_S42'
 A1_ADDITIONS=('analysis/sgns_subset_a1_inputs.py','src/vkgr/sgns_subset_a1_inputs.py','tests/test_sgns_subset_a1_inputs.py','analysis/sgns_subset_a1.py', 'configs/sid_structure/g-structure-a1-s2024.json', 'configs/sid_structure/g-structure-a1-s2025.json', 'configs/sid_structure/g-structure-a1-s42.json', 'src/vkgr/coll_sid_a1_run.py', 'src/vkgr/generative_b1_batched.py', 'src/vkgr/generative_b1_run.py', 'src/vkgr/generative_coll_run.py', 'src/vkgr/generative_g6_data.py', 'src/vkgr/generative_g6_model.py', 'src/vkgr/generative_g6_run.py', 'src/vkgr/generative_pilot.py', 'src/vkgr/generative_real.py', 'src/vkgr/generative_sharded.py', 'src/vkgr/generative_tok_data.py', 'src/vkgr/sgns_subset_a1.py', 'src/vkgr/sid_coll_export.py', 'src/vkgr/sid_coll_run.py', 'src/vkgr/sid_coll_v1.py', 'src/vkgr/sid_rqvae_d.py', 'src/vkgr/sid_structure_a1_run.py', 'src/vkgr/sid_structure_run.py', 'src/vkgr/sid_structure_v1.py', 'src/vkgr/sid_tok_audit_d.py', 'src/vkgr/sid_v2d.py', 'tests/fixtures/sgns_subset_a1_launcher_chain.py', 'tests/test_sgns_subset_a1.py')
 SCHEMA='gpu-sgns-subset-a1-request-v1'
-RUN_IDS={'preflight':'sgns-gpu-subset-a1-preflight-v1','train':'sgns-gpu-subset-a1-train-v1','verify':'sgns-gpu-subset-a1-verify-v1'}
+RUN_IDS={'preflight':'sgns-gpu-subset-a1-preflight-retry1-v1','train':'sgns-gpu-subset-a1-train-v1','verify':'sgns-gpu-subset-a1-verify-v1'}
 INPUT_PINS={
     'prepared':'a55df0a3b285ce4cf623126fe53df53378bf5d7c0645c6484f0f405641bddd82',
     'history':'8b929d10c41cebbac3976398ad6f48f74f4d4441675d6b054fd19ec0c95c8d43',
