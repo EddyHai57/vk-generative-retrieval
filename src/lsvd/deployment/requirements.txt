@@ -1,0 +1,4 @@
+numpy==2.3.5
+faiss-cpu==1.15.1
+duckdb==1.4.3
+threadpoolctl==3.8.0

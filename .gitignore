@@ -137,3 +137,4 @@ provenance/
 docs/*takeover*.md
 docs/astra_restart_prompt.md
 docs/local_paths.md
+.local/lsvd-connection.json

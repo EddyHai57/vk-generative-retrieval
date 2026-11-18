@@ -1,0 +1,9 @@
+{
+  "python": "3.12.14",
+  "torch": "2.8.0",
+  "cuda_wheel": "cu128",
+  "numpy": "2.3.5",
+  "faiss": "1.15.1",
+  "duckdb": "1.4.3",
+  "threadpoolctl": "3.8.0"
+}

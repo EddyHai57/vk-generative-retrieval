@@ -1,0 +1,11 @@
+{
+  "status": "plan_only",
+  "measurement_windows": ["load_and_inventory", "warmup", "steady_train", "export_index_eval", "checkpoint_resume"],
+  "protocol": ["source_sha", "data_sha", "seed", "model", "precision", "batch_size", "history_events", "training_target_positions", "sid_supervised_tokens", "catalog_items", "id_min_count"],
+  "throughput": ["effective_targets_per_second", "sid_supervised_tokens_per_second", "steps_per_second", "distinct_users_per_batch", "effective_negative_columns", "duplicate_item_fraction"],
+  "timings_seconds": ["load", "epoch_shuffle", "batch_host", "history_features_host", "h2d_wait", "forward_cuda", "loss_mask_cuda_or_host", "backward_cuda", "optimizer_cuda", "steady_window_wall", "compile_first_call", "checkpoint_write", "checkpoint_read_resume", "catalog_export", "index_fit", "index_add", "early_validation", "full_validation", "beam_decode_filter"],
+  "resources": ["cpu_quota_cores", "cpu_affinity_count", "cpu_throttled_seconds", "process_cpu_time_over_wall", "rss_peak_bytes", "shm_bytes", "gpu_name", "gpu_vram_bytes", "gpu_context_inclusive_peak_bytes", "torch_peak_allocated_bytes", "torch_peak_reserved_bytes", "gpu_util_mean_p50_p95", "gpu_power_limit_watts", "gpu_power_mean_watts", "sm_clock_mhz", "memory_clock_mhz", "disk_seq_mb_per_second", "disk_random_iops", "disk_p50_p95_ms"],
+  "correctness_and_retrieval": ["finite_loss", "fixed_batch_forward_max_difference", "group_recall", "ann_exact_topk_overlap", "beam_width", "expanded_candidates", "filtered_unique_items"],
+  "execution": "not_executed_on_server",
+  "unknown_gpu_hours": true
+}

@@ -1,0 +1,12 @@
+FROM python:3.12.14-slim-bookworm@sha256:1aaa65a85fda306ffb8b910824d4e93bdce61e212c7e87168123ea3073b41a1a
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libgomp1 git rsync curl fio openssh-client
+WORKDIR /workspace
+COPY src/lsvd /workspace/src/lsvd
+COPY src/vkgr/__init__.py src/vkgr/tiger_arch.py /workspace/src/vkgr/
+ENV PYTHONPATH=/workspace/src
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+RUN sh src/lsvd/deployment/install_environment.sh --environment /opt/lsvd-python --allow-cpu
+ENV PATH=/opt/lsvd-python/bin:$PATH
+CMD ["sleep", "infinity"]
