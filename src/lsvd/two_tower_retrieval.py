@@ -39,7 +39,8 @@ def export_item_embeddings(model, catalog, device, output, batch_size=8192):
     return record
 
 
-def export_cold_embeddings(model, catalog, device, output, structure, batch_size=8192):
+def export_cold_embeddings(model, catalog, device, output, structure, batch_size=8192,
+                           *, stop_requested=None):
     """Persist L2 float16 item vectors, preserving the full catalog row order."""
     import hashlib
 
@@ -52,6 +53,9 @@ def export_cold_embeddings(model, catalog, device, output, structure, batch_size
     max_norm_error = 0.0
     with torch.no_grad():
         for start in range(0, len(catalog.ids), batch_size):
+            if stop_requested is not None and stop_requested():
+                vectors.flush()
+                return None
             ids = catalog.ids[start:start + batch_size]
             values = model.item(catalog.features(ids, device), cold=True).cpu().numpy()
             if not np.isfinite(values).all():
@@ -65,6 +69,8 @@ def export_cold_embeddings(model, catalog, device, output, structure, batch_size
     digest = hashlib.sha256()
     with (output / "vectors.npy").open("rb") as handle:
         for block in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            if stop_requested is not None and stop_requested():
+                return None
             digest.update(block)
     record = dict(structure=structure, items=len(catalog.ids), dim=model.config.dim, dtype="float16",
                   candidate_path="ID zero, rank unknown, retain raw content projection, author and duration",

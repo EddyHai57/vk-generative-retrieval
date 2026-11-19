@@ -8,11 +8,115 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 
-from .two_tower_prepare import sha256_file
+PUBLIC_REPOSITORY = 'https://github.com/EddyHai57/vk-generative-retrieval.git'
+PUBLIC_BRANCH = 'claude/vk-generative-retrieval-takeover-f62c2a'
+
+
+def sha256_file(path):
+    with Path(path).open('rb') as handle:
+        return hashlib.file_digest(handle, 'sha256').hexdigest()
+
+
+def detect_rsync():
+    executable = shutil.which('rsync')
+    if executable is None:
+        raise FileNotFoundError('rsync is required')
+    lines = subprocess.check_output([executable, '--version'], text=True).splitlines()
+    implementation = 'openrsync' if lines[0].startswith('openrsync:') else 'rsync'
+    return dict(executable=executable, implementation=implementation,
+                version='; '.join(lines[:2] if implementation == 'openrsync' else lines[:1]))
+
+
+def ascii_path(path):
+    if not re.fullmatch(r'[A-Za-z0-9_./-]+', path) or '..' in Path(path).parts:
+        raise ValueError('expected an ASCII path without spaces or shell metacharacters')
+    return path
+
+
+def rsync_command(source, destination, *, ssh=None, files_from=None, compress=True,
+                  executable='rsync'):
+    command = [executable, '--archive', '--partial']
+    if compress:
+        command.append('--compress')
+    if files_from is not None:
+        command.append('--files-from=' + str(files_from))
+    if ssh is not None:
+        command.extend(['-e', shlex.join(ssh)])
+    return [*command, str(source), str(destination)]
+
+
+def result_digests(sums, *, formal=False):
+    files = {}
+    for line in sums.decode('ascii').splitlines():
+        digest, name = line.split('  ', 1)
+        if (not re.fullmatch('[0-9a-f]{64}', digest) or Path(ascii_path(name)).is_absolute()
+                or name in files or name in ('SHA256SUMS', 'pull-receipt.json')):
+            raise ValueError('invalid result SHA256SUMS entry')
+        files[name] = digest
+    if not files:
+        raise ValueError('result SHA256SUMS is empty')
+    if formal:
+        required = {'best.pt', 'run_summary.json', 'logs/training_steps.csv',
+                    'best-cold-vectors/item_ids.npy', 'best-cold-vectors/vectors.npy',
+                    'best-cold-vectors/manifest.json', 'evaluation/all/metrics.csv',
+                    'cold-evaluation/all/metrics.csv'}
+        if not required.issubset(files) or not any(name.startswith('logs/attempt-')
+                                                   and name.endswith('.log') for name in files):
+            raise ValueError('formal result SHA256SUMS is missing required artifacts')
+    return files
+
+
+def verify_results(root, *, formal=False):
+    root = Path(root).resolve()
+    sums = (root / 'SHA256SUMS').read_bytes()
+    rows = []
+    for name, expected in result_digests(sums, formal=formal).items():
+        path = root / name
+        if root not in path.resolve().parents or not path.is_file():
+            raise ValueError('result file missing or outside result directory: ' + name)
+        if sha256_file(path) != expected:
+            raise ValueError('result sha256 mismatch: ' + name)
+        rows.append(dict(path=name, sha256=expected, bytes=path.stat().st_size))
+    return dict(status='verified', files=rows, manifest_sha256=hashlib.sha256(sums).hexdigest(),
+                total_bytes=sum(row['bytes'] for row in rows))
+
+
+def pull_results(source, output, *, ssh, executable='rsync', formal=False):
+    from .pre_rental_probe import write_receipt
+
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    receipt = output / 'pull-receipt.json'
+    receipt_path = output / 'SHA256SUMS'
+    source = source.rstrip('/') + '/'
+    with tempfile.TemporaryDirectory(dir=output.parent) as temporary:
+        remote_sums = Path(temporary) / 'SHA256SUMS'
+        subprocess.run(rsync_command(source + 'SHA256SUMS', remote_sums, ssh=ssh,
+                                    executable=executable), check=True)
+        sums = remote_sums.read_bytes()
+        files = result_digests(sums, formal=formal)
+        if receipt_path.exists():
+            if receipt_path.read_bytes() != sums:
+                raise ValueError('result SHA256SUMS differs from the existing pull')
+        else:
+            if any(output.iterdir()):
+                raise ValueError('choose a new result directory')
+            remote_sums.rename(receipt_path)
+        if not receipt.exists():
+            command = rsync_command(source, str(output) + '/', ssh=ssh, files_from='-',
+                                    executable=executable)
+            subprocess.run(command, input=''.join(name + '\n' for name in files),
+                           text=True, check=True)
+    result = verify_results(output, formal=formal)
+    if not receipt.exists():
+        write_receipt(receipt, result)
+    return result
 
 
 def upload_manifest(dataset):
@@ -39,7 +143,8 @@ def code_manifest(source):
     files = [path for path in (source / 'src/lsvd').rglob('*') if path.is_file()
              and '__pycache__' not in path.parts
              and (path.suffix in {'.py', '.md', '.txt', '.sh'}
-                  or path.name in {'probe_fields.json', 'versions.json', 'Dockerfile.cuda128'})]
+                  or path.name in {'probe_fields.json', 'versions.json', 'Dockerfile.cuda128',
+                                   'training-queue.example.json'})]
     files += [path for path in [source / 'src/vkgr/__init__.py',
                                source / 'src/vkgr/tiger_arch.py'] if path.is_file()]
     rows = [dict(path=path.relative_to(source).as_posix(),
@@ -73,27 +178,32 @@ def verify_manifest(root, manifest, expected_manifest_sha256=None):
                 total_bytes=sum(row['bytes'] for row in files))
 
 
-def deployment_commands(mode, source, connection, *, commit=None, files_from=None):
+def deployment_commands(mode, source, connection, *, commit=None, files_from=None,
+                        executable='rsync'):
     target = connection['target']
     destination = connection['destination']
     if not target or not destination:
         raise ValueError('fill the ignored local connection configuration first')
+    ascii_path(destination)
     ssh = ['ssh', *connection.get('ssh_arguments', [])]
     if mode == 'git':
         if commit is None or re.fullmatch('[0-9a-fA-F]{40}', commit) is None:
             raise ValueError('git deployment requires a complete commit SHA')
-        command = ('git clone --no-checkout ' + shlex.quote(connection['repository'])
-                   + ' ' + shlex.quote(destination) + ' && git -C '
-                   + shlex.quote(destination) + ' checkout --detach ' + commit)
+        clone = ['git', 'clone', '--no-checkout', '--single-branch', '--branch',
+                 PUBLIC_BRANCH, PUBLIC_REPOSITORY, destination]
+        git = ['git', '-C', destination]
+        on_branch = git + ['merge-base', '--is-ancestor', commit,
+                           'refs/remotes/origin/' + PUBLIC_BRANCH]
+        checkout = git + ['checkout', '--detach', commit]
+        command = ' && '.join(shlex.join(part) for part in (clone, on_branch, checkout))
         return [dict(phase='clone-and-checkout', argv=[*ssh, target, command])]
     if mode != 'rsync' or files_from is None:
         raise ValueError('rsync deployment requires its exact file list')
-    transport = shlex.join(ssh)
     return [dict(phase='make-destination', argv=[*ssh, target,
                  'mkdir -p ' + shlex.quote(destination)]),
-            dict(phase='rsync-source', argv=['rsync', '--archive', '--partial',
-                 '--append-verify', '--protect-args', '--files-from=' + str(files_from),
-                 '-e', transport, str(Path(source)) + '/', target + ':' + destination + '/'])]
+            dict(phase='rsync-source', argv=rsync_command(str(Path(source)) + '/',
+                 target + ':' + destination + '/', files_from=files_from, ssh=ssh,
+                 executable=executable))]
 
 
 def stop_request(environment):
@@ -154,6 +264,10 @@ def main(argv=None):
     upload.add_argument('--manifest', type=Path, required=True)
     upload.add_argument('--connection', type=Path, default=Path('.local/lsvd-connection.json'))
     upload.add_argument('--dry-run', action='store_true')
+    pull = sub.add_parser('pull')
+    pull.add_argument('--remote-result', required=True)
+    pull.add_argument('--output', type=Path, required=True)
+    pull.add_argument('--connection', type=Path, default=Path('.local/lsvd-connection.json'))
     launch = sub.add_parser('launch')
     launch.add_argument('--run-directory', type=Path, required=True)
     launch.add_argument('--dry-run', action='store_true')
@@ -173,16 +287,18 @@ def main(argv=None):
         print(json.dumps(verify_manifest(args.root, args.manifest,
                                          args.expected_manifest_sha256)))
     elif args.command == 'deploy':
+        rsync = detect_rsync()
         connection = json.loads(args.connection.read_text())
         commands = deployment_commands(args.mode, args.source, connection, commit=args.commit,
-                                        files_from=args.package / 'source-files.txt')
+                                        files_from=args.package / 'source-files.txt',
+                                        executable=rsync['executable'])
         ssh = ['ssh', *connection.get('ssh_arguments', [])]
         destination = connection['destination']
         receipt = args.package / 'source-manifest.json'
         remote_receipt = destination + '/lsvd-source-manifest.json'
-        commands.append(dict(phase='copy-source-manifest', argv=[
-            'rsync', '--archive', '--partial', '--protect-args', '-e', shlex.join(ssh),
-            str(receipt), connection['target'] + ':' + remote_receipt]))
+        commands.append(dict(phase='copy-source-manifest', argv=rsync_command(
+            receipt, connection['target'] + ':' + remote_receipt, ssh=ssh,
+            executable=rsync['executable'])))
         verifier = ['env', 'PYTHONPATH=' + destination + '/src',
                     connection.get('python', 'python3'), '-m', 'lsvd.pre_rental_deploy',
                     'verify', '--root', destination, '--manifest', remote_receipt,
@@ -190,26 +306,27 @@ def main(argv=None):
         commands.append(dict(phase='verify-source-sha256',
                               argv=[*ssh, connection['target'], shlex.join(verifier)]))
         if args.dry_run:
-            print(json.dumps(dict(action='dry_run', phases=[x['phase'] for x in commands])))
+            print(json.dumps(dict(action='dry_run', rsync=rsync,
+                                  phases=[x['phase'] for x in commands])))
         else:
             for row in commands:
                 subprocess.run(row['argv'], check=True, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL)
-            print(json.dumps(dict(action='source_transferred', verification='verified')))
+            print(json.dumps(dict(action='source_transferred', verification='verified', rsync=rsync)))
     elif args.command == 'upload':
+        rsync = detect_rsync()
         connection = json.loads(args.connection.read_text())
         manifest = json.loads(args.manifest.read_text())
-        files = args.manifest.with_name('data-files.txt')
-        if not files.exists():
-            files.open('x').write(''.join(row['path'] + '\n' for row in manifest['files']))
-        destination = connection['data_destination']
-        command = ['rsync', '--archive', '--partial', '--append-verify', '--protect-args',
-                   '--files-from=' + str(files), '-e',
-                   shlex.join(['ssh', *connection.get('ssh_arguments', [])]),
-                   str(args.dataset) + '/', connection['target'] + ':' + destination + '/']
+        destination = ascii_path(connection['data_destination'])
+        source = ascii_path(connection['destination'])
+        files = ''.join(ascii_path(row['path']) + '\n' for row in manifest['files'])
+        ssh = ['ssh', *connection.get('ssh_arguments', [])]
+        command = rsync_command(str(args.dataset) + '/', connection['target'] + ':' + destination + '/',
+                                files_from='-', ssh=ssh, executable=rsync['executable'])
         if not args.dry_run:
-            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            verifier = ['env', 'PYTHONPATH=' + connection['destination'] + '/src',
+            subprocess.run(command, input=files, text=True, check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            verifier = ['env', 'PYTHONPATH=' + source + '/src',
                         connection.get('python', 'python3'), '-m', 'lsvd.pre_rental_deploy',
                         'verify', '--root', destination, '--manifest', destination + '/manifest.json',
                         '--expected-manifest-sha256', next(row['sha256'] for row in manifest['files']
@@ -219,7 +336,15 @@ def main(argv=None):
                            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(json.dumps(dict(action='dry_run' if args.dry_run else 'data_transferred',
                               files=len(manifest['files']), total_bytes=manifest['total_bytes'],
-                              verification='planned' if args.dry_run else 'verified')))
+                              verification='planned' if args.dry_run else 'verified',
+                              compression=True, rsync=rsync)))
+    elif args.command == 'pull':
+        rsync = detect_rsync()
+        connection = json.loads(args.connection.read_text())
+        source = connection['target'] + ':' + ascii_path(args.remote_result)
+        result = pull_results(source, args.output, ssh=['ssh', *connection.get('ssh_arguments', [])],
+                              executable=rsync['executable'], formal=True)
+        print(json.dumps(dict(result, rsync=rsync)))
     else:
         command = args.argv[1:] if args.argv[:1] == ['--'] else args.argv
         if not command:

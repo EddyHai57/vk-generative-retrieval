@@ -159,7 +159,8 @@ class TensorTrainingSession:
 
 def fit_tensor(catalog, store, data, config, structure, device, output, max_samples,
                replicates, exact_users, max_train_seconds=7200, *, precision='fp32',
-               resume=None, checkpoint_every=1000, data_identity=None, max_steps=0):
+               resume=None, checkpoint_every=1000, data_identity=None, max_steps=0,
+               control=None):
     from .evaluation import evaluate
     from .two_tower import user_hash
     from .two_tower_data import subset_evaluation
@@ -189,21 +190,38 @@ def fit_tensor(catalog, store, data, config, structure, device, output, max_samp
         session.register_epoch(score, metrics)
 
     started = time.perf_counter()
+    def pause(checkpoint=None):
+        path = checkpoint if checkpoint is not None else session.save()
+        return dict(status='paused', steps=session.global_step,
+                    checkpoint=str(path.relative_to(output)))
+
+    if control and control(session, 'training'):
+        return pause()
     if (session.cursor == session.epoch_targets
             and len(session.training_state['epochs']) <= session.epoch):
         finish_epoch()
+        if control and control(session, 'training'):
+            return pause(session.manager.latest)
     while (len(session.training_state['epochs']) < config.epochs
            and session.training_state['bad'] < config.patience):
         if time.perf_counter() - started >= max_train_seconds:
             break
         row = session.step()
+        checkpoint = None
         if row['epoch_finished']:
+            if control and control(session, 'epoch_evaluation'):
+                return pause()
             finish_epoch()
+            checkpoint = session.manager.latest
         elif checkpoint_every and session.global_step % checkpoint_every == 0:
-            session.save()
+            checkpoint = session.save()
+        if control and control(session, 'training'):
+            return pause(checkpoint)
         if max_steps and session.global_step >= max_steps:
             break
     latest = session.save()
+    if control and control(session, 'final_evaluation'):
+        return pause(latest)
     best = session.manager.best
     if best is None:
         record = dict(status='finite_steps_only', steps=session.global_step,

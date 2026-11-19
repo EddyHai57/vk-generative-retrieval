@@ -1,5 +1,5 @@
 {
-  "python": "3.12.14",
+  "python": "3.12",
   "torch": "2.8.0",
   "cuda_wheel": "cu128",
   "numpy": "2.3.5",

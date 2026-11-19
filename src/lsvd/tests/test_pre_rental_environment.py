@@ -3,11 +3,19 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
 from lsvd.check_environment import check_environment
 
 
 class EnvironmentTests(unittest.TestCase):
+    def test_accepts_python_312_patch_versions_only(self):
+        with patch('lsvd.check_environment.platform.python_version', return_value='3.12.3'):
+            self.assertTrue(check_environment(allow_cpu=True)['versions_match'])
+        with patch('lsvd.check_environment.platform.python_version', return_value='3.13.0'):
+            with self.assertRaisesRegex(ValueError, 'Python 3.12'):
+                check_environment(allow_cpu=True)
+
     def test_local_versions_are_checked_and_cuda_absence_is_explicit(self):
         result = check_environment(allow_cpu=True)
         self.assertTrue(result['versions_match'])

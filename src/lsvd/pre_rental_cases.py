@@ -29,8 +29,8 @@ def record(args, model):
 
     result = empty_record()
     result['protocol'].update(source_sha=code_manifest(Path(__file__).resolve().parents[2])['source_sha256'],
-                               data_sha=sha256_file(args.dataset / 'manifest.json') if args.dataset else
-                               hashlib.sha256(b'synthetic-round30-seed42').hexdigest(),
+                               data_sha=(hashlib.sha256(b'synthetic-round30-seed42').hexdigest()
+                                         if args.synthetic else sha256_file(args.dataset / 'manifest.json')),
                                seed=42, model=model)
     result['resources'].update(process_metrics(args.device))
     result['resources'].update(available_resources())
@@ -162,6 +162,8 @@ def machine(args):
         result['disk_method'] = 'Python pread, warm/page-cache measurement'
     if args.synthetic:
         result['network_download_status'] = 'skipped_synthetic_test'
+    elif not args.download_url:
+        result['network_download_status'] = 'skipped_disabled'
     else:
         try:
             started = time.perf_counter()
@@ -191,6 +193,92 @@ def _fixed_loss(model, catalog, store, config, selected, device):
     return loss, users, items
 
 
+def fp32_snapshot(model, catalog, store, config, selected, device):
+    import torch
+    from .two_tower import corrected_loss
+    from .two_tower_data import encode_batch
+    from .two_tower_runtime import precision_mode
+
+    with torch.no_grad(), precision_mode(device, 'fp32'):
+        batch, ids, positives, q, weights = store.train_batch(selected, config, device)
+        mask = positives.allowed(ids)
+        users = encode_batch(model, catalog, batch, device)
+        items = model.item(batch['target_features'])
+        loss, skipped = corrected_loss(users, items, ids.long(), mask, q, weights,
+                                       config.temperature)
+    inputs = {f'history.{name}': value for name, value in batch.items()
+              if name not in ('item_features', 'target_features')}
+    for section in ('item_features', 'target_features'):
+        inputs.update({f'{section}.{name}': value for name, value in batch[section].items()})
+    inputs.update(target_item_ids=ids, positive_user_rows=positives.users, mask=mask,
+                  logq_probability=q, target_weight=weights,
+                  skipped_rows=torch.tensor(skipped))
+    outputs = dict(loss=loss, users=users, items=items)
+    return ({name: value.cpu() for name, value in inputs.items()},
+            {name: value.cpu() for name, value in outputs.items()})
+
+
+def compare_fp32(cpu, cuda):
+    import torch
+
+    cpu_inputs, cpu_outputs = cpu
+    cuda_inputs, cuda_outputs = cuda
+    mismatches = sorted(set(cpu_inputs) ^ set(cuda_inputs))
+    for name in sorted(cpu_inputs.keys() & cuda_inputs.keys()):
+        before, after = cpu_inputs[name], cuda_inputs[name]
+        if before.dtype != after.dtype or not torch.equal(before, after):
+            mismatches.append(name)
+    differences = {}
+    tolerance = 1e-4
+    for name, before in cpu_outputs.items():
+        after = cuda_outputs[name]
+        comparable = (before.shape == after.shape and before.dtype == after.dtype
+                      and bool(torch.isfinite(before).all() and torch.isfinite(after).all()))
+        differences[name] = float((before - after).abs().max()) if comparable else None
+    passed = not mismatches and all(
+        difference is not None and difference <= tolerance for difference in differences.values()
+    )
+    return dict(status='pass' if passed else 'fail', severity='ok' if passed else 'red',
+                tolerance=tolerance, checked_fields=sorted(cpu_inputs.keys() & cuda_inputs.keys()),
+                mismatched_fields=mismatches, max_abs_diff=differences)
+
+
+def fp32_cpu_cuda(args):
+    import numpy as np
+    import torch
+    from .two_tower import TowerConfig, TwoTower
+
+    if args.device != 'cuda':
+        return dict(status='skipped_cpu')
+    if not torch.cuda.is_available():
+        return dict(status='cuda_unavailable')
+    config = TowerConfig(batch_size=1024, id_min_count=20, seed=42)
+    cpu_args = copy.copy(args)
+    cpu_args.device = 'cpu'
+    cpu_catalog, cpu_store, data = load_case_data(cpu_args, config)
+    order = np.load(args.shared_order, mmap_mode='r')
+    selected = order[:min(config.batch_size, len(cpu_store.samples))]
+    torch.manual_seed(config.seed)
+    model = TwoTower(cpu_catalog, config, 'causal').float().eval()
+    # A nonzero gate makes the diagnostic sensitive to the attention residual.
+    with torch.no_grad():
+        model.user.gate.fill_(1.)
+    cpu = fp32_snapshot(model, cpu_catalog, cpu_store, config, selected, 'cpu')
+    del cpu_catalog, cpu_store, data
+
+    cuda_catalog, cuda_store, _ = load_case_data(args, config, placement='cuda')
+    cuda = fp32_snapshot(model.to('cuda'), cuda_catalog, cuda_store, config, selected, 'cuda')
+    result = record(args, 'mlp_causal')
+    result['protocol'].update(precision='fp32', batch_size=config.batch_size,
+                              training_target_positions=len(selected),
+                              id_min_count=config.id_min_count)
+    result.update(compare_fp32(cpu, cuda), synthetic=args.synthetic,
+                  batch_sha256=hashlib.sha256(selected.astype('<i8', copy=False)).hexdigest(),
+                  weights='same seeded eval model with diagnostic causal gate set to 1',
+                  data_placement='cuda')
+    return result
+
+
 def two_tower_case(args):
     import numpy as np
     import torch
@@ -198,6 +286,7 @@ def two_tower_case(args):
     from .two_tower_training import TensorTrainingSession
     from .two_tower_runtime import precision_mode, process_metrics
     from .two_tower_measure import phase_clock
+    from .pre_rental_deploy import sha256_file
 
     spec = json.loads(args.case_file.read_text())
     if args.device == 'cuda':
@@ -273,13 +362,15 @@ def two_tower_case(args):
         result['status'] = 'failed_nonfinite'
     result['resources'].update(process_metrics(args.device))
     result['steps'] = rows
-    if result['status'] == 'complete' and (
-            spec['structure'], spec['precision'], spec['id_min_count'], spec['data_placement']) == (
-            'mlp_mean', 'fp32', 100, 'cpu'):
-        path = args.output.parent / 'reference-model.pt'
+    if (result['status'] == 'complete' and args.device == 'cuda'
+            and spec == dict(structure='mlp_causal', precision='bf16', id_min_count=20,
+                             data_placement='cuda', batch_size=1024)):
+        path = args.output / 'reference-model.pt'
         with path.open('xb') as handle:
             torch.save(dict(model=session.model.state_dict(), config=config.__dict__,
                              probe_updates=session.global_step), handle)
+        result.update(reference_sha256=sha256_file(path),
+                      reference_probe_updates=session.global_step)
     return result
 
 
@@ -426,6 +517,28 @@ def checkpoint(args):
     return result
 
 
+def evaluation_reference(two_tower_output, identity):
+    from .pre_rental_deploy import sha256_file
+
+    case = two_tower_output / 'mlp_causal-bf16-20-cuda'
+    record_path = case / 'result.json'
+    if not record_path.is_file():
+        return None
+    receipt = json.loads(record_path.read_text())
+    if receipt['status'] != 'complete':
+        return None
+    expected = dict(source_sha=identity['source_sha'], data_sha=identity['data_sha'],
+                    model='mlp_causal', precision='bf16', id_min_count=20, batch_size=1024)
+    if (any(receipt['protocol'].get(key) != value for key, value in expected.items())
+            or receipt.get('data_placement') != 'cuda'
+            or not receipt.get('reference_probe_updates', 0)):
+        raise ValueError('reference model identity differs from primary causal probe')
+    path = case / 'reference-model.pt'
+    if sha256_file(path) != receipt.get('reference_sha256'):
+        raise ValueError('reference model sha256 mismatch')
+    return path, receipt['reference_probe_updates']
+
+
 def evaluate(args):
     import numpy as np
     import torch
@@ -434,16 +547,22 @@ def evaluate(args):
     from .two_tower_retrieval import export_item_embeddings, retrieve
     from .two_tower_runtime import precision_mode, process_metrics
 
-    config = TowerConfig(batch_size=1024, id_min_count=100, seed=42)
+    config = TowerConfig(batch_size=1024, id_min_count=20, seed=42)
     catalog, store, data = load_case_data(args, config)
+    result = record(args, 'export_and_early_retrieval')
     torch.manual_seed(42)
-    model = TwoTower(catalog, config, 'mean').to(args.device)
-    path = args.output.parent / 'two_tower/reference-model.pt'
-    model_source = 'seeded_initialization'
-    if path.exists():
-        saved = torch.load(path, weights_only=True, map_location=args.device)
+    model = TwoTower(catalog, config, 'causal').to(args.device)
+    reference = evaluation_reference(args.output.parent / 'two_tower', result['protocol'])
+    model_source = 'seeded_causal_initialization'
+    probe_updates = 0
+    if reference is not None:
+        path, probe_updates = reference
+        saved = torch.load(path, weights_only=True, map_location='cpu')
+        if saved['config'] != config.__dict__ or saved['probe_updates'] != probe_updates:
+            raise ValueError('reference model configuration or update count differs from primary causal probe')
         model.load_state_dict(saved['model'])
-        model_source = 'fixed_mean_fp32_min100_cpu_probe_case'
+        model_source = 'trained_primary_causal_bf16_min20_cuda'
+        del saved
     early = np.array([user for user in data.user_ids
                        if user_hash(user, config.user_hash_seed) % 10 == 0])
     if args.local_smoke:
@@ -458,8 +577,9 @@ def evaluate(args):
                                           args.output / 'retrieval', exact_users=8,
                                           save_index=True,
                                           vector_file=args.output / 'catalog-vectors/vectors.npy')
-    result = record(args, 'export_and_early_retrieval')
     result['model_source'] = model_source
+    result['user_structure'] = 'causal'
+    result['reference_probe_updates'] = probe_updates
     result['protocol'].update(catalog_items=len(catalog.ids), precision='fp32',
                                id_min_count=config.id_min_count,
                                history_events=config.max_history)

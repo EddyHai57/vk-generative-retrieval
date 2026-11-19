@@ -17,7 +17,9 @@ def check_environment(*, allow_cpu=False):
     versions = dict(python=platform.python_version(), torch=torch.__version__.split('+')[0],
                     numpy=np.__version__, faiss=faiss.__version__, duckdb=duckdb.__version__,
                     threadpoolctl=threadpoolctl.__version__)
-    if any(versions[name] != expected[name] for name in versions):
+    if versions['python'].rsplit('.', 1)[0] != expected['python']:
+        raise ValueError(f"Python {expected['python']}.x is required")
+    if any(versions[name] != expected[name] for name in versions if name != 'python'):
         raise ValueError('installed versions differ from deployment/versions.json')
     available = torch.cuda.is_available()
     if torch.version.cuda is not None and torch.version.cuda != '12.8':

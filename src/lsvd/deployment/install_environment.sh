@@ -17,7 +17,7 @@ done
 
 script_directory=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 if [ "$verify_only" -eq 0 ]; then
-    "$python_command" -c 'import platform; assert platform.python_version() == "3.12.14", "Python 3.12.14 required"'
+    "$python_command" -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 12) else "Python 3.12.x required")'
     if [ -e "$environment_directory" ]; then
         printf '%s\n' 'Choose a new environment directory' >&2
         exit 2

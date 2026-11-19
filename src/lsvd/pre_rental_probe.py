@@ -11,10 +11,12 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 
 
 STAGE_SECONDS = dict(machine=300, two_tower=1200, generator=600,
                      checkpoint=300, evaluate=300)
+RETRIEVE_RESULTS = '先拉回结果，再由Eddy销毁'
 
 
 def case_grid(stage, *, local_smoke=False):
@@ -23,17 +25,75 @@ def case_grid(stage, *, local_smoke=False):
             return [dict(structure=structure, precision='fp32', id_min_count=100,
                           data_placement='cpu', batch_size=8)
                     for structure in ['mlp_mean', 'mlp_causal']]
+        priority = [
+            ('mlp_causal', 'bf16', 20, 'cuda'),
+            ('mlp_causal', 'fp32', 20, 'cuda'),
+            ('mlp_causal', 'bf16', 20, 'cpu'),
+            ('mlp_causal', 'bf16', 5, 'cuda'),
+            ('mlp_causal', 'tf32', 20, 'cuda'),
+            ('mlp_mean', 'bf16', 20, 'cuda'),
+            ('mlp_mean', 'fp32', 20, 'cuda'),
+        ]
+        grid = itertools.product(['mlp_mean', 'mlp_causal'], ['fp32', 'tf32', 'bf16'],
+                                 [5, 20, 100], ['cpu', 'cuda'])
+        ordered = priority + [case for case in grid if case not in priority]
         return [dict(structure=structure, precision=precision, id_min_count=minimum,
-                      data_placement=placement, batch_size=1024)
-                for structure, precision, minimum, placement in itertools.product(
-                    ['mlp_mean', 'mlp_causal'], ['fp32', 'tf32', 'bf16'],
-                    [5, 20, 100], ['cpu', 'cuda'])]
+                     data_placement=placement, batch_size=1024)
+                for structure, precision, minimum, placement in ordered]
     if local_smoke:
         return [dict(positions=positions, batch_size=1, precision='fp32')
                 for positions in [200, 600]]
     return [dict(positions=positions, batch_size=batch, precision=precision)
-            for positions, batch, precision in itertools.product(
-                [200, 600], [256, 512, 1024], ['fp32', 'bf16'])]
+            for positions, precision, batch in itertools.product(
+                [200, 600], ['bf16', 'fp32'], [256, 512, 1024])]
+
+
+def case_label(stage, case):
+    if stage == 'two_tower':
+        return '-'.join(str(case[key]) for key in
+                        ('structure', 'precision', 'id_min_count', 'data_placement'))
+    return f"positions-{case['positions']}-batch-{case['batch_size']}-{case['precision']}"
+
+
+def case_progress(output, stage, *, local_smoke):
+    grid = case_grid(stage, local_smoke=local_smoke)
+    report = dict(planned=len(grid), last_attempted_position=0,
+                  last_reported_position=0, last_attempted_case=None)
+    for position, case in enumerate(grid, 1):
+        path = output / case_label(stage, case)
+        if path.with_suffix('.launch.json').is_file():
+            report.update(last_attempted_position=position, last_attempted_case=case)
+        if (path / 'result.json').is_file():
+            report['last_reported_position'] = position
+    return report
+
+
+def write_receipt(path, record):
+    temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+    with temporary.open('x') as handle:
+        json.dump(record, handle, indent=2)
+    temporary.rename(path)
+
+
+def fp32_summary(stage_output, *, local_smoke):
+    path = stage_output / 'fp32-cpu-cuda'
+    outcome = path.with_suffix('.outcome.json')
+    if local_smoke:
+        return dict(status='skipped_cpu')
+    if outcome.is_file():
+        child = json.loads(outcome.read_text())
+        result = child.get('result', {})
+        status = child['status'] if child['status'] != 'complete' else 'missing_result'
+        result.update(status=status, seconds=child['seconds'], returncode=child['returncode'])
+    elif (path / 'result.json').is_file():
+        result = json.loads((path / 'result.json').read_text())
+    elif path.with_suffix('.launch.json').is_file():
+        result = dict(status='interrupted_without_result')
+    else:
+        return dict(status='not_started')
+    if result['status'] not in ('pass', 'skipped_cpu'):
+        result['severity'] = 'red'
+    return result
 
 
 def run_child(command, output_prefix, seconds, *, own_group=True):
@@ -88,24 +148,27 @@ def child_command(args, stage, output, *, case_file=None, shared_order=None):
         command.append('--synthetic')
     if args.local_smoke:
         command.append('--local-smoke')
-    if args.download_url:
-        command += ['--download-url', args.download_url]
+    command += ['--download-url', args.download_url]
     return command
 
 
 def run_cases(args, stage):
     from .pre_rental_cases import prepare_shared_order
 
-    shared = prepare_shared_order(args, args.output) if stage == 'two_tower' else None
     started = time.monotonic()
-    cases = []
     budget = min(STAGE_SECONDS[stage], args.total_seconds)
+    shared = prepare_shared_order(args, args.output) if stage == 'two_tower' else None
+    if stage == 'two_tower' and args.device == 'cuda':
+        remaining = min(120, budget - (time.monotonic()-started))
+        if remaining > 0:
+            output = args.output / 'fp32-cpu-cuda'
+            command = child_command(args, 'fp32_cpu_cuda', output, shared_order=shared)
+            outcome = run_child(command, output, remaining, own_group=False)
+            write_receipt(output.with_suffix('.outcome.json'), outcome)
+    cases = []
     for specification in case_grid(stage, local_smoke=args.local_smoke):
         remaining = budget - (time.monotonic()-started)
-        label = ('-'.join(str(specification[key]) for key in
-                           ['structure', 'precision', 'id_min_count', 'data_placement'])
-                 if stage == 'two_tower' else
-                 f"positions-{specification['positions']}-batch-{specification['batch_size']}-{specification['precision']}")
+        label = case_label(stage, specification)
         if remaining <= 0:
             cases.append(dict(case=specification, status='skipped_stage_deadline'))
             continue
@@ -140,8 +203,7 @@ def run_worker(args):
         if args.device == 'cuda':
             from .two_tower_runtime import process_metrics
             result['resources'] = process_metrics('cuda')
-    with (args.output / 'result.json').open('x') as handle:
-        json.dump(result, handle, indent=2)
+    write_receipt(args.output / 'result.json', result)
     print(json.dumps(result, indent=2))
     return 0
 
@@ -161,7 +223,8 @@ def main(argv=None):
     parser.add_argument('--decoder-positions', type=int, default=3)
     parser.add_argument('--download-url', default='https://speed.cloudflare.com/__down?bytes=33554432')
     parser.add_argument('--auto-stop', action='store_true')
-    parser.add_argument('--stage', choices=[*STAGE_SECONDS, 'two_tower_case', 'generator_case'])
+    parser.add_argument('--stage', choices=[*STAGE_SECONDS, 'two_tower_case', 'generator_case',
+                                           'fp32_cpu_cuda'])
     parser.add_argument('--case-file', type=Path)
     parser.add_argument('--shared-order', type=Path)
     args = parser.parse_args(argv)
@@ -186,26 +249,42 @@ def main(argv=None):
     for stage, limit in STAGE_SECONDS.items():
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            stages.append(dict(stage=stage, status='skipped_total_deadline'))
-            continue
-        command = child_command(args, stage, args.output / stage)
-        result = run_child(command, args.output / stage, min(limit, remaining))
+            result = dict(status='skipped_total_deadline')
+        else:
+            command = child_command(args, stage, args.output / stage)
+            result = run_child(command, args.output / stage, min(limit, remaining))
         result['stage'] = stage
+        if stage in ('two_tower', 'generator'):
+            result['case_progress'] = case_progress(args.output / stage, stage,
+                                                     local_smoke=args.local_smoke)
         stages.append(result)
+    parity = fp32_summary(args.output / 'two_tower', local_smoke=args.local_smoke)
     summary = dict(execution='local_cpu_smoke' if args.local_smoke else 'cuda_probe',
                     cuda_cases_skipped=args.local_smoke, stages=stages,
+                    fp32_cpu_cuda=parity, auto_stop=args.auto_stop,
+                    evaluation_model_source=stages[-1].get('result', {}).get('model_source'),
+                    next_action=RETRIEVE_RESULTS,
                     seconds=time.monotonic()-started,
                     maximum_seconds=args.total_seconds,
                     settings=dict(device=args.device, warmup=args.warmup,
                                    measured_steps=args.steps, threads_requested=args.threads,
                                    generator_vocab=args.generator_vocab,
                                    decoder_positions=args.decoder_positions))
-    with (args.output / 'probe.json').open('x') as handle:
-        json.dump(summary, handle, indent=2)
+    write_receipt(args.output / 'probe.json', summary)
     print('一小时探针汇总')
     for row in stages:
         print(row['stage'], row['status'], round(row.get('seconds', 0), 3), 'seconds')
+        if 'case_progress' in row:
+            progress = row['case_progress']
+            print('  已启动到第', progress['last_attempted_position'], '组，已记录到第',
+                  progress['last_reported_position'], '组，共', progress['planned'], '组')
+    if parity.get('severity') == 'red':
+        print(f"\033[31mFP32 CPU/CUDA 对拍未通过（红）{parity['status']}\033[0m")
+    else:
+        print('FP32 CPU/CUDA 对拍', parity['status'])
     print('total', round(summary['seconds'], 3), 'seconds')
+    print('evaluation model', summary['evaluation_model_source'])
+    print(RETRIEVE_RESULTS)
     if args.auto_stop:
         from .pre_rental_deploy import stop_self
         try:

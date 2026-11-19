@@ -1,0 +1,22 @@
+{
+  "runs": [
+    {
+      "id": "example-causal",
+      "structure": "mlp_causal",
+      "seed": 42,
+      "id_min_count": 20,
+      "precision": "bf16",
+      "epochs": 1,
+      "patience": 3
+    },
+    {
+      "id": "example-mean",
+      "structure": "mlp_mean",
+      "seed": 42,
+      "id_min_count": 20,
+      "precision": "bf16",
+      "epochs": 1,
+      "patience": 3
+    }
+  ]
+}
