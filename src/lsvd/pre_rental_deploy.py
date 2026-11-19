@@ -51,7 +51,7 @@ def rsync_command(source, destination, *, ssh=None, files_from=None, compress=Tr
     return [*command, str(source), str(destination)]
 
 
-def result_digests(sums, *, formal=False):
+def result_digests(sums, *, formal=False, generator=False):
     files = {}
     for line in sums.decode('ascii').splitlines():
         digest, name = line.split('  ', 1)
@@ -62,21 +62,27 @@ def result_digests(sums, *, formal=False):
     if not files:
         raise ValueError('result SHA256SUMS is empty')
     if formal:
-        required = {'best.pt', 'run_summary.json', 'logs/training_steps.csv',
-                    'best-cold-vectors/item_ids.npy', 'best-cold-vectors/vectors.npy',
-                    'best-cold-vectors/manifest.json', 'evaluation/all/metrics.csv',
-                    'cold-evaluation/all/metrics.csv'}
+        required = {'best.pt', 'run_summary.json', 'logs/training_steps.csv'}
+        if generator:
+            required.update(f'evaluation/{route}/{group}/{filename}'
+                            for route in ('full_sid', 'direct', 'hitchhike', 'prefix', 'content')
+                            for group in ('all', 'locally_unseen_only', 'global_new_proxy')
+                            for filename in ('metrics.csv', 'statistics.npz'))
+        else:
+            required.update({'best-cold-vectors/item_ids.npy', 'best-cold-vectors/vectors.npy',
+                             'best-cold-vectors/manifest.json', 'evaluation/all/metrics.csv',
+                             'cold-evaluation/all/metrics.csv'})
         if not required.issubset(files) or not any(name.startswith('logs/attempt-')
                                                    and name.endswith('.log') for name in files):
             raise ValueError('formal result SHA256SUMS is missing required artifacts')
     return files
 
 
-def verify_results(root, *, formal=False):
+def verify_results(root, *, formal=False, generator=False):
     root = Path(root).resolve()
     sums = (root / 'SHA256SUMS').read_bytes()
     rows = []
-    for name, expected in result_digests(sums, formal=formal).items():
+    for name, expected in result_digests(sums, formal=formal, generator=generator).items():
         path = root / name
         if root not in path.resolve().parents or not path.is_file():
             raise ValueError('result file missing or outside result directory: ' + name)
@@ -87,7 +93,7 @@ def verify_results(root, *, formal=False):
                 total_bytes=sum(row['bytes'] for row in rows))
 
 
-def pull_results(source, output, *, ssh, executable='rsync', formal=False):
+def pull_results(source, output, *, ssh, executable='rsync', formal=False, generator=False):
     from .pre_rental_probe import write_receipt
 
     output = Path(output)
@@ -100,7 +106,7 @@ def pull_results(source, output, *, ssh, executable='rsync', formal=False):
         subprocess.run(rsync_command(source + 'SHA256SUMS', remote_sums, ssh=ssh,
                                     executable=executable), check=True)
         sums = remote_sums.read_bytes()
-        files = result_digests(sums, formal=formal)
+        files = result_digests(sums, formal=formal, generator=generator)
         if receipt_path.exists():
             if receipt_path.read_bytes() != sums:
                 raise ValueError('result SHA256SUMS differs from the existing pull')
@@ -113,7 +119,7 @@ def pull_results(source, output, *, ssh, executable='rsync', formal=False):
                                     executable=executable)
             subprocess.run(command, input=''.join(name + '\n' for name in files),
                            text=True, check=True)
-    result = verify_results(output, formal=formal)
+    result = verify_results(output, formal=formal, generator=generator)
     if not receipt.exists():
         write_receipt(receipt, result)
     return result
@@ -267,6 +273,7 @@ def main(argv=None):
     pull = sub.add_parser('pull')
     pull.add_argument('--remote-result', required=True)
     pull.add_argument('--output', type=Path, required=True)
+    pull.add_argument('--generator', action='store_true')
     pull.add_argument('--connection', type=Path, default=Path('.local/lsvd-connection.json'))
     launch = sub.add_parser('launch')
     launch.add_argument('--run-directory', type=Path, required=True)
@@ -343,7 +350,7 @@ def main(argv=None):
         connection = json.loads(args.connection.read_text())
         source = connection['target'] + ':' + ascii_path(args.remote_result)
         result = pull_results(source, args.output, ssh=['ssh', *connection.get('ssh_arguments', [])],
-                              executable=rsync['executable'], formal=True)
+                              executable=rsync['executable'], formal=True, generator=args.generator)
         print(json.dumps(dict(result, rsync=rsync)))
     else:
         command = args.argv[1:] if args.argv[:1] == ['--'] else args.argv

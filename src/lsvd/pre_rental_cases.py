@@ -446,6 +446,94 @@ def generator_case(args):
         tiger_arch.POSITIONS = previous_positions
 
 
+def real_generator(args):
+    """Fixed-step timing for a generator plan using real, pinned data assets."""
+    import torch
+
+    from .generator_data import GeneratorData, ItemVectors, SIDBundle
+    from .generator_decode import DecodeConfig
+    from .generator_eval import evaluate_predictions, predict, report_ks, supply_summary
+    from .generator_training import (GeneratorSession, config_from_plan, external_query,
+                                     fixed_hash_users, make_ranker)
+    from .pre_rental_deploy import sha256_file, verify_manifest
+    from .pre_rental_queue import load_plan
+    from .two_tower_data import subset_evaluation
+    from .two_tower_runtime import configure_threads, process_metrics
+
+    configure_threads(args.threads)
+    plan = [run for run in load_plan(args.real_generator_plan, args.device)
+            if run.get('kind') == 'generator']
+    if len(plan) != 1:
+        raise ValueError('real generator probe needs exactly one generator run')
+    run = plan[0]
+    manifest = args.dataset / 'manifest.json'
+    identity = dict(data_sha256=sha256_file(manifest), sid_sha256=run['sid_sha256'],
+                    item_vectors_sha256=run['item_vectors_sha256'],
+                    plan_sha256=sha256_file(args.real_generator_plan))
+    if args.device == 'cuda':
+        torch.cuda.reset_peak_memory_stats()
+    started = time.perf_counter()
+    verify_manifest(args.dataset, manifest, identity['data_sha256'])
+    sid = SIDBundle(run['sid_bundle'], expected_sha256=run['sid_sha256'])
+    vectors = ItemVectors(run['item_vectors'], expected_sha256=run['item_vectors_sha256'])
+    dataset = GeneratorData(args.dataset, sid, vectors, device=args.device,
+                            expected_tensor_sha256=identity['data_sha256'])
+    config = config_from_plan(run, sid, vectors)
+    session = GeneratorSession(dataset, config, args.device, args.output / 'session',
+                               identity=identity, precision=run['precision'])
+    load_seconds = time.perf_counter() - started
+    started = time.perf_counter()
+    session._ensure_order()
+    shuffle_seconds = time.perf_counter() - started
+    for _ in range(args.warmup):
+        session.step()
+    if args.device == 'cuda':
+        torch.cuda.synchronize()
+    started = time.perf_counter()
+    rows = [session.step() for _ in range(args.steps)]
+    if args.device == 'cuda':
+        torch.cuda.synchronize()
+    wall = time.perf_counter() - started
+    targets = sum(row['targets'] for row in rows)
+    result = record(args, 'real_generator')
+    result['protocol'].update(data_sha=identity['data_sha256'], seed=config.seed,
+                              model='real_generator', precision=run['precision'],
+                              batch_size=config.batch_size, history_events=config.max_history,
+                              training_target_positions=targets, sid_supervised_tokens=3 * targets,
+                              catalog_items=len(dataset.ids))
+    result['throughput'].update(effective_targets_per_second=targets / wall,
+                                sid_supervised_tokens_per_second=3 * targets / wall,
+                                steps_per_second=len(rows) / wall)
+    result['timings_seconds'].update(load=load_seconds, epoch_shuffle=shuffle_seconds,
+                                     steady_window_wall=wall)
+    result['resources'].update(process_metrics(args.device))
+    result['correctness_and_retrieval']['finite_loss'] = True
+    decode = DecodeConfig(**run.get('decode', {}))
+    users = fixed_hash_users(dataset.evaluation, limit=getattr(args, 'real_generator_queries', 8))
+    data = subset_evaluation(dataset.evaluation, users)
+    scorer = None
+    if not config.shared_head:
+        scorer = external_query(args.dataset, run['external_checkpoint'], args.device,
+                                checkpoint_sha256=run['external_checkpoint_sha256'], vectors=vectors)
+    decode_timing = {}
+    predictions, counts = predict(session.model, dataset, data, make_ranker(dataset, decode),
+                                  decode, args.device, run['precision'],
+                                  external_query=scorer, timings=decode_timing)
+    started = time.perf_counter()
+    evaluate_predictions(data, predictions, dataset.catalog.groups, k=decode.k, replicates=1)
+    decode_timing['evaluation_seconds'] = time.perf_counter() - started
+    result['decode_timing'] = dict(decode_timing, users=len(users), threads=torch.get_num_threads(),
+                                   beam_widths=decode.beam_widths,
+                                   prefix_beam_width=decode.prefix_beam_width,
+                                   k=decode.k, candidate_budget=decode.candidate_budget,
+                                   candidates=counts, supply=supply_summary(predictions, report_ks(decode.k)),
+                                   cuda_counter_scope='torch_counter_excludes_context')
+    result.update(identity=identity, history_mode=config.history_mode,
+                  shared_head=config.shared_head, warmup_steps=args.warmup, steps=len(rows),
+                  finite_loss=True, actual_source='versioned tensor, SID and item-vector bundles')
+    return result
+
+
 def checkpoint(args):
     import torch
     from .two_tower import TowerConfig

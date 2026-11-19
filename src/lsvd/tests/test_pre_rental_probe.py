@@ -11,6 +11,17 @@ from lsvd.pre_rental_probe import case_grid, run_child, run_cases
 
 
 class ProbeTests(unittest.TestCase):
+    def test_real_generator_stage_is_opt_in_and_keeps_the_original_time_budget(self):
+        from lsvd.pre_rental_probe import probe_stage_limits
+
+        original = probe_stage_limits()
+        expanded = probe_stage_limits(real_generator=True)
+        self.assertNotIn('real_generator', original)
+        self.assertIn('generator', expanded)
+        self.assertIn('real_generator', expanded)
+        self.assertEqual(sum(original.values()), sum(expanded.values()))
+        self.assertEqual(list(expanded)[-1], 'evaluate')
+
     def test_cuda_grid_covers_both_towers_precision_id_threshold_and_placement(self):
         cases = case_grid('two_tower', local_smoke=False)
         self.assertEqual(len(cases), 36)

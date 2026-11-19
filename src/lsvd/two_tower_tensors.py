@@ -199,34 +199,43 @@ class TensorEventStore:
         arrays['positive_keys'] = PositiveIndex.from_sets(sets).keys.numpy()
         return cls(arrays, catalog, storage_device, pinned)
 
-    def history_batch(self, positions, users, weeks, max_history, device):
+    def history_batch(self, positions, users, weeks, max_history, device, *, context_only=False):
         with region(self.timer, 'history'):
             positions = torch.as_tensor(positions, device=self.storage_device).long()
             users = torch.as_tensor(users, device=self.storage_device).long()
             weeks = torch.as_tensor(weeks, device=self.storage_device).long()
             counts = (positions - self.user_offsets[users]).clamp(max=max_history)
-            width = max(1, int(counts.max()))
+            width = 1 if context_only and not counts.numel() else max(1, int(counts.max()))
             column = torch.arange(width, device=positions.device)[None, :]
             rows = positions[:, None] - counts[:, None] + column
             valid = column < counts[:, None]
             rows = rows.clamp(max=len(self.columns['item']) - 1)
             get = lambda name: self.tables[name][rows]
-            items = get('item').masked_fill(~valid, 0)
             feedback = ((get('feedback').long()[..., None]
                          >> torch.arange(9, device=positions.device)) & 1).float()
             ratio = get('ratio')
-            bucket = 1 + (ratio >= .1).long() + (ratio >= .5).long()
-            bucket = bucket + (ratio >= 1).long() + (ratio > 1).long()
-            batch = dict(items=items, valid=valid, feedback=feedback, ratio=bucket,
-                         place=get('place').long() + 1,
-                         gap=(weeks[:, None] - get('week').long()).clamp(0, 26) + 1)
+            place = get('place').long() + 1
+            gap = (weeks[:, None] - get('week').long()).clamp(0, 26) + 1
             feature_rows = get('catalog_row').masked_fill(~valid, 0)
+            if context_only:
+                batch = dict(valid=valid, feedback=feedback.masked_fill(~valid[..., None], 0),
+                             ratio=ratio.masked_fill(~valid, 0),
+                             place=place.masked_fill(~valid, 0), gap=gap.masked_fill(~valid, 0),
+                             position=column.expand_as(valid).masked_fill(~valid, 0),
+                             catalog_rows=feature_rows)
+            else:
+                items = get('item').masked_fill(~valid, 0)
+                bucket = 1 + (ratio >= .1).long() + (ratio >= .5).long()
+                bucket = bucket + (ratio >= 1).long() + (ratio > 1).long()
+                batch = dict(items=items, valid=valid, feedback=feedback, ratio=bucket,
+                             place=place, gap=gap)
         with region(self.timer, 'h2d'):
             if self.pinned and torch.device(device).type == 'cuda':
                 batch = {name: value.pin_memory() for name, value in batch.items()}
             batch = {name: value.to(device, non_blocking=self.pinned)
                      for name, value in batch.items()}
-        batch['item_features'] = self.catalog.features_by_rows(feature_rows, device)
+        if not context_only:
+            batch['item_features'] = self.catalog.features_by_rows(feature_rows, device)
         return batch
 
     def train_batch(self, selected, config, device):

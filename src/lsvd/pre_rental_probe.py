@@ -19,6 +19,18 @@ STAGE_SECONDS = dict(machine=300, two_tower=1200, generator=600,
 RETRIEVE_RESULTS = '先拉回结果，再由Eddy销毁'
 
 
+def probe_stage_limits(*, real_generator=False):
+    if not real_generator:
+        return dict(STAGE_SECONDS)
+    stages = {}
+    for name, seconds in STAGE_SECONDS.items():
+        if name == 'generator':
+            stages.update(generator=seconds - 300, real_generator=300)
+        else:
+            stages[name] = seconds
+    return stages
+
+
 def case_grid(stage, *, local_smoke=False):
     if stage == 'two_tower':
         if local_smoke:
@@ -141,6 +153,8 @@ def child_command(args, stage, output, *, case_file=None, shared_order=None):
                '--generator-vocab', str(args.generator_vocab),
                '--decoder-positions', str(args.decoder_positions)]
     for flag, value in [('dataset', args.dataset), ('threads', args.threads),
+                        ('real-generator-plan', getattr(args, 'real_generator_plan', None)),
+                        ('real-generator-queries', getattr(args, 'real_generator_queries', None)),
                         ('case-file', case_file), ('shared-order', shared_order)]:
         if value is not None:
             command += ['--' + flag, str(value)]
@@ -224,12 +238,20 @@ def main(argv=None):
     parser.add_argument('--download-url', default='https://speed.cloudflare.com/__down?bytes=33554432')
     parser.add_argument('--auto-stop', action='store_true')
     parser.add_argument('--stage', choices=[*STAGE_SECONDS, 'two_tower_case', 'generator_case',
-                                           'fp32_cpu_cuda'])
+                                           'fp32_cpu_cuda', 'real_generator'])
+    parser.add_argument('--real-generator-plan', type=Path)
+    parser.add_argument('--real-generator-queries', type=int, default=8)
     parser.add_argument('--case-file', type=Path)
     parser.add_argument('--shared-order', type=Path)
     args = parser.parse_args(argv)
     if not args.synthetic and args.dataset is None:
         parser.error('--dataset or --synthetic is required')
+    if args.real_generator_plan is not None and args.dataset is None:
+        parser.error('--real-generator-plan requires a real --dataset')
+    if args.stage == 'real_generator' and args.real_generator_plan is None:
+        parser.error('real_generator requires --real-generator-plan')
+    if args.real_generator_queries < 1:
+        parser.error('--real-generator-queries must be positive')
     if not 0 < args.total_seconds <= 2700 or args.steps < 1 or args.warmup < 0:
         parser.error('positive steps and total <=2700 seconds required')
     if args.device == 'auto':
@@ -246,7 +268,7 @@ def main(argv=None):
     reserve = 40 if args.auto_stop else 2
     deadline = started + args.total_seconds - reserve
     stages = []
-    for stage, limit in STAGE_SECONDS.items():
+    for stage, limit in probe_stage_limits(real_generator=args.real_generator_plan is not None).items():
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             result = dict(status='skipped_total_deadline')

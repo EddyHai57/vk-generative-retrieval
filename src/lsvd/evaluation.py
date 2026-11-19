@@ -316,8 +316,8 @@ class EvaluationResult:
     def save(self, output_dir):
         path = Path(output_dir)
         path.mkdir(parents=True, exist_ok=False)
-        np.savez(path / 'statistics.npz', user_ids=self.user_ids, ks=self.ks,
-                 counts=self.counts, hits=self.hits)
+        np.savez_compressed(path / 'statistics.npz', user_ids=self.user_ids, ks=self.ks,
+                            counts=self.counts, hits=self.hits)
         _write_json(path / 'slice_specs.json', self.slice_specs)
         _write_json(path / 'metrics.json', self.metrics)
         _write_json(path / 'manifest.json', dict(model_name=self.model_name, **self.metadata))
