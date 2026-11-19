@@ -4,6 +4,10 @@
 
 > 本文件只保存稳定行动规范与事实源指针。当前状态见`STATE.md`，跨对话接力见`handoff.md`，阶段计划见`tasks.md`。
 
+## 服务器接入（2026-11-19）
+
+当前 Vast 实例和接入方法见 `docs/server_access.md`。本机 SSH 别名是 `vk-vast`；地址、端口和密钥只存在本机的 `~/.ssh/config`，不写进仓库、报告或聊天。只读检查可以直接做，安装、上传、启动作业和销毁实例都要 Eddy 授权。
+
 ## 工作流硬规则（2026-10-13，Eddy确认“按工业界流程来”，最高优先，覆盖下文所有冲突条款）
 
 1. **Git是唯一代码来源**：每个task结束即commit；服务器只运行已push的commit。每个run的manifest记录commit SHA、数据hash、config、seed。服务器上不直接改代码；运维脚本（launcher/admission/observe/driver）也必须进版本管理，不得只放在`cache/`。
